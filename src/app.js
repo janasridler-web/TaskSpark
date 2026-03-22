@@ -206,13 +206,24 @@ api.onOauthCode(async ({ code }) => {
       refreshToken = tokens.refresh_token;
       tokenExpiry  = Date.now() + (tokens.expires_in || 3600) * 1000;
 
+      // Fetch the signed-in user's email to detect account switches
+      document.getElementById('auth-status').textContent = 'Signing you in…';
+      const userInfo = await fetchUserInfo(accessToken);
+      const newEmail = userInfo ? userInfo.email : null;
+
+      // If a different account is signing in, clear the local cache
+      const existingCfg = await api.loadConfig();
+      if (existingCfg && existingCfg.userEmail && newEmail && existingCfg.userEmail !== newEmail) {
+        await api.saveCache([]);
+      }
+
       // V2: Auto-create a TaskSpark spreadsheet in the user's Google Drive
       document.getElementById('auth-status').textContent = 'Setting up your spreadsheet…';
       const sheet = await api.driveCreateSheet({ accessToken });
       if (!sheet.spreadsheetId) throw new Error('Could not create spreadsheet');
       spreadsheetId = sheet.spreadsheetId;
 
-      await api.saveConfig({ spreadsheetId, accessToken, refreshToken, tokenExpiry });
+      await api.saveConfig({ spreadsheetId, accessToken, refreshToken, tokenExpiry, userEmail: newEmail });
       showApp();
       await connectToSheets();
     } else {
@@ -239,6 +250,15 @@ async function startOAuth() {
     document.getElementById('auth-waiting').style.display = 'none';
     document.getElementById('btn-google-signin').disabled = false;
   }
+}
+
+async function fetchUserInfo(token) {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return await res.json();
+  } catch { return null; }
 }
 
 async function ensureToken() {
