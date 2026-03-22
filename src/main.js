@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, protocol } = require('electron');
-// Load credentials from .env file (never committed to GitHub)
-require('dotenv').config({ path: require('path').join(app.getAppPath(), '.env') });
 const { autoUpdater } = require('electron-updater');
+// Load credentials from credentials.js (never committed to GitHub)
+const credentials = require('./credentials');
 const path = require('path');
 const fs   = require('fs');
 const https = require('https');
@@ -183,8 +183,8 @@ let oauthServer = null;
 // These are your app's OAuth credentials — set once, shared by all users
 // IMPORTANT: Replace these with your actual credentials from Google Cloud Console
 // after your OAuth app is verified
-const APP_CLIENT_ID     = process.env.APP_CLIENT_ID     || 'YOUR_CLIENT_ID_HERE';
-const APP_CLIENT_SECRET = process.env.APP_CLIENT_SECRET || 'YOUR_CLIENT_SECRET_HERE';
+const APP_CLIENT_ID     = credentials.APP_CLIENT_ID;
+const APP_CLIENT_SECRET = credentials.APP_CLIENT_SECRET;
 
 const OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',

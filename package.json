@@ -1,6 +1,6 @@
 {
   "name": "taskspark",
-  "version": "2.1.0",
+  "version": "2.0.0",
   "description": "TaskSpark \u2014 Focus \u00b7 Flow \u00b7 Finish",
   "main": "src/main.js",
   "scripts": {
@@ -39,11 +39,10 @@
   },
   "dependencies": {
     "electron-store": "^8.1.0",
-    "electron-updater": "^6.1.7",
-    "dotenv": "^16.0.0"
+    "electron-updater": "^6.1.7"
   },
   "author": {
-    "name": "Jana Ridler",
+    "name": "Jana Sridler",
     "email": "janasridler@gmail.com",
     "url": "https://taskspark.tech"
   }
