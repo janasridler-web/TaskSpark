@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #1a1814;
+    border-radius: 12px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+
+  #wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px 0 14px;
+    height: 70px;
+    gap: 12px;
+  }
+
+  #left {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    flex: 1;
+  }
+
+  #task-name {
+    font-size: 11px;
+    color: #6a6358;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+
+  #timer-time {
+    font-size: 26px;
+    font-weight: 700;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    line-height: 1;
+  }
+
+  #stop-btn {
+    -webkit-app-region: no-drag;
+    background: #c0392b;
+    border: none;
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+
+  #stop-btn:hover { background: #9b2c2c; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="left">
+    <div id="task-name">Task</div>
+    <div id="timer-time">00:00</div>
+  </div>
+  <button id="stop-btn" onclick="stopTimer()">■ Stop</button>
+</div>
+
+<script>
+  let timerInterval = null;
+  let startTime     = null;
+  let baseLogged    = 0;
+
+  // Receive start data from main renderer
+  window.timerAPI.onStart((data) => {
+    document.getElementById('task-name').textContent =
+      data.taskName.length > 30 ? data.taskName.slice(0, 28) + '…' : data.taskName;
+    baseLogged = data.baseLogged || 0;
+    startTime  = Date.now() / 1000;
+    tick();
+    timerInterval = setInterval(tick, 1000);
+  });
+
+  function tick() {
+    if (!startTime) return;
+    const elapsed = Math.floor(Date.now() / 1000 - startTime);
+    const total   = baseLogged + elapsed;
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    document.getElementById('timer-time').textContent =
+      h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    const elapsed = startTime ? Math.floor(Date.now() / 1000 - startTime) : 0;
+    window.timerAPI.stop(elapsed);
+  }
+</script>
+</body>
+</html>
