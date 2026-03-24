@@ -222,18 +222,14 @@ api.onOauthCode(async ({ code }) => {
       // Search Google Drive for an existing TaskSpark spreadsheet
       document.getElementById('auth-status').textContent = 'Looking for your spreadsheet…';
       const existingSheet = await api.driveFindSheet({ accessToken });
-      console.log('[oauth] driveFindSheet result:', JSON.stringify(existingSheet));
-
       if (existingSheet && existingSheet.id) {
         spreadsheetId = existingSheet.id;
-        console.log('[oauth] found existing spreadsheet:', spreadsheetId);
         document.getElementById('auth-status').textContent = 'Reconnecting…';
       } else {
         document.getElementById('auth-status').textContent = 'Setting up your spreadsheet…';
         const sheet = await api.driveCreateSheet({ accessToken });
         if (!sheet.spreadsheetId) throw new Error('Could not create spreadsheet');
         spreadsheetId = sheet.spreadsheetId;
-        console.log('[oauth] created new spreadsheet:', spreadsheetId);
       }
 
       await api.saveConfig({ spreadsheetId, accessToken, refreshToken, tokenExpiry, userEmail: newEmail });
@@ -296,23 +292,17 @@ async function signOut() {
 async function connectToSheets() {
   setSyncStatus('syncing');
   tasks = await api.loadCache();
-  console.log('[connectToSheets] cache loaded, tasks:', tasks.length, 'spreadsheetId:', spreadsheetId);
   renderAll();
 
   try {
     await ensureToken();
     await api.sheetsEnsure({ accessToken, spreadsheetId });
     const loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
-    console.log('[connectToSheets] sheet loaded, tasks:', loaded.length);
     if (loaded.length) {
       tasks = loaded;
-      console.log('[connectToSheets] using sheet tasks');
     } else if (!tasks.length) {
       tasks = sampleTasks();
-      console.log('[connectToSheets] no tasks anywhere — using sample tasks');
       await api.sheetsSave({ accessToken, spreadsheetId, tasks });
-    } else {
-      console.log('[connectToSheets] sheet empty but cache has tasks — keeping cache');
     }
     await api.saveCache(tasks);
     setSyncStatus('ok');
@@ -855,9 +845,9 @@ function renderCalendar() {
 
   popup.innerHTML = `
     <div class="cal-header">
-      <button class="cal-nav" onclick="calNav(-1)">‹</button>
+      <button class="cal-nav" onclick="calNav(-1, event)">‹</button>
       <span class="cal-month">${monthNames[calMonth]} ${calYear}</span>
-      <button class="cal-nav" onclick="calNav(1)">›</button>
+      <button class="cal-nav" onclick="calNav(1, event)">›</button>
     </div>
     <div class="cal-days-hdr">
       ${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => `<div class="cal-day-hdr">${d}</div>`).join('')}
@@ -866,7 +856,8 @@ function renderCalendar() {
     <div class="cal-clear"><button class="cal-clear-btn" onclick="pickDate('')">Clear date</button></div>`;
 }
 
-function calNav(dir) {
+function calNav(dir, e) {
+  if (e) e.stopPropagation();
   calMonth += dir;
   if (calMonth < 0)  { calMonth = 11; calYear--; }
   if (calMonth > 11) { calMonth = 0;  calYear++; }
