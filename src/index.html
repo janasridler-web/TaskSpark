@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskSpark</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & base ──────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:15px}
+
+/* ── Theme variables ───────────────────────────────────────────────────────── */
+:root{
+  --bg:#f0ede8;
+  --surface:#ffffff;
+  --surface2:#f5f2ee;
+  --border:#e4dfd8;
+  --border2:#cdc8bf;
+  --text:#18160f;
+  --text2:#5c5750;
+  --text3:#a09890;
+  --accent:#2d6a4f;
+  --accent-l:#e4f0eb;
+  --accent-h:#1b4d38;
+  --accent-text:#ffffff;
+  --red:#c0392b;
+  --red-l:#fdf0ee;
+  --amber:#b8620a;
+  --amber-l:#fef5e7;
+  --blue:#1a5c8a;
+  --blue-l:#edf4fa;
+  --sidebar-w:250px;
+  --radius:10px;
+  --radius-lg:14px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.04);
+  --shadow-lg:0 4px 16px rgba(0,0,0,.10),0 1px 4px rgba(0,0,0,.06);
+  --font-mono:'DM Mono',monospace;
+}
+[data-theme="dark"]{
+  --bg:#141210;
+  --surface:#1e1c1a;
+  --surface2:#252320;
+  --border:#333028;
+  --border2:#454038;
+  --text:#ede9e3;
+  --text2:#a09888;
+  --text3:#6a6358;
+  --accent:#3d8a64;
+  --accent-l:#1a2e24;
+  --accent-h:#4fad7e;
+  --red:#e05050;
+  --red-l:#2a1818;
+  --amber:#d4810a;
+  --amber-l:#2a1e08;
+  --blue:#3a80b8;
+  --blue-l:#0d1e2d;
+  --shadow:0 1px 3px rgba(0,0,0,.2),0 4px 12px rgba(0,0,0,.16);
+  --shadow-lg:0 4px 16px rgba(0,0,0,.3),0 1px 4px rgba(0,0,0,.2);
+}
+
+/* ── App shell ─────────────────────────────────────────────────────────────── */
+#app{display:flex;height:100vh;max-height:100vh;background:var(--bg);overflow:hidden}
+#titlebar{position:fixed;top:0;left:0;right:0;height:36px;display:flex;align-items:center;
+  justify-content:flex-end;padding:0 8px;z-index:2000;-webkit-app-region:drag;gap:4px;cursor:move}
+.tb-btn{-webkit-app-region:no-drag;width:28px;height:28px;border-radius:6px;border:none;
+  background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--text3);font-size:14px;transition:background .15s,color .15s}
+.tb-btn:hover{background:var(--border);color:var(--text)}
+.tb-btn.close:hover{background:var(--red);color:#fff}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+#sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--surface);
+  border-right:1px solid var(--border);display:flex;flex-direction:column;
+  padding-top:36px;height:100vh;overflow:hidden;flex-shrink:0}
+#sidebar-scroll{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
+#sidebar-scroll::-webkit-scrollbar{width:4px}
+#sidebar-scroll::-webkit-scrollbar-track{background:transparent}
+#sidebar-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+.sidebar-logo{padding:20px 18px 12px;display:flex;flex-direction:column;align-items:center}
+.sidebar-logo img{width:150px;height:auto;object-fit:contain}
+.sidebar-divider{height:1px;background:var(--border);margin:8px 16px}
+
+.sidebar-section-label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;
+  text-transform:uppercase;padding:10px 20px 4px}
+.sidebar-section-label.collapsible{display:flex;align-items:center;justify-content:space-between;
+  padding-right:16px;cursor:pointer;user-select:none;transition:color .12s}
+.sidebar-section-label.collapsible:hover{color:var(--text2)}
+.sidebar-section-label .collapse-arrow{font-size:10px;transition:transform .2s;display:inline-block}
+.sidebar-section-label.collapsed .collapse-arrow{transform:rotate(-90deg)}
+.collapsible-content{overflow:hidden;transition:max-height .4s ease,opacity .2s;max-height:600px;opacity:1}
+.collapsible-content.collapsed{max-height:0;opacity:0}
+
+.sidebar-item{display:flex;align-items:center;gap:10px;padding:9px 14px;margin:1px 8px;
+  border-radius:var(--radius);cursor:pointer;font-size:14px;font-weight:500;color:var(--text2);
+  transition:background .12s,color .12s;user-select:none}
+.sidebar-item:hover{background:var(--surface2);color:var(--text)}
+.sidebar-item.active{background:var(--accent-l);color:var(--accent);font-weight:600}
+.sidebar-item .si-icon{width:18px;text-align:center;font-size:15px;flex-shrink:0}
+.sidebar-item .si-count{margin-left:auto;font-size:11px;font-family:var(--font-mono);
+  background:var(--surface2);color:var(--text3);padding:2px 7px;border-radius:20px}
+.sidebar-item.active .si-count{background:var(--accent);color:#fff}
+
+.tag-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+
+.sidebar-bottom{padding:12px 8px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--border);flex-shrink:0}
+.sidebar-action-btn{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius);
+  cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);background:transparent;
+  border:none;font-family:'Outfit',sans-serif;width:100%;text-align:left;
+  transition:background .12s,color .12s}
+.sidebar-action-btn:hover{background:var(--surface2);color:var(--text)}
+
+/* Streak widget */
+.streak-widget{margin:8px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-lg);
+  border:1px solid var(--border)}
+.streak-daily{font-size:12px;font-weight:600;margin-bottom:5px;color:var(--text3)}
+.streak-daily.complete{color:var(--accent)}
+.streak-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text)}
+.streak-row .streak-icon{font-size:18px}
+.streak-sub{font-size:12px;color:var(--text3);margin-top:3px;font-weight:400}
+
+/* Theme toggle */
+.theme-toggle{display:flex;align-items:center;gap:8px;padding:9px 14px;margin:4px 8px;
+  border-radius:var(--radius);cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);
+  background:transparent;border:none;font-family:'Outfit',sans-serif;width:calc(100% - 16px);
+  transition:background .12s}
+.theme-toggle:hover{background:var(--surface2)}
+
+/* ── Main area ─────────────────────────────────────────────────────────────── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;padding-top:36px;min-width:0}
+
+/* Toolbar */
+#toolbar{background:var(--surface);border-bottom:1px solid var(--border);
+  padding:12px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0}
+#view-title{font-size:20px;font-weight:700;color:var(--text);margin-right:4px;white-space:nowrap}
+#search-input{flex:1;min-width:160px;max-width:280px;padding:8px 14px;
+  border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;
+  font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);outline:none;
+  transition:border .15s,background .15s}
+#search-input:focus{border-color:var(--accent);background:var(--surface)}
+#sort-select{padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);
+  font-size:14px;font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);
+  outline:none;cursor:pointer;transition:border .15s}
+#sort-select:focus{border-color:var(--accent)}
+
+.toolbar-spacer{flex:1}
+
+.btn-what-now{padding:8px 16px;background:var(--amber);color:#fff;border:none;
+  border-radius:var(--radius);font-size:13px;font-family:'Outfit',sans-serif;font-weight:600;
+  cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s;white-space:nowrap}
+.btn-what-now:hover{filter:brightness(1.1)}
+
+.btn-new-task{padding:9px 20px;background:var(--accent);color:var(--accent-text);border:none;
+  border-radius:var(--radius);font-size:14px;font-family:'Outfit',sans-serif;font-weight:700;
+  cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .15s;white-space:nowrap}
+.btn-new-task:hover{background:var(--accent-h)}
+
+/* Sync indicator */
+#sync-bar{height:28px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:flex-end;padding:0 20px;flex-shrink:0}
+#sync-lbl{font-size:12px;font-family:var(--font-mono);color:var(--text3)}
+
+/* Task list */
+#task-list-container{flex:1;overflow-y:auto;padding:20px 24px;scroll-behavior:smooth}
+
+#task-list-container::-webkit-scrollbar{width:5px}
+#task-list-container::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:280px;gap:10px;color:var(--text3)}
+.empty-icon{font-size:44px;opacity:.35}
+.empty-text{font-size:17px;font-weight:600}
+.empty-sub{font-size:14px}
+
+.section-header{font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.8px;
+  text-transform:uppercase;margin:16px 0 8px;padding-bottom:6px;
+  border-bottom:1px solid var(--border)}
+.section-header:first-child{margin-top:0}
+
+/* ── Task card ─────────────────────────────────────────────────────────────── */
+.task-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-lg);
+  padding:0;margin-bottom:8px;display:flex;align-items:stretch;
+  transition:border-color .15s,box-shadow .15s,opacity .2s;cursor:default;overflow:hidden}
+.task-card:hover{border-color:var(--border2);box-shadow:var(--shadow)}
+.task-card.completed{opacity:.5}
+.task-card.completed .task-title{text-decoration:line-through}
+.task-card.priority-high{border-left:3.5px solid var(--red)}
+.task-card.priority-medium{border-left:3.5px solid var(--amber)}
+.task-card.priority-low{border-left:3.5px solid var(--blue)}
+
+.task-check-wrap{display:flex;align-items:center;padding:16px 4px 16px 14px;flex-shrink:0}
+.task-checkbox{width:20px;height:20px;border:2px solid var(--border2);border-radius:6px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0;background:var(--surface);font-size:12px}
+.task-checkbox:hover{border-color:var(--accent);background:var(--accent-l)}
+.task-checkbox.checked{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.task-body{flex:1;padding:14px 10px 14px 10px;min-width:0}
+.task-title{font-size:15px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:3px}
+.task-desc{font-size:13px;color:var(--text3);margin-bottom:6px;line-height:1.5}
+.task-meta{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+
+.badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;
+  display:inline-flex;align-items:center;gap:4px;font-family:'Outfit',sans-serif}
+.badge-priority-high{background:var(--red-l);color:var(--red)}
+.badge-priority-medium{background:var(--amber-l);color:var(--amber)}
+.badge-priority-low{background:var(--blue-l);color:var(--blue)}
+.badge-due{background:var(--surface2);color:var(--text3)}
+.badge-due.overdue{background:var(--red-l);color:var(--red);font-weight:700}
+.badge-due.today{background:var(--amber-l);color:var(--amber);font-weight:700}
+.badge-due.soon{background:var(--amber-l);color:var(--amber)}
+.badge-tag{color:#fff;font-weight:500}
+.badge-time{background:var(--accent-l);color:var(--accent);font-family:var(--font-mono);font-size:11px}
+.badge-time.over{background:var(--red-l);color:var(--red)}
+.badge-estimate{background:var(--surface2);color:var(--text2);font-family:var(--font-mono);font-size:11px}
+
+/* Task actions */
+.task-actions{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;padding:10px 10px;opacity:0;transition:opacity .15s;flex-shrink:0}
+.task-card:hover .task-actions{opacity:1}
+.action-btn{width:30px;height:30px;border-radius:7px;border:none;background:transparent;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;
+  color:var(--text3);transition:all .15s}
+.action-btn:hover{background:var(--surface2);color:var(--text)}
+.action-btn.timer{background:var(--accent-l);color:var(--accent)}
+.action-btn.timer:hover{background:var(--accent);color:#fff}
+.action-btn.timer.running{background:var(--red-l);color:var(--red);animation:pulse 1.4s infinite}
+.action-btn.timer.running:hover{background:var(--red);color:#fff}
+.action-btn.delete:hover{background:var(--red-l);color:var(--red)}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* Completion details */
+.completion-detail{background:var(--surface2);border-radius:8px;padding:8px 10px;
+  margin-top:6px;font-size:13px;color:var(--text2);display:flex;flex-wrap:wrap;
+  align-items:center;gap:6px}
+.impact-badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.impact-high{background:var(--red-l);color:var(--red)}
+.impact-medium{background:var(--amber-l);color:var(--amber)}
+.impact-low{background:var(--blue-l);color:var(--blue)}
+.deliverable-link{color:var(--blue);font-size:12px;word-break:break-all}
+
+/* ── Stats bar ─────────────────────────────────────────────────────────────── */
+#stats-bar{background:var(--surface);border-top:1px solid var(--border);
+  padding:8px 24px;display:flex;align-items:center;gap:20px;flex-shrink:0;flex-wrap:wrap}
+.stat{font-size:12px;font-family:var(--font-mono);color:var(--text3);
+  display:flex;align-items:center;gap:5px}
+.stat-val{color:var(--text);font-weight:500}
+#progress-wrap{margin-left:auto;display:flex;align-items:center;gap:10px}
+#progress-bar-outer{width:130px;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+#progress-bar-inner{height:100%;background:var(--accent);border-radius:3px;transition:width .4s}
+#progress-pct{font-size:12px;font-family:var(--font-mono);color:var(--text3)}
+
+/* ── Modals ────────────────────────────────────────────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);
+  z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:var(--radius-lg);padding:28px;
+  width:500px;max-width:95vw;max-height:90vh;overflow-y:auto;
+  box-shadow:var(--shadow-lg);animation:slideUp .2s ease}
+.modal-sm{width:420px}
+.modal-lg{width:560px}
+@keyframes slideUp{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.modal-title{font-size:20px;font-weight:700;color:var(--text);margin-bottom:20px}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:22px;
+  padding-top:16px;border-top:1px solid var(--border)}
+
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:12px;font-weight:700;color:var(--text2);
+  letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px}
+.form-input{width:100%;padding:10px 13px;border:1.5px solid var(--border);
+  border-radius:var(--radius);font-size:14px;font-family:'Outfit',sans-serif;
+  color:var(--text);background:var(--bg);outline:none;transition:border .15s,background .15s}
+.form-input:focus{border-color:var(--accent);background:var(--surface)}
+.form-textarea{min-height:80px;resize:vertical}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+.btn-primary{padding:9px 20px;background:var(--accent);color:#fff;border:none;
+  border-radius:var(--radius);font-size:14px;font-family:'Outfit',sans-serif;font-weight:700;
+  cursor:pointer;transition:background .15s}
+.btn-primary:hover{background:var(--accent-h)}
+.btn-secondary{padding:9px 16px;background:transparent;color:var(--text2);
+  border:1.5px solid var(--border2);border-radius:var(--radius);font-size:14px;
+  font-family:'Outfit',sans-serif;font-weight:500;cursor:pointer;transition:all .15s}
+.btn-secondary:hover{background:var(--surface2)}
+.btn-danger{padding:9px 20px;background:var(--red);color:#fff;border:none;
+  border-radius:var(--radius);font-size:14px;font-family:'Outfit',sans-serif;font-weight:700;
+  cursor:pointer;transition:filter .15s}
+.btn-danger:hover{filter:brightness(1.1)}
+
+/* Tag input */
+.tag-input-area{display:flex;flex-wrap:wrap;gap:5px;padding:8px 10px;
+  border:1.5px solid var(--border);border-radius:var(--radius);
+  background:var(--bg);min-height:44px;cursor:text;align-items:center;transition:border .15s}
+.tag-input-area:focus-within{border-color:var(--accent);background:var(--surface)}
+.tag-pill{display:flex;align-items:center;gap:3px;padding:3px 8px 3px 10px;
+  border-radius:20px;font-size:12px;font-weight:500;color:#fff}
+.tag-pill-x{cursor:pointer;opacity:.7;font-size:14px;font-weight:700;line-height:1;
+  background:none;border:none;color:inherit;padding:0 2px}
+.tag-pill-x:hover{opacity:1}
+.tag-text-input{border:none;outline:none;font-size:13px;font-family:'Outfit',sans-serif;
+  background:transparent;min-width:70px;flex:1;color:var(--text)}
+
+/* Date picker */
+.date-picker-btn{width:100%;padding:10px 13px;border:1.5px solid var(--border);
+  border-radius:var(--radius);font-size:14px;font-family:'Outfit',sans-serif;
+  color:var(--text2);background:var(--bg);cursor:pointer;text-align:left;
+  display:flex;align-items:center;gap:8px;transition:border .15s,background .15s}
+.date-picker-btn:hover,.date-picker-btn:focus{border-color:var(--accent);background:var(--surface);outline:none}
+.date-picker-btn.has-date{color:var(--text)}
+
+.calendar-popup{position:fixed;background:var(--surface);border:1.5px solid var(--border);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:600;
+  overflow:hidden;min-width:280px}
+.cal-header{background:var(--accent);padding:10px 14px;display:flex;
+  align-items:center;justify-content:space-between}
+.cal-nav{background:transparent;border:none;color:#fff;font-size:18px;
+  cursor:pointer;padding:4px 8px;border-radius:6px;line-height:1;transition:background .15s}
+.cal-nav:hover{background:rgba(255,255,255,.15)}
+.cal-month{font-size:15px;font-weight:700;color:#fff}
+.cal-days-hdr{display:grid;grid-template-columns:repeat(7,1fr);background:var(--surface2);
+  padding:4px 8px}
+.cal-day-hdr{text-align:center;font-size:11px;font-weight:700;color:var(--text3);padding:4px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:6px 8px 10px;gap:2px}
+.cal-cell{text-align:center;padding:5px 2px;border-radius:7px;font-size:13px;
+  cursor:pointer;color:var(--text);transition:background .12s,color .12s;font-weight:500}
+.cal-cell:hover{background:var(--accent-l);color:var(--accent)}
+.cal-cell.today{background:var(--accent-l);color:var(--accent);font-weight:700}
+.cal-cell.selected{background:var(--accent);color:#fff;font-weight:700}
+.cal-cell.empty{cursor:default}
+.cal-cell.empty:hover{background:transparent}
+.cal-clear{text-align:center;padding:6px;border-top:1px solid var(--border)}
+.cal-clear-btn{background:none;border:none;color:var(--text3);font-size:12px;
+  cursor:pointer;font-family:'Outfit',sans-serif;padding:4px 8px;border-radius:6px;transition:all .12s}
+.cal-clear-btn:hover{background:var(--surface2);color:var(--text)}
+
+/* Impact selector */
+.impact-selector{display:flex;gap:8px}
+.impact-opt{flex:1;padding:9px;border:1.5px solid var(--border);border-radius:var(--radius);
+  cursor:pointer;text-align:center;font-size:13px;font-weight:600;
+  transition:all .15s;background:var(--bg)}
+.impact-opt:hover{border-color:var(--border2)}
+.impact-opt.selected-low{background:var(--blue-l);border-color:var(--blue);color:var(--blue)}
+.impact-opt.selected-medium{background:var(--amber-l);border-color:var(--amber);color:var(--amber)}
+.impact-opt.selected-high{background:var(--red-l);border-color:var(--red);color:var(--red)}
+
+/* -- Settings modal -- */
+.settings-modal-inner{display:flex;height:100%;min-height:400px;gap:0}
+.settings-nav{width:160px;flex-shrink:0;border-right:1px solid var(--border);padding:8px 0;display:flex;flex-direction:column;gap:2px}
+.settings-nav-item{padding:9px 16px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-radius:var(--radius);margin:0 6px;transition:all .15s;white-space:nowrap}
+.settings-nav-item:hover{background:var(--surface2);color:var(--text)}
+.settings-nav-item.active{background:var(--accent-l);color:var(--accent);font-weight:600}
+.settings-panel{flex:1;overflow-y:auto;padding:0 24px 16px 24px;min-width:0}
+.settings-panel-section{display:none}
+.settings-panel-section.active{display:block}
+.settings-section{margin-bottom:22px}
+.settings-section-title{font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.setting-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.setting-row:last-child{border-bottom:none}
+.setting-label{font-size:14px;font-weight:500;color:var(--text)}
+.setting-desc{font-size:12px;color:var(--text3);margin-top:2px}
+.toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0;position:absolute}
+.toggle-slider{position:absolute;inset:0;background:var(--border2);border-radius:24px;cursor:pointer;transition:background .2s}
+.toggle-slider::before{content:'';position:absolute;width:18px;height:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .2s}
+.toggle-switch input:checked + .toggle-slider{background:var(--accent)}
+.toggle-switch input:checked + .toggle-slider::before{transform:translateX(20px)}
+.break-timing-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.feature-sub-btn{padding:6px 14px;font-size:12px;font-weight:600;border:1.5px solid var(--border);
+  border-radius:var(--radius);background:var(--bg);color:var(--text2);cursor:pointer;transition:all .15s;font-family:var(--font)}
+.feature-sub-btn:hover{border-color:var(--border2);color:var(--text)}
+.feature-sub-btn.active{background:var(--accent-l);border-color:var(--accent);color:var(--accent)}
+.feature-sub-section{display:none}
+.feature-sub-section.active{display:block}
+.account-info-box{background:var(--surface2);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;font-size:13px}
+.account-email{font-weight:600;color:var(--text);margin-bottom:4px}
+.account-status{color:var(--text3);font-size:12px}
+.break-timing-item label{font-size:12px;color:var(--text2);display:block;margin-bottom:4px}
+.break-timing-item input{width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:'Outfit',sans-serif;color:var(--text);background:var(--bg);outline:none;transition:border .15s}
+.break-timing-item input:focus{border-color:var(--accent)}
+
+/* -- Sound settings -- */
+.sound-file-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.sound-file-name{font-size:13px;color:var(--text3);flex:1;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:6px 10px;
+  background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)}
+.btn-sound{padding:7px 12px;border:1.5px solid var(--border2);border-radius:var(--radius);
+  font-size:12px;font-family:'Outfit',sans-serif;font-weight:600;cursor:pointer;
+  background:var(--bg);color:var(--text2);transition:all .15s;white-space:nowrap}
+.btn-sound:hover{background:var(--surface2);border-color:var(--accent);color:var(--accent)}
+.btn-sound.preview{background:var(--accent-l);border-color:var(--accent);color:var(--accent)}
+.btn-sound.preview:hover{background:var(--accent);color:#fff}
+
+/* -- Offline mode -- */
+#offline-confirm-screen{position:fixed;inset:0;z-index:1100;background:var(--bg);
+  display:none;align-items:center;justify-content:center;padding:40px}
+#offline-confirm-screen.active{display:flex}
+.offline-card{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:40px;max-width:480px;width:100%;
+  box-shadow:var(--shadow-lg)}
+.offline-icon{font-size:40px;margin-bottom:16px}
+.offline-title{font-size:20px;font-weight:700;color:var(--text);margin-bottom:12px}
+.offline-body{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:20px}
+.offline-warning{background:var(--amber-l);border:1px solid var(--amber);
+  border-radius:var(--radius);padding:12px 16px;font-size:13px;
+  color:var(--amber);line-height:1.6;margin-bottom:24px}
+.offline-warning strong{display:block;margin-bottom:4px}
+.offline-actions{display:flex;gap:10px;flex-direction:column}
+
+/* -- Vacation mode -- */
+.vacation-active{background:var(--blue-l);border:1px solid var(--blue);
+  border-radius:var(--radius);padding:12px 16px;font-size:13px;
+  color:var(--blue);margin-top:10px;display:flex;align-items:center;
+  justify-content:space-between;gap:12px}
+.vacation-active strong{display:block;margin-bottom:2px;font-size:13px}
+.vacation-set{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.vacation-date-input{padding:7px 12px;background:var(--surface2);
+  border:1px solid var(--border2);border-radius:var(--radius);
+  font-size:13px;font-family:'Outfit',sans-serif;color:var(--text);
+  outline:none;transition:all .15s}
+.vacation-date-input:focus{border-color:var(--accent)}
+
+/* -- Status & Energy badges -- */
+.badge-status{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;
+  font-family:var(--font-mono);letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}
+.status-not-started{background:var(--surface2);color:var(--text3)}
+.status-in-progress{background:var(--blue-l);color:var(--blue)}
+.status-blocked{background:var(--red-l);color:var(--red)}
+.status-on-hold{background:var(--amber-l);color:var(--amber)}
+.status-done{background:var(--accent-l);color:var(--accent)}
+.badge-energy{font-size:11px;padding:2px 7px;border-radius:20px;font-weight:600;white-space:nowrap}
+.energy-high{background:#fde8e8;color:#c0392b}
+.energy-medium{background:var(--amber-l);color:var(--amber)}
+.energy-low{background:var(--accent-l);color:var(--accent)}
+[data-theme='dark'] .energy-high{background:rgba(192,57,43,0.2);color:#e74c3c}
+[data-theme='dark'] .energy-low{background:var(--accent-l);color:#6ecf9e}
+
+/* -- Mood modal -- */
+.mood-face-btn{display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:16px 20px;border:2px solid var(--border);border-radius:var(--radius-lg);
+  background:var(--bg);cursor:pointer;transition:all .15s;min-width:90px}
+.mood-face-btn:hover{border-color:var(--accent);background:var(--accent-l);transform:translateY(-2px)}
+.mood-face-btn.selected{border-color:var(--accent);background:var(--accent-l)}
+.mood-face-emoji{font-size:36px;line-height:1}
+.mood-face-label{font-size:12px;font-weight:600;color:var(--text2)}
+.mood-face-btn.selected .mood-face-label{color:var(--accent)}
+
+/* -- Export modal -- */
+
+.export-option{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;
+  border:1.5px solid var(--border);border-radius:var(--radius-lg);cursor:pointer;
+  transition:all .15s;background:var(--bg);margin-bottom:10px}
+.export-option:hover{border-color:var(--accent);background:var(--accent-l)}
+.export-option.selected{border-color:var(--accent);background:var(--accent-l)}
+.export-option-icon{font-size:22px;flex-shrink:0;margin-top:2px}
+.export-option-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:3px}
+.export-option-desc{font-size:13px;color:var(--text3)}
+
+/* ── Timer overlay ─────────────────────────────────────────────────────────── */
+#timer-overlay{position:fixed;bottom:20px;right:20px;background:#1a1814;
+  border-radius:var(--radius-lg);padding:0;width:300px;z-index:800;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);display:none;overflow:hidden}
+#timer-overlay.active{display:block;animation:slideUp .2s ease}
+.timer-header{padding:10px 14px 6px;display:flex;align-items:center;justify-content:space-between}
+.timer-task-name{font-size:11px;color:#6a6358;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.timer-time{font-size:32px;font-weight:700;color:#fff;font-family:var(--font-mono);
+  padding:0 14px 4px;line-height:1}
+.timer-stop-btn{width:100%;padding:10px;background:#c0392b;border:none;color:#fff;
+  font-size:13px;font-family:'Outfit',sans-serif;font-weight:700;cursor:pointer;
+  transition:background .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+.timer-stop-btn:hover{background:#9b2c2c}
+
+/* ── Break panel ───────────────────────────────────────────────────────────── */
+#break-panel{position:fixed;inset:0;background:#0a0a0a;z-index:900;
+  display:none;flex-direction:column;align-items:center;justify-content:center}
+#break-panel.active{display:flex;animation:fadeIn .4s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.break-icon{font-size:64px;margin-bottom:16px}
+.break-title{font-size:42px;font-weight:700;color:#fff;margin-bottom:8px}
+.break-sub{font-size:16px;color:#555;margin-bottom:32px}
+.break-countdown{font-size:88px;font-weight:700;color:#3d8a64;font-family:var(--font-mono);line-height:1}
+.break-hint{font-size:14px;color:#3a3a3a;margin-top:24px}
+.break-finish-btn{position:fixed;bottom:24px;right:24px;padding:10px 22px;
+  background:#c0392b;border:none;color:#fff;font-size:14px;font-family:'Outfit',sans-serif;
+  font-weight:700;border-radius:var(--radius);cursor:pointer;transition:background .15s;
+  z-index:901}
+.break-finish-btn:hover{background:#9b2c2c}
+
+/* ── Break prompt overlay ──────────────────────────────────────────────────── */
+#break-prompt{position:fixed;bottom:20px;right:20px;background:#1e3a2f;
+  border-radius:var(--radius-lg);padding:16px 18px;width:340px;z-index:850;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);display:none}
+#break-prompt.active{display:block;animation:slideUp .2s ease}
+.bp-title{font-size:14px;font-weight:700;color:#fff;margin-bottom:3px}
+.bp-sub{font-size:12px;color:#9ecfb5;margin-bottom:12px}
+.bp-btns{display:flex;gap:8px}
+.bp-btn-break{flex:1;padding:9px;background:#2d6a4f;border:none;color:#fff;
+  border-radius:var(--radius);font-size:13px;font-family:'Outfit',sans-serif;font-weight:700;
+  cursor:pointer;transition:background .15s}
+.bp-btn-break:hover{background:#3d8a64}
+.bp-btn-focus{flex:1;padding:9px;background:#333;border:none;color:#aaa;
+  border-radius:var(--radius);font-size:13px;font-family:'Outfit',sans-serif;font-weight:600;
+  cursor:pointer;transition:background .15s}
+.bp-btn-focus:hover{background:#444;color:#fff}
+
+/* ── Quick add ─────────────────────────────────────────────────────────────── */
+#quick-add-overlay{position:fixed;inset:0;z-index:700;display:none;
+  align-items:flex-start;justify-content:center;padding-top:120px;
+  background:rgba(0,0,0,.3);backdrop-filter:blur(3px)}
+#quick-add-overlay.open{display:flex;animation:fadeIn .15s ease}
+#quick-add-box{background:var(--surface);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lg);width:480px;overflow:hidden;
+  border:2px solid var(--accent)}
+.qa-hint{font-size:11px;color:var(--text3);padding:10px 16px 4px;font-weight:500}
+#quick-add-input{width:100%;padding:12px 16px;border:none;font-size:16px;
+  font-family:'Outfit',sans-serif;color:var(--text);background:var(--surface);outline:none}
+
+/* ── Setup / auth screen ───────────────────────────────────────────────────── */
+#auth-screen{position:fixed;inset:0;background:var(--bg);z-index:1000;
+  display:flex;align-items:center;justify-content:center;flex-direction:column;
+  padding:40px;display:none}
+#auth-screen.active{display:flex}
+.auth-logo{width:180px;margin-bottom:24px}
+.auth-title{font-size:26px;font-weight:700;color:var(--text);margin-bottom:8px;text-align:center}
+.auth-sub{font-size:15px;color:var(--text2);margin-bottom:32px;text-align:center;max-width:420px;line-height:1.6}
+.auth-card{background:var(--surface);border-radius:var(--radius-lg);padding:28px;
+  width:100%;max-width:440px;box-shadow:var(--shadow-lg);border:1px solid var(--border)}
+.auth-card-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:16px}
+.auth-step{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;font-size:14px;color:var(--text2)}
+.auth-step-num{width:24px;height:24px;background:var(--accent-l);color:var(--accent);
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px}
+.btn-google{width:100%;padding:12px;background:#fff;border:1.5px solid #ddd;
+  border-radius:var(--radius);font-size:15px;font-family:'Outfit',sans-serif;font-weight:600;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;
+  color:#333;transition:box-shadow .15s,background .15s;margin-top:20px}
+.btn-google:hover{box-shadow:0 2px 8px rgba(0,0,0,.12);background:#fafafa}
+.google-icon{width:20px;height:20px}
+.auth-divider{text-align:center;color:var(--text3);font-size:13px;margin:16px 0;
+  display:flex;align-items:center;gap:10px}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+.auth-waiting{text-align:center;padding:16px;color:var(--text2);font-size:14px}
+.auth-waiting .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;
+  margin-right:8px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* What Now dialog */
+.what-now-task-card{background:var(--surface2);border-radius:var(--radius-lg);
+  padding:16px;border:2px solid var(--accent);margin:12px 0}
+.what-now-task-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+<!-- Update banner -->
+<div id="update-banner" style="display:none;position:fixed;top:36px;left:0;right:0;background:var(--accent);color:#fff;font-size:13px;font-weight:600;padding:8px 20px;z-index:999;align-items:center;justify-content:space-between;gap:12px">
+  <span>✨ TaskSpark v<span id="update-version"></span> is ready to install</span>
+  <div style="display:flex;gap:8px">
+    <button onclick="api.installUpdate()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Restart & Update</button>
+    <button onclick="document.getElementById('update-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px">Later</button>
+  </div>
+</div>
+
+<!-- Title bar -->
+<div id="titlebar">
+  <button class="tb-btn" onclick="api.minimize()" title="Minimise">─</button>
+  <button class="tb-btn" onclick="api.maximize()" title="Maximise">□</button>
+  <button class="tb-btn close" onclick="api.close()" title="Close">✕</button>
+</div>
+
+<!-- Auth screen -->
+<div id="auth-screen">
+  <img class="auth-logo" src="../assets/taskspark_sidebar.png" alt="TaskSpark" onerror="this.style.display='none'">
+  <div class="auth-title">Welcome to TaskSpark</div>
+  <div class="auth-sub">Sign in with your Google account to get started. TaskSpark will automatically create a spreadsheet in your Google Drive to store your tasks.</div>
+  <div class="auth-card">
+    <div id="auth-waiting" class="auth-waiting" style="display:none">
+      <span class="spinner"></span> <span id="auth-status">Waiting for Google sign-in…</span>
+    </div>
+    <div id="auth-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none"></div>
+    <button class="btn-google" id="btn-google-signin">
+      <svg class="google-icon" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+      Sign in with Google
+    </button>
+    <div style="font-size:12px;color:var(--text3);margin-top:14px;text-align:center;line-height:1.6">
+      By signing in you agree to TaskSpark storing your tasks in a Google Sheet in your Drive.<br>
+      You can revoke access at any time from your Google account settings.
+    </div>
+    <div style="margin-top:20px;text-align:center;border-top:1px solid var(--border);padding-top:20px">
+      <button onclick="showOfflineConfirm()" style="background:none;border:none;
+        color:var(--text3);font-size:13px;cursor:pointer;font-family:'Outfit',sans-serif;
+        text-decoration:underline;text-underline-offset:3px;padding:4px">
+        Continue without signing in
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app" style="display:none">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div id="sidebar-scroll">
+      <div class="sidebar-logo">
+        <img src="../assets/taskspark_sidebar.png" alt="TaskSpark" onerror="this.style.display='none'">
+        <div style="font-size:11px;font-weight:600;color:var(--text3);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-top:6px">Focus · Flow · Finish</div>
+      </div>
+
+      <div class="streak-widget">
+        <div class="streak-daily" id="streak-daily"></div>
+        <div class="streak-row" id="streak-current-row">
+          <span class="streak-icon" id="streak-icon">○</span>
+          <span id="streak-text">No streak yet</span>
+        </div>
+        <div class="streak-sub" id="streak-best"></div>
+      </div>
+
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section-label">Views</div>
+      <div class="sidebar-item active" data-view="all" onclick="setView('all',this)"><span class="si-icon">☰</span>All Tasks<span class="si-count" id="cnt-all">0</span></div>
+      <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon">◷</span>Due Today<span class="si-count" id="cnt-today">0</span></div>
+      <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon">!</span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
+      <div class="sidebar-item" data-view="completed" onclick="setView('completed',this)"><span class="si-icon">✓</span>Completed<span class="si-count" id="cnt-completed">0</span></div>
+
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section-label collapsible" id="priority-hdr" onclick="toggleSection('priority')">
+        Priority <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="collapsible-content" id="priority-section">
+        <div class="sidebar-item" data-view="priority-high" onclick="setView('priority-high',this)"><span class="si-icon" style="color:var(--red)">●</span>High<span class="si-count" id="cnt-high">0</span></div>
+        <div class="sidebar-item" data-view="priority-medium" onclick="setView('priority-medium',this)"><span class="si-icon" style="color:var(--amber)">●</span>Medium<span class="si-count" id="cnt-medium">0</span></div>
+        <div class="sidebar-item" data-view="priority-low" onclick="setView('priority-low',this)"><span class="si-icon" style="color:var(--blue)">●</span>Low<span class="si-count" id="cnt-low">0</span></div>
+      </div>
+
+      <div id="status-sidebar-group">
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section-label collapsible" id="status-hdr" onclick="toggleSection('status')">
+        Status <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="collapsible-content" id="status-section">
+        <div class="sidebar-item" data-view="status-not-started" onclick="setView('status-not-started',this)"><span class="si-icon" style="color:var(--text3)">◌</span>Not Started<span class="si-count" id="cnt-status-not-started">0</span></div>
+        <div class="sidebar-item" data-view="status-in-progress" onclick="setView('status-in-progress',this)"><span class="si-icon" style="color:var(--blue)">◑</span>In Progress<span class="si-count" id="cnt-status-in-progress">0</span></div>
+        <div class="sidebar-item" data-view="status-blocked" onclick="setView('status-blocked',this)"><span class="si-icon" style="color:var(--red)">✕</span>Blocked<span class="si-count" id="cnt-status-blocked">0</span></div>
+        <div class="sidebar-item" data-view="status-on-hold" onclick="setView('status-on-hold',this)"><span class="si-icon" style="color:var(--amber)">⏸</span>On Hold<span class="si-count" id="cnt-status-on-hold">0</span></div>
+      </div>
+      </div>
+
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-section-label collapsible" id="tags-hdr" onclick="toggleSection('tags')">
+        Tags <span class="collapse-arrow">▾</span>
+      </div>
+      <div class="collapsible-content" id="tags-section">
+        <div id="tag-list"></div>
+      </div>
+
+    </div><!-- end #sidebar-scroll -->
+
+    <div class="sidebar-bottom">
+      <button class="sidebar-action-btn" id="connect-google-btn" onclick="connectGoogle()" style="display:none;color:var(--accent);font-weight:600">☁ &nbsp;Connect Google</button>
+      <button class="sidebar-action-btn" id="mood-sidebar-btn" onclick="openMoodModal()">♥ &nbsp;How are you feeling?</button>
+      <button class="sidebar-action-btn" onclick="refreshFromSheets()">↺ &nbsp;Refresh</button>
+      <button class="sidebar-action-btn" onclick="openSettings()">⚙ &nbsp;Settings</button>
+      <div style="font-size:11px;color:var(--text3);padding:4px 14px 4px" id="app-version"></div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="sync-bar"><span id="sync-lbl">● Synced</span></div>
+
+
+    <div id="toolbar">
+      <div id="view-title">All Tasks</div>
+      <input id="search-input" type="text" placeholder="Search tasks…" oninput="renderTasks()">
+      <select id="sort-select" onchange="onSortChange()">
+        <option value="created">Newest first</option>
+        <option value="due">Due date</option>
+        <option value="priority">Priority</option>
+        <option value="alpha">A–Z</option>
+      </select>
+      <div class="toolbar-spacer"></div>
+      <button class="btn-what-now" onclick="whatNow()">✨ What now?</button>
+      <button class="btn-new-task" onclick="openTaskModal()">+ New Task</button>
+    </div>
+
+    <div id="task-list-container">
+      <div id="task-list"></div>
+    </div>
+
+    <div id="stats-bar">
+      <div class="stat">Total <span class="stat-val" id="stat-total">0</span></div>
+      <div class="stat">Active <span class="stat-val" id="stat-active">0</span></div>
+      <div class="stat">Done <span class="stat-val" id="stat-done">0</span></div>
+      <div id="progress-wrap">
+        <div id="progress-bar-outer"><div id="progress-bar-inner" style="width:0%"></div></div>
+        <span id="progress-pct">0%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Timer overlay -->
+<div id="timer-overlay">
+  <div class="timer-header">
+    <span class="timer-task-name" id="timer-task-name">Task name</span>
+  </div>
+  <div class="timer-time" id="timer-time">00:00</div>
+  <button class="timer-stop-btn" onclick="stopTimer()">■ &nbsp;Stop Timer</button>
+</div>
+
+<!-- Break prompt -->
+<div id="break-prompt">
+  <div class="bp-title">⏰ Time for a break!</div>
+  <div class="bp-sub">You've been working for 30 minutes.</div>
+  <div class="bp-btns">
+    <button class="bp-btn-break" onclick="takeBreak()">☕ Take a Break</button>
+    <button class="bp-btn-focus" onclick="snoozeBreak()">💪 I'm Focused</button>
+  </div>
+</div>
+
+<!-- Break panel -->
+<div id="break-panel">
+  <div class="break-icon">🌱</div>
+  <div class="break-title">Take a Break</div>
+  <div class="break-sub">Step away, stretch, grab some water.</div>
+  <div class="break-countdown" id="break-countdown">5:00</div>
+  <div class="break-hint">TaskSpark will unlock when your break ends.</div>
+  <button class="break-finish-btn" onclick="finishBreak()">Finish Break</button>
+</div>
+
+<!-- Quick add -->
+<div id="quick-add-overlay" onclick="closeQuickAdd(event)">
+  <div id="quick-add-box">
+    <div class="qa-hint">⚡ Quick Add — Enter to save, Esc to cancel</div>
+    <input id="quick-add-input" placeholder="Task title…" onkeydown="quickAddKey(event)">
+  </div>
+</div>
+
+<!-- Task modal -->
+<div class="modal-overlay" id="task-modal-overlay" onclick="closeModalOutside(event,'task-modal-overlay')">
+  <div class="modal modal-lg" id="task-modal">
+    <div class="modal-title" id="task-modal-title">New Task</div>
+    <div class="form-group">
+      <label class="form-label">Title *</label>
+      <input class="form-input" id="tm-title" placeholder="What needs to be done?">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description</label>
+      <textarea class="form-input form-textarea" id="tm-desc" placeholder="Optional notes…"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Priority</label>
+        <select class="form-input" id="tm-priority">
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Due Date</label>
+        <div style="position:relative">
+          <button class="date-picker-btn" id="tm-due-btn" onclick="toggleCalendar()">
+            <span>📅</span><span id="tm-due-label">Pick a date</span>
+          </button>
+          <div class="calendar-popup" id="calendar-popup" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+    <div class="form-row" id="estimate-form-group">
+      <div class="form-group">
+        <label class="form-label">Time Estimate (minutes)</label>
+        <input class="form-input" id="tm-estimate" type="number" min="0" placeholder="e.g. 30">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" id="status-form-group">
+        <label class="form-label">Status</label>
+        <select class="form-input" id="tm-status">
+          <option value="not-started">Not Started</option>
+          <option value="in-progress">In Progress</option>
+          <option value="blocked">Blocked</option>
+          <option value="on-hold">On Hold</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+      <div class="form-group" id="energy-form-group">
+        <label class="form-label">Energy Level</label>
+        <select class="form-input" id="tm-energy">
+          <option value="high">High Energy</option>
+          <option value="medium">Medium Energy</option>
+          <option value="low">Low Energy</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="tag-form-group">
+      <label class="form-label">Tags (press Enter to add)</label>
+      <div class="tag-input-area" id="tm-tag-area" onclick="document.getElementById('tm-tag-input').focus()">
+        <div id="tm-tag-pills"></div>
+        <input class="tag-text-input" id="tm-tag-input" placeholder="Add tag…" onkeydown="handleTagKey(event)">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('task-modal-overlay')">Cancel</button>
+      <button class="btn-secondary" id="tm-duplicate-btn" onclick="duplicateTask(editingId)" style="display:none">⧉ Duplicate</button>
+      <button class="btn-primary" onclick="saveTask()">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- Completion modal -->
+<div class="modal-overlay" id="completion-modal-overlay">
+  <div class="modal modal-sm" id="completion-modal">
+    <div style="background:var(--accent);margin:-28px -28px 20px;padding:18px 24px;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+      <div style="font-size:18px;font-weight:700;color:#fff">✓ Task Complete!</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.7);margin-top:3px" id="cm-task-name"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="color:var(--text)">Impact Level</label>
+      <div class="impact-selector">
+        <div class="impact-opt" id="imp-low" onclick="selectImpact('low')" style="color:var(--text)">Low</div>
+        <div class="impact-opt selected-medium" id="imp-medium" onclick="selectImpact('medium')">Medium</div>
+        <div class="impact-opt" id="imp-high" onclick="selectImpact('high')" style="color:var(--text)">High</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="color:var(--text)">Outcome</label>
+      <textarea class="form-input form-textarea" id="cm-outcome" placeholder="What was achieved?" style="color:var(--text)"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="color:var(--text)">Link to Deliverable (optional)</label>
+      <input class="form-input" id="cm-deliverable" placeholder="https://…" style="color:var(--text)">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="saveCompletion(true)">Skip</button>
+      <button class="btn-primary" onclick="saveCompletion(false)">Save & Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- What Now modal -->
+<div class="modal-overlay" id="whatnow-modal-overlay" onclick="closeModalOutside(event,'whatnow-modal-overlay')">
+  <div class="modal modal-sm">
+    <div class="modal-title">✨ Focus on this next</div>
+    <div class="what-now-task-card">
+      <div class="what-now-task-title" id="wn-title"></div>
+      <div class="task-meta" id="wn-meta"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('whatnow-modal-overlay')">Got it</button>
+      <button class="btn-primary" id="wn-start-btn">▶ Start Timer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settings-modal-overlay" onclick="closeModalOutside(event,'settings-modal-overlay')">
+  <div class="modal" style="max-width:680px;width:95vw;padding:0;overflow:hidden">
+    <div style="padding:20px 24px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div class="modal-title" style="margin:0">⚙ Settings</div>
+    </div>
+    <div class="settings-modal-inner">
+      <!-- Left nav -->
+      <div class="settings-nav">
+        <div class="settings-nav-item active" onclick="switchSettingsTab('general',this)">General</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('feature-settings',this)">Feature Settings</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('account',this)">Account &amp; Data</div>
+      </div>
+      <!-- Right panel -->
+      <div class="settings-panel">
+
+        <!-- GENERAL -->
+        <div class="settings-panel-section active" id="settings-tab-general">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Feature Toggles</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Tags</div><div class="setting-desc">Tag tasks and filter by tag in the sidebar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-tags"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Streak tracker</div><div class="setting-desc">Track consecutive days of completing tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-streak" onchange="toggleStreakSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Time estimates</div><div class="setting-desc">Set estimated time on tasks and compare with actual</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-estimates"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Quick Add (Ctrl+Space)</div><div class="setting-desc">Instantly capture a task with a keyboard shortcut</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-quickadd"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">What Now? button</div><div class="setting-desc">Smart task picker that suggests what to focus on</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-whatnow"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Completion dialog</div><div class="setting-desc">Ask for impact, outcome and deliverable when completing a task</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-completion"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Daily mood check-in</div><div class="setting-desc">Show the "How are you feeling?" button in the sidebar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-mood-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-energy-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Task status</div><div class="setting-desc">Track status on tasks (Not Started, In Progress, Blocked, etc.)</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-status-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Appearance</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Dark mode</div><div class="setting-desc">Switch between light and dark theme</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-darkmode" onchange="onDarkModeToggle()"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- FEATURE SETTINGS -->
+        <div class="settings-panel-section" id="settings-tab-feature-settings">
+          <!-- Feature sub-nav -->
+          <div style="display:flex;gap:6px;flex-wrap:wrap;padding:14px 0 10px;border-bottom:1px solid var(--border);margin-bottom:14px">
+            <button class="feature-sub-btn active" onclick="switchFeatureTab('timer',this)">Timer &amp; Breaks</button>
+            <button class="feature-sub-btn" onclick="switchFeatureTab('streak',this)">Streak</button>
+          </div>
+          <!-- Timer & Breaks -->
+          <div class="feature-sub-section active" id="feature-tab-timer">
+            <div class="settings-section">
+              <div class="settings-section-title">Break Reminders</div>
+              <div class="setting-row">
+                <div><div class="setting-label">Break reminders</div><div class="setting-desc">Prompt to take a break after working for a set time</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-break-enabled" onchange="toggleBreakInputs()"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="break-timing-row" id="break-timing-row">
+                <div class="break-timing-item"><label>Work before break (minutes)</label><input type="number" id="set-break-interval" min="1" max="120" value="30"></div>
+                <div class="break-timing-item"><label>Break duration (minutes)</label><input type="number" id="set-break-duration" min="1" max="60" value="5"></div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-section-title">Break Sound</div>
+              <div class="setting-row">
+                <div><div class="setting-label">Play sound on break</div><div class="setting-desc">Play a chime when the break prompt appears</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-sound-enabled"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="sound-file-row">
+                <span class="sound-file-name" id="sound-file-path">Default (chime)</span>
+                <button class="btn-sound preview" onclick="previewSound()">▶ Preview</button>
+                <button class="btn-sound" onclick="pickSoundFile()">📂 Custom</button>
+                <button class="btn-sound" onclick="clearSoundFile()">✕ Reset</button>
+              </div>
+            </div>
+          </div>
+          <!-- Streak -->
+          <div class="feature-sub-section" id="feature-tab-streak">
+            <div class="settings-section" id="streak-extra-settings" style="margin-top:4px">
+              <div class="settings-section-title">Streak Settings</div>
+              <div class="setting-row" style="border-bottom:none;padding-bottom:0">
+                <div><div class="setting-label">Include weekends</div><div class="setting-desc">Count Saturday and Sunday towards your streak</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-streak-weekends"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row" style="flex-direction:column;align-items:flex-start;gap:8px;padding-top:12px">
+                <div><div class="setting-label">Holiday / Vacation mode</div><div class="setting-desc">Pause your streak while you're away — pick a return date and your streak won't break</div></div>
+                <div id="vacation-active" style="display:none;width:100%">
+                  <div class="vacation-active">
+                    <div><strong>⏸ Streak paused</strong>Returning on <span id="vacation-return-date"></span></div>
+                    <button class="btn-sound" onclick="cancelVacationMode()">Cancel</button>
+                  </div>
+                </div>
+                <div id="vacation-set" class="vacation-set">
+                  <input type="date" id="vacation-return-input" class="vacation-date-input" placeholder="Return date">
+                  <button class="btn-sound" onclick="activateVacationMode()" style="background:var(--blue-l);border-color:var(--blue);color:var(--blue)">Set vacation</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACCOUNT & DATA -->
+        <div class="settings-panel-section" id="settings-tab-account">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Account</div>
+            <div class="account-info-box" id="account-info-box">
+              <div class="account-email" id="account-email-display">Not signed in</div>
+              <div class="account-status" id="account-status-display">Using offline mode</div>
+            </div>
+            <div class="setting-row" id="account-signout-row">
+              <div><div class="setting-label">Sign out</div><div class="setting-desc">Sign out of your Google account</div></div>
+              <button class="btn-secondary" onclick="signOut()" style="font-size:12px;padding:6px 12px">Sign out</button>
+            </div>
+            <div class="setting-row" id="account-connect-row" style="display:none">
+              <div><div class="setting-label">Connect Google</div><div class="setting-desc">Sign in to sync your tasks across devices</div></div>
+              <button class="btn-primary" onclick="connectGoogle();closeModal('settings-modal-overlay')" style="font-size:12px;padding:6px 12px">Connect</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Data</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Export task list</div><div class="setting-desc">Download your tasks as a CSV file</div></div>
+              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(openExportModal,150)" style="font-size:12px;padding:6px 12px">Export</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end settings-panel -->
+    </div><!-- end settings-modal-inner -->
+    <div class="modal-footer" style="border-top:1px solid var(--border);padding:14px 24px">
+      <button class="btn-secondary" onclick="closeModal('settings-modal-overlay')">Cancel</button>
+      <button class="btn-primary" onclick="saveSettingsFromModal()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Offline confirm screen -->
+<div id="offline-confirm-screen">
+  <div class="offline-card">
+    <div class="offline-icon">💻</div>
+    <div class="offline-title">Using TaskSpark in Offline Mode</div>
+    <div class="offline-body">
+      You're about to use TaskSpark without a Google account. Here's what that means:
+    </div>
+    <div class="offline-warning">
+      <strong>⚠ Please read before continuing</strong>
+      All your tasks will be stored locally on this computer only. They cannot be accessed from another computer, and if you uninstall TaskSpark your tasks will be lost.
+    </div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:24px">
+      You can sign in with Google at any time from the sidebar to start syncing your tasks to Google Drive — making them available on any computer. Any tasks you've created in offline mode will be safely migrated when you connect.
+    </div>
+    <div class="offline-actions">
+      <button class="btn-primary" onclick="startOfflineMode()" style="width:100%;padding:12px;justify-content:center">
+        I understand — Continue offline
+      </button>
+      <button class="btn-secondary" onclick="cancelOfflineConfirm()" style="width:100%;padding:12px;justify-content:center">
+        ← Go back and sign in
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Mood check-in modal -->
+<div class="modal-overlay" id="mood-modal-overlay" onclick="closeModalOutside(event,'mood-modal-overlay')">
+  <div class="modal modal-sm">
+    <div style="text-align:center;padding-bottom:8px">
+      <div style="font-size:13px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:12px">How are you feeling today?</div>
+      <div style="display:flex;justify-content:center;gap:16px;margin:20px 0 24px">
+        <button class="mood-face-btn" id="mood-sad"     onclick="selectMood('sad')"     title="Not great">
+          <span class="mood-face-emoji">😔</span>
+          <span class="mood-face-label">Not great</span>
+        </button>
+        <button class="mood-face-btn" id="mood-neutral" onclick="selectMood('neutral')" title="Okay">
+          <span class="mood-face-emoji">😐</span>
+          <span class="mood-face-label">Okay</span>
+        </button>
+        <button class="mood-face-btn" id="mood-happy"   onclick="selectMood('happy')"   title="Good">
+          <span class="mood-face-emoji">😊</span>
+          <span class="mood-face-label">Good</span>
+        </button>
+      </div>
+      <div id="mood-saved-text" style="font-size:13px;color:var(--text3);min-height:20px"></div>
+    </div>
+    <div class="modal-footer" style="justify-content:center;border-top:none;padding-top:0;margin-top:0">
+      <button class="btn-secondary" onclick="closeModal('mood-modal-overlay')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export modal -->
+<div class="modal-overlay" id="export-modal-overlay" onclick="closeModalOutside(event,'export-modal-overlay')">
+  <div class="modal modal-sm">
+    <div class="modal-title">↓ Export Task List</div>
+    <div class="export-option selected" id="export-opt-all" onclick="selectExportOption('all')">
+      <div class="export-option-icon">📋</div>
+      <div>
+        <div class="export-option-title">All Tasks</div>
+        <div class="export-option-desc">Export every task including active, completed, and overdue</div>
+      </div>
+    </div>
+    <div class="export-option" id="export-opt-completed" onclick="selectExportOption('completed')">
+      <div class="export-option-icon">✓</div>
+      <div>
+        <div class="export-option-title">Completed Tasks Only</div>
+        <div class="export-option-desc">Export only tasks that have been marked as done</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('export-modal-overlay')">Cancel</button>
+      <button class="btn-primary" onclick="runExport()">Export CSV</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
