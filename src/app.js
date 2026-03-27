@@ -2413,7 +2413,7 @@ async function checkWhatsNew(currentVersion) {
     const lastSeen = cfg && cfg.lastSeenVersion;
     if (lastSeen === currentVersion) return; // already seen this version
     // Fetch changelog from GitHub
-    const res = await fetch('https://api.github.com/repos/janaslidler-web/TaskSpark/releases/latest');
+    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
     const release = await res.json();
     if (!release || !release.tag_name) return;
     // Show modal after a short delay so app finishes loading first
