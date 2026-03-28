@@ -1,0 +1,4152 @@
+// ── State ──────────────────────────────────────────────────────────────────
+let tasks        = [];
+let currentView  = 'all';
+let editingId    = null;
+let modalTags    = [];
+let modalDue     = '';
+let modalDueTime = '';
+let calYear      = null;
+let calMonth     = null;
+let completionTaskId = null;
+let selectedImpact   = 'medium';
+let undoStack    = [];
+
+// View mode
+let kanbanMode = false;
+let ideasMode  = false;
+
+// Ideas
+let ideas = [];
+let editingIdeaId = null;
+let ideaTags = [];
+
+// Habits
+let habits = [];
+let editingHabitId = null;
+let habitsViewDays = 7; // 7 or 30
+
+// Wins Board
+let wins = [];
+let editingWinId = null;
+let winsMode = false;
+
+
+
+// Workspaces
+const MAX_WORKSPACES = 3;
+const WORKSPACE_COLOURS = [
+  { id: 'green',  label: 'Green',  hex: '#4a9e6e' },
+  { id: 'blue',   label: 'Blue',   hex: '#4a7abe' },
+  { id: 'purple', label: 'Purple', hex: '#8b5cf6' },
+  { id: 'red',    label: 'Red',    hex: '#e05252' },
+  { id: 'amber',  label: 'Amber',  hex: '#d97706' },
+  { id: 'teal',   label: 'Teal',   hex: '#0d9488' },
+];
+let workspaces = [];         // [{id, name, colour, spreadsheetId, settings}]
+let activeWorkspaceId = null;
+let workspaceSetupPending = false; // true if we need to prompt on first V3 launch
+// Pre-fetched workspace data cache: { [wsId]: { tasks, habits, ideas, wins } }
+const _wsCache = {};
+
+// Auth state
+let offlineMode   = false;
+let accessToken   = null;
+let refreshToken  = null;
+let tokenExpiry   = 0;
+let spreadsheetId = null;
+let redirectUri   = null;
+
+// Timer state
+let activeTimerId   = null;
+let timerStart      = null;
+let timerInterval   = null;
+let breakSnoozed    = false;
+let breakAfterTimer = null;
+let breakInterval   = null;
+let breakRemaining  = 0;
+
+// -- Settings (defaults) --
+const DEFAULT_SETTINGS = {
+  breakEnabled:      true,
+  breakIntervalMins: 30,
+  breakDurationMins: 5,
+  tagsEnabled:       true,
+  streakEnabled:     true,
+  estimatesEnabled:  true,
+  dueEnabled:        true,
+  dueTimeEnabled:    true,
+  quickAddEnabled:   true,
+  whatNowEnabled:    true,
+  completionDialog:  true,
+  soundEnabled:      true,
+  soundFile:         null,  // null = use bundled default
+  moodEnabled:       true,
+  energyEnabled:     true,
+  statusEnabled:     true,
+  subtasksEnabled:   true,
+  recurrenceEnabled: true,
+  kanbanEnabled:     true,
+  kanbanGroupByTags: true,
+  workspacesEnabled: true,
+  ideasEnabled:      true,
+  habitsEnabled:     true,
+  winsEnabled:       true,
+  streakWeekends:    false,  // include weekends in streak count
+  graceDayEnabled:   true,   // allow one missed day per streak
+  vacationMode:      false,  // pause streak while away
+  vacationReturn:    null,   // return date YYYY-MM-DD
+};
+let settings = { ...DEFAULT_SETTINGS };
+
+function getBreakIntervalMs() { return settings.breakIntervalMins * 60 * 1000; }
+function getBreakDurationS()  { return settings.breakDurationMins * 60; }
+
+function playBreakSound() {
+  if (!settings.soundEnabled) return;
+  try {
+    // Use custom file if set, otherwise fall back to bundled chime
+    const src = settings.soundFile
+      ? `file:///${settings.soundFile.replace(/\\/g, '/')}`
+      : '../assets/break-chime.mp3';
+    const audio = new Audio(src);
+    audio.volume = 0.75;
+    audio.play().catch(() => {
+      // Silently fail if audio can't play
+      const fallback = new Audio('../assets/break-chime.mp3');
+      fallback.volume = 0.75;
+      fallback.play().catch(() => {});
+    });
+  } catch (e) {}
+}
+
+
+const TAG_PALETTE = ['#2d6a4f','#1a5c8a','#5a3a8a','#8a3a3a','#6b5a2d','#2d5a8a','#8a5a2d','#3a5a8a'];
+const tagColorMap = {};
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function todayStr() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm   = String(d.getMonth() + 1).padStart(2, '0');
+  const dd   = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function fmtSecs(s) {
+  s = Math.floor(s);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${String(sec).padStart(2,'0')}s`;
+  return `${sec}s`;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  try {
+    const dt = new Date(d + 'T00:00:00');
+    return dt.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+  } catch { return d; }
+}
+
+function fmtTime(t) {
+  if (!t) return '';
+  try {
+    const [h, m] = t.split(':').map(Number);
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2,'0')}${ampm}`;
+  } catch { return t; }
+}
+
+function dueStatus(due) {
+  if (!due) return null;
+  const t = todayStr();
+  if (due < t) return 'overdue';
+  if (due === t) return 'today';
+  const diff = (new Date(due) - new Date(t)) / 86400000;
+  return diff <= 3 ? 'soon' : 'future';
+}
+
+function getTagColor(tag) {
+  if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
+  return tagColorMap[tag];
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Collapsible sidebar sections ───────────────────────────────────────────
+const sectionState = { priority: true, status: true, tags: true }; // true = expanded
+
+function toggleSection(name) {
+  sectionState[name] = !sectionState[name];
+  const content = document.getElementById(`${name}-section`);
+  const hdr     = document.getElementById(`${name}-hdr`);
+  if (sectionState[name]) {
+    content.classList.remove('collapsed');
+    hdr.classList.remove('collapsed');
+  } else {
+    content.classList.add('collapsed');
+    hdr.classList.add('collapsed');
+  }
+}
+
+function setSyncStatus(state, msg = '') {
+  const lbl = document.getElementById('sync-lbl');
+  const map = { ok: ['● Synced', 'var(--accent)'], syncing: ['↻ Syncing…', 'var(--amber)'],
+    error: [`⚠ ${msg}`, 'var(--red)'], offline: ['○ Offline', 'var(--text3)'] };
+  const [text, color] = map[state] || map.offline;
+  lbl.textContent = text; lbl.style.color = color;
+}
+
+// ── Theme ──────────────────────────────────────────────────────────────────
+function applyTheme(mode) {
+  document.documentElement.setAttribute('data-theme', mode);
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.textContent = mode === 'dark' ? '☀ Light mode' : '☽ Dark mode';
+}
+
+const ACCENT_NAMES = {
+  forest: 'Forest (default)', ocean: 'Ocean', lavender: 'Lavender',
+  sunset: 'Sunset', rose: 'Rose', slate: 'Slate', moss: 'Moss'
+};
+
+function applyAccentTheme(accent) {
+  if (!accent || accent === 'forest') {
+    document.documentElement.removeAttribute('data-accent');
+  } else {
+    document.documentElement.setAttribute('data-accent', accent);
+  }
+  // Update picker active state if it's open
+  document.querySelectorAll('.colour-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.accent === (accent || 'forest'));
+  });
+  const nameEl = document.getElementById('colour-theme-name');
+  if (nameEl) nameEl.textContent = ACCENT_NAMES[accent || 'forest'] || '';
+}
+
+function setAccentTheme(accent, btn) {
+  applyAccentTheme(accent);
+  api.saveConfig({ accentTheme: accent });
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  api.saveConfig({ theme: next });
+}
+
+function onDarkModeToggle() {
+  const checked = document.getElementById('set-darkmode').checked;
+  applyTheme(checked ? 'dark' : 'light');
+  api.saveConfig({ theme: checked ? 'dark' : 'light' });
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+async function init() {
+  const cfg = await api.loadConfig();
+  if (cfg) {
+    applyTheme(cfg.theme || 'light');
+    if (cfg.accentTheme) applyAccentTheme(cfg.accentTheme);
+    if (cfg.sortMode) document.getElementById('sort-select').value = cfg.sortMode;
+    if (cfg.settings) settings = { ...DEFAULT_SETTINGS, ...cfg.settings };
+  }
+  applySettings();
+
+  // V3: Load workspaces config
+  const wsData = await api.workspacesLoad();
+  if (wsData && wsData.workspaces && wsData.workspaces.length) {
+    workspaces = wsData.workspaces;
+    activeWorkspaceId = wsData.activeWorkspaceId || workspaces[0].id;
+  }
+
+  // V2: Just need accessToken, refreshToken and spreadsheetId — no client credentials
+  if (cfg && cfg.accessToken && cfg.refreshToken && cfg.spreadsheetId) {
+    accessToken   = cfg.accessToken;
+    refreshToken  = cfg.refreshToken;
+    tokenExpiry   = cfg.tokenExpiry || 0;
+    spreadsheetId = cfg.spreadsheetId;
+    showApp();
+    // V3: Check if workspaces need first-time setup
+    if (!wsData || !wsData.workspaces || !wsData.workspaces.length) {
+      // Existing user upgrading to V3 — prompt to name their current workspace
+      workspaceSetupPending = true;
+      await connectToSheets();
+      await loadIdeas();
+      await loadHabits();
+      await loadWins();
+      if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+      setTimeout(showWorkspaceSetupModal, 800);
+    } else {
+      // Restore active workspace spreadsheetId
+      const active = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+      if (active) {
+        spreadsheetId = active.spreadsheetId;
+        activeWorkspaceId = active.id;
+        // V3: If this workspace has its own settings, apply them over the global ones
+        if (active.settings) {
+          settings = { ...DEFAULT_SETTINGS, ...active.settings };
+          applySettings();
+        }
+      }
+      renderWorkspaceDropdown();
+      updateWorkspaceTitle();
+      await connectToSheets();
+      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+      // Pre-fetch other workspaces in the background after a short delay
+      if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
+    }
+  } else if (cfg && cfg.offlineMode) {
+    offlineMode = true;
+    showApp();
+    loadOfflineTasks();
+    await loadIdeas();
+    await loadHabits();
+    await loadWins();
+  } else {
+    showAuth();
+  }
+
+  // Wire up auto-updater notifications
+  api.onUpdateAvailable((info) => {
+    showToast(`✨ Update v${info.version} downloading…`);
+  });
+  api.onUpdateDownloaded((info) => {
+    showUpdateBanner(info.version);
+  });
+
+  // Show app version in sidebar
+  const ver = await api.getVersion();
+  const verEl = document.getElementById('app-version');
+  if (verEl) verEl.textContent = `v${ver}`;
+  // Check if we should show the what's new modal
+  await checkWhatsNew(ver);
+  // Update mood sidebar button on load
+  updateMoodSidebarBtn();
+  // Check if grace day prompt needed
+  checkGraceDayPrompt();
+}
+
+
+function hideLoadingScreen() {
+  const el = document.getElementById('loading-screen');
+  if (!el) return;
+  el.classList.add('fade-out');
+  setTimeout(() => el.classList.add('hidden'), 380);
+}
+
+function showAuth() {
+  hideLoadingScreen();
+  document.getElementById('auth-screen').classList.add('active');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('btn-google-signin').onclick = startOAuth;
+}
+
+function showApp() {
+  hideLoadingScreen();
+  document.getElementById('auth-screen').classList.remove('active');
+  document.getElementById('app').style.display = 'flex';
+}
+
+// Listen for auth code pushed from main process after browser redirect
+api.onOauthCode(async ({ code }) => {
+  const errEl = document.getElementById('auth-error');
+  try {
+    const tokens = await api.oauthExchange({ code, redirectUri });
+    if (tokens.access_token) {
+      accessToken  = tokens.access_token;
+      refreshToken = tokens.refresh_token;
+      tokenExpiry  = Date.now() + (tokens.expires_in || 3600) * 1000;
+
+      // Fetch the signed-in user's email to detect account switches
+      document.getElementById('auth-status').textContent = 'Signing you in…';
+      const userInfo = await fetchUserInfo(accessToken);
+      const newEmail = userInfo ? userInfo.email : null;
+
+      const existingCfg = await api.loadConfig();
+      const previousEmail = existingCfg && existingCfg.userEmail;
+
+      // Clear cache if a different user is signing in
+      if (previousEmail && newEmail && previousEmail !== newEmail) {
+        await api.saveCache([]);
+      }
+
+      // Search Google Drive for an existing TaskSpark spreadsheet
+      document.getElementById('auth-status').textContent = 'Looking for your spreadsheet…';
+      const existingSheet = await api.driveFindSheet({ accessToken });
+      if (existingSheet && existingSheet.id) {
+        spreadsheetId = existingSheet.id;
+        document.getElementById('auth-status').textContent = 'Reconnecting…';
+      } else {
+        document.getElementById('auth-status').textContent = 'Setting up your spreadsheet…';
+        const sheet = await api.driveCreateSheet({ accessToken });
+        if (!sheet.spreadsheetId) throw new Error('Could not create spreadsheet');
+        spreadsheetId = sheet.spreadsheetId;
+      }
+
+      offlineMode = false;
+      await api.saveConfig({ spreadsheetId, accessToken, refreshToken, tokenExpiry, userEmail: newEmail, offlineMode: false });
+      const connectBtn = document.getElementById('connect-google-btn');
+      if (connectBtn) connectBtn.style.display = 'none';
+      showApp();
+      await connectToSheets();
+    } else {
+      throw new Error(tokens.error_description || 'No access token received');
+    }
+  } catch (e) {
+    errEl.textContent = `Sign-in failed: ${e.message}`; errEl.style.display = 'block';
+    document.getElementById('auth-waiting').style.display = 'none';
+    document.getElementById('btn-google-signin').disabled = false;
+  }
+});
+
+async function startOAuth() {
+  document.getElementById('auth-error').style.display = 'none';
+  document.getElementById('auth-waiting').style.display = 'block';
+  document.getElementById('auth-status').textContent = 'Waiting for Google sign-in…';
+  document.getElementById('btn-google-signin').disabled = true;
+  try {
+    const result = await api.oauthStart();
+    if (result.waiting) redirectUri = result.redirectUri;
+  } catch (e) {
+    document.getElementById('auth-error').textContent = `Error: ${e.message}`;
+    document.getElementById('auth-error').style.display = 'block';
+    document.getElementById('auth-waiting').style.display = 'none';
+    document.getElementById('btn-google-signin').disabled = false;
+  }
+}
+
+async function fetchUserInfo(token) {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return await res.json();
+  } catch { return null; }
+}
+
+async function ensureToken() {
+  if (Date.now() < tokenExpiry - 60000) return;
+  try {
+    const tokens = await api.oauthRefresh({ refreshToken });
+    if (tokens.access_token) {
+      accessToken = tokens.access_token;
+      tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
+      await api.saveConfig({ accessToken, tokenExpiry });
+    }
+  } catch (e) {}
+}
+
+async function signOut() {
+  if (offlineMode) {
+    showConfirmModal('Leave Offline Mode', 'Your local tasks will remain on this computer.', 'Leave Offline Mode', async () => {
+      await api.saveConfig({ offlineMode: false });
+      location.reload();
+    });
+    return;
+  }
+  showConfirmModal('Sign Out', 'Your tasks will remain in your Google Sheet.', 'Sign Out', async () => {
+    await api.saveConfig({ accessToken: null, refreshToken: null, tokenExpiry: 0, userEmail: null, spreadsheetId: null });
+    await api.workspacesSave(null);
+    location.reload();
+  }, true);
+}
+
+// ── Sheets connection ──────────────────────────────────────────────────────
+async function connectToSheets() {
+  setSyncStatus('syncing');
+  tasks = await api.loadCache();
+  renderAll();
+
+  try {
+    await ensureToken();
+    await api.sheetsEnsure({ accessToken, spreadsheetId });
+    const loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
+    if (loaded.length) {
+      // Sheet has tasks — use as source of truth
+      tasks = loaded;
+    } else if (tasks.length) {
+      // Sheet empty but local tasks exist — migrate them up (e.g. from offline mode)
+      await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    } else {
+      // Both empty — brand new user
+      tasks = sampleTasks();
+      await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    }
+    await api.saveCache(tasks);
+    setSyncStatus('ok');
+    renderAll();
+  } catch (e) {
+    console.error('[connectToSheets] error:', e.message);
+    setSyncStatus('error', e.message.slice(0, 50));
+  }
+}
+
+async function refreshFromSheets() {
+  setSyncStatus('syncing');
+  try {
+    await ensureToken();
+    tasks = await api.sheetsLoad({ accessToken, spreadsheetId });
+    await api.saveCache(tasks);
+    setSyncStatus('ok');
+    renderAll();
+  } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
+}
+
+async function saveTasks() {
+  _lastTasksHTML = ''; // Invalidate render cache
+  await api.saveCache(tasks);
+  if (offlineMode) { setSyncStatus('offline'); return; }
+  setSyncStatus('syncing');
+  try {
+    await ensureToken();
+    await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    setSyncStatus('ok');
+  } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
+}
+
+function sampleTasks() {
+  const now = new Date().toISOString();
+  return [
+    { id:1, title:'Review quarterly report', desc:'Check Q3 figures', priority:'high',
+      due:todayStr(), tags:['work'], completed:false, createdAt:now, completedAt:'',
+      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
+    { id:2, title:'Buy groceries', desc:'', priority:'medium', due:'',
+      tags:['personal'], completed:false, createdAt:now, completedAt:'',
+      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
+    { id:3, title:'Schedule dentist', desc:'', priority:'low', due:'',
+      tags:['health'], completed:false, createdAt:now, completedAt:'',
+      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
+  ];
+}
+
+// ── Undo ───────────────────────────────────────────────────────────────────
+function pushUndo(desc) {
+  undoStack.push({ desc, snapshot: JSON.parse(JSON.stringify(tasks)) });
+  if (undoStack.length > 20) undoStack.shift();
+}
+
+function undo() {
+  if (!undoStack.length) { showToast('Nothing to undo'); return; }
+  const { desc, snapshot } = undoStack.pop();
+  tasks = snapshot;
+  saveTasks();
+  renderAll();
+  showToast(`↩ Undid: ${desc}`);
+}
+
+function showToast(msg) {
+  const lbl = document.getElementById('sync-lbl');
+  const prevText  = lbl.textContent;
+  const prevColor = lbl.style.color;
+  lbl.textContent = msg; lbl.style.color = 'var(--accent)';
+  setTimeout(() => { lbl.textContent = prevText; lbl.style.color = prevColor; }, 2500);
+}
+
+function showUpdateBanner(version) {
+  const banner = document.getElementById('update-banner');
+  const verSpan = document.getElementById('update-version');
+  if (banner) {
+    if (verSpan) verSpan.textContent = version;
+    banner.style.display = 'flex';
+  }
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────
+// Safety net: clicking on the main area cleans up any stray contentEditable elements
+document.getElementById('main')?.addEventListener('click', e => {
+  if (!e.target.closest('[contenteditable="true"]') && !e.target.closest('.modal-overlay')) {
+    document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+      el.contentEditable = 'false';
+      el.classList.remove('editing');
+    });
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === ' ') { e.preventDefault(); if (settings.quickAddEnabled && !document.getElementById('quick-add-overlay').classList.contains('open')) openQuickAdd(); return; }
+  if (e.key === 'Escape') {
+    closeAllModals();
+    document.getElementById('quick-add-overlay').classList.remove('open');
+  }
+  if (e.key === 'n' && !e.ctrlKey && !e.metaKey &&
+      document.activeElement.tagName !== 'INPUT' &&
+      document.activeElement.tagName !== 'TEXTAREA') {
+    openTaskModal();
+  }
+});
+
+// ── Filter / sort ──────────────────────────────────────────────────────────
+function filterTasks() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  const t = todayStr();
+  return tasks.filter(task => {
+    if (q && !task.title.toLowerCase().includes(q) &&
+        !(task.desc||'').toLowerCase().includes(q) &&
+        !(task.tags||[]).some(tg => tg.toLowerCase().includes(q))) return false;
+    const v = currentView;
+    if (v === 'all')             return !task.completed && !task.archived;
+    if (v === 'today')           return !task.completed && !task.archived && task.due === t;
+    if (v === 'overdue')         return !task.completed && !task.archived && task.due && task.due < t;
+    if (v === 'completed')       return task.completed && !task.archived;
+    if (v === 'priority-high')        return !task.completed && !task.archived && task.priority === 'high';
+    if (v === 'priority-medium')      return !task.completed && !task.archived && task.priority === 'medium';
+    if (v === 'priority-low')         return !task.completed && !task.archived && task.priority === 'low';
+    if (v === 'status-not-started')   return !task.completed && !task.archived && (task.status || 'not-started') === 'not-started';
+    if (v === 'status-in-progress')   return !task.completed && !task.archived && task.status === 'in-progress';
+    if (v === 'status-blocked')       return !task.completed && !task.archived && task.status === 'blocked';
+    if (v === 'status-on-hold')       return !task.completed && !task.archived && task.status === 'on-hold';
+    if (v === 'archived')             return task.archived === true;
+    if (v.startsWith('tag:'))         return !task.completed && !task.archived && (task.tags||[]).includes(v.slice(4));
+    return false;
+  });
+}
+
+function sortTasks(arr) {
+  const s = document.getElementById('sort-select').value;
+  const pmap = { high:0, medium:1, low:2 };
+  const copy = [...arr];
+  if (s === 'created')  copy.sort((a,b) => b.id - a.id);
+  else if (s === 'due') copy.sort((a,b) => (a.due||'9999').localeCompare(b.due||'9999'));
+  else if (s === 'priority') copy.sort((a,b) => (pmap[a.priority]||1)-(pmap[b.priority]||1));
+  else if (s === 'alpha') copy.sort((a,b) => a.title.localeCompare(b.title));
+  else if (s === 'status-asc')  { const smap = {'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[a.status||'not-started']||0)-(smap[b.status||'not-started']||0)); }
+  else if (s === 'status-desc') { const smap = {'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[b.status||'not-started']||0)-(smap[a.status||'not-started']||0)); }
+  return copy;
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+let habitsMode = false;
+
+function renderAll() {
+  if (kanbanMode) renderKanban();
+  else if (ideasMode) renderIdeas();
+  else if (habitsMode) renderHabits();
+  else if (winsMode) renderWins();
+  else renderTasks();
+  updateCounts();
+  updateTagSidebar();
+  updateStreak();
+}
+
+function onSortChange() {
+  const val = document.getElementById('sort-select').value;
+  api.saveConfig({ sortMode: val });
+  renderTasks();
+}
+
+let _lastTasksHTML = '';
+function renderTasks() {
+  const list = document.getElementById('task-list');
+  // Show/hide bulk restore toolbar
+  const bulkBar = document.getElementById('archive-bulk-bar');
+  if (bulkBar) bulkBar.style.display = currentView === 'archived' ? '' : 'none';
+  const filtered = sortTasks(filterTasks());
+
+  if (!filtered.length) {
+    const msg = currentView === 'completed' ? 'No completed tasks yet' : 'All clear!';
+    const sub = currentView === 'completed' ? 'Complete a task to see it here' : 'Add a new task to get started';
+    const html = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
+    if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
+    updateStats();
+    return;
+  }
+
+  const newHTML = filtered.map(task => taskCardHTML(task)).join('');
+  if (newHTML !== _lastTasksHTML) { list.innerHTML = newHTML; _lastTasksHTML = newHTML; }
+  updateStats();
+}
+
+function taskCardHTML(task) {
+  const ds = dueStatus(task.due);
+  const isRunning = activeTimerId === task.id;
+  const pColors = { high:'var(--red)', medium:'var(--amber)', low:'var(--blue)' };
+
+  // Due badge
+  let dueBadge = '';
+  if (settings.dueEnabled !== false && task.due) {
+    const cls = ds === 'overdue' ? 'overdue' : ds === 'today' ? 'today' : ds === 'soon' ? 'soon' : '';
+    const icon = ds === 'overdue' ? '⚠' : '◷';
+    const datePart = ds === 'overdue' ? `${icon} ${fmtDate(task.due)}` : ds === 'today' ? `${icon} Today` : ds === 'soon' ? `→ ${fmtDate(task.due)}` : `○ ${fmtDate(task.due)}`;
+    const timePart = (settings.dueTimeEnabled !== false && task.dueTime) ? ` ${fmtTime(task.dueTime)}` : '';
+    dueBadge = `<span class="badge badge-due ${cls}">${esc(datePart + timePart)}</span>`;
+  }
+
+  // Tag badges
+  const tagBadges = settings.tagsEnabled ? (task.tags||[]).map(t =>
+    `<span class="badge badge-tag" style="background:${getTagColor(t)}">${esc(t)}</span>`
+  ).join('') : '';
+
+  // Estimate / time badge
+  let timeBadge = '';
+  if (settings.estimatesEnabled && task.estimate && !task.completed) {
+    const loggedMins = Math.floor((task.timeLogged||0) / 60);
+    const over = loggedMins > task.estimate;
+    const display = (isRunning || task.timeLogged) ? `⏱ ${loggedMins}/${task.estimate}m` : `⏱ ~${task.estimate}m`;
+    timeBadge = `<span class="badge badge-estimate ${over?'over':''}">${display}</span>`;
+  }
+
+  // Live timer badge
+  let liveTimeBadge = '';
+  if (isRunning || task.timeLogged) {
+    const base = task.timeLogged || 0;
+    const disp = fmtSecs(isRunning ? base + Math.floor((Date.now()/1000) - timerStart) : base);
+    liveTimeBadge = `<span class="badge badge-time ${isRunning?'running':''}" id="time-badge-${task.id}">◷ ${disp}</span>`;
+  }
+
+  // Completion detail
+  let completionDetail = '';
+  if (task.completed && (task.impact || task.outcome)) {
+    const impBadge = task.impact ? `<span class="impact-badge impact-${task.impact}">${task.impact.charAt(0).toUpperCase()+task.impact.slice(1)} Impact</span>` : '';
+    const outcomeText = task.outcome ? `<span>${esc(task.outcome)}</span>` : '';
+    const delivLink = task.deliverable ? `<a class="deliverable-link" href="${esc(task.deliverable)}" target="_blank">🔗 ${esc(task.deliverable)}</a>` : '';
+    completionDetail = `<div class="completion-detail">${impBadge}${outcomeText}${delivLink}</div>`;
+  }
+
+  // Timer button
+  const timerBtn = !task.completed ? `
+    <button class="action-btn timer ${isRunning?'running':''}" onclick="toggleTimer(${task.id})" title="${isRunning?'Stop':'Start'} timer">
+      ${isRunning ? '■' : '▶'}
+    </button>` : '';
+
+  const cardClass = [
+    'task-card',
+    `priority-${task.priority}`,
+    task.completed ? 'completed' : '',
+  ].filter(Boolean).join(' ');
+
+  return `
+  <div class="${cardClass}" id="task-card-${task.id}">
+    <div class="task-check-wrap">
+      <div class="task-checkbox ${task.completed?'checked':''}" onclick="toggleComplete(${task.id})">${task.completed?'✓':''}</div>
+    </div>
+    <div class="task-body">
+      <div class="task-title" id="task-title-${task.id}" ondblclick="startInlineEdit(${task.id})">${esc(task.title)}</div>
+      ${task.desc ? `<div class="task-desc">${esc(task.desc)}</div>` : ''}
+      <div class="task-meta">
+        <span class="badge badge-priority-${task.priority}">${task.priority.charAt(0).toUpperCase()+task.priority.slice(1)}</span>
+        ${settings.statusEnabled !== false ? (task.status ? `<span class="badge badge-status status-${task.status || 'not-started'}">${(task.status || 'not-started').replace(/-/g,' ')}</span>` : '<span class="badge badge-status status-not-started">not started</span>') : ''}
+        ${settings.energyEnabled !== false ? `<span class="badge badge-energy energy-${task.energy || 'medium'}">${task.energy==='high'?'⚡ high':task.energy==='low'?'🌿 low':'◆ medium'}</span>` : ''}
+        ${task.recur && task.recur !== 'none' ? `<span class="badge badge-recur">↺ ${task.recur === 'custom' ? 'every ' + (task.recurInterval||1) + 'd' : task.recur}</span>` : ''}
+        ${dueBadge}${tagBadges}${timeBadge}${liveTimeBadge}
+      </div>
+      ${completionDetail}
+      ${renderSubtasksHTML(task)}
+    </div>
+    <div class="task-actions">
+      ${timerBtn}
+      ${task.archived ? `<button class="action-btn" onclick="unarchiveTask(${task.id})" title="Restore" style="color:var(--accent)">↩</button>` : `<button class="action-btn" onclick="openTaskModal(${task.id})" title="Edit">✎</button>`}
+      <button class="action-btn delete" onclick="deleteTask(${task.id})" title="Delete">✕</button>
+      ${currentView === 'archived' ? `<input type="checkbox" class="archive-select-cb" data-id="${task.id}" style="margin-left:4px;accent-color:var(--accent);cursor:pointer">` : ''}
+    </div>
+  </div>`;
+}
+
+function updateStats() {
+  const total = tasks.length;
+  const done  = tasks.filter(t => t.completed).length;
+  const pct   = total ? Math.round(done/total*100) : 0;
+  document.getElementById('stat-total').textContent  = total;
+  document.getElementById('stat-active').textContent = total - done;
+  document.getElementById('stat-done').textContent   = done;
+  document.getElementById('progress-bar-inner').style.width = pct + '%';
+  document.getElementById('progress-pct').textContent = pct + '%';
+}
+
+function updateCounts() {
+  const t = todayStr();
+  const active = tasks.filter(x => !x.completed);
+  document.getElementById('cnt-all').textContent       = active.length;
+  document.getElementById('cnt-today').textContent     = active.filter(x => x.due === t).length;
+  document.getElementById('cnt-overdue').textContent   = active.filter(x => x.due && x.due < t).length;
+  document.getElementById('cnt-completed').textContent = tasks.filter(x => x.completed && !x.archived).length;
+  const cntArchived = document.getElementById('cnt-archived');
+  if (cntArchived) cntArchived.textContent = tasks.filter(x => x.archived).length;
+  document.getElementById('cnt-high').textContent      = active.filter(x => x.priority === 'high').length;
+  document.getElementById('cnt-medium').textContent    = active.filter(x => x.priority === 'medium').length;
+  document.getElementById('cnt-low').textContent       = active.filter(x => x.priority === 'low').length;
+  const _s = (id) => document.getElementById(id);
+  if (_s('cnt-status-not-started')) _s('cnt-status-not-started').textContent = active.filter(x => (x.status||'not-started') === 'not-started').length;
+  if (_s('cnt-status-in-progress')) _s('cnt-status-in-progress').textContent = active.filter(x => x.status === 'in-progress').length;
+  if (_s('cnt-status-blocked'))     _s('cnt-status-blocked').textContent     = active.filter(x => x.status === 'blocked').length;
+  if (_s('cnt-status-on-hold'))     _s('cnt-status-on-hold').textContent     = active.filter(x => x.status === 'on-hold').length;
+}
+
+function updateTagSidebar() {
+  const tagSet = {};
+  tasks.filter(t => !t.completed && !t.archived).forEach(t => (t.tags||[]).forEach(tag => { tagSet[tag] = (tagSet[tag]||0)+1; }));
+  document.getElementById('tag-list').innerHTML = Object.keys(tagSet).sort().map(tag => `
+    <div class="sidebar-item" onclick="setView('tag:${esc(tag)}',this)">
+      <span class="tag-dot" style="background:${getTagColor(tag)}"></span>
+      <span>${esc(tag)}</span>
+      <span class="si-count">${tagSet[tag]}</span>
+    </div>`).join('');
+}
+
+function checkGraceDayPrompt() {
+  if (!settings.graceDayEnabled) return;
+  const cfg_key = 'taskspark_grace_prompt';
+  try {
+    const stored = JSON.parse(localStorage.getItem(cfg_key) || 'null');
+    if (stored && stored.date === todayStr()) return; // already prompted today
+  } catch {}
+  // Check if yesterday was missed
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  // Skip weekend check
+  if (!settings.streakWeekends && (yesterday.getDay() === 0 || yesterday.getDay() === 6)) return;
+  const yesterdayStr = dateToLocalStr(yesterday);
+  const completedYesterday = tasks.some(t => t.completed && t.completedAt &&
+    dateToLocalStr(new Date(t.completedAt)) === yesterdayStr);
+  if (completedYesterday) return; // no missed day
+  // Check if there was an active streak before yesterday
+  const streakBeforeYesterday = calcStreakBeforeDate(yesterday);
+  if (streakBeforeYesterday === 0) return; // no streak to protect
+  // Mark as prompted today
+  try { localStorage.setItem(cfg_key, JSON.stringify({ date: todayStr() })); } catch {}
+  // Show prompt
+  setTimeout(() => {
+    showConfirmModal(
+      '⚡ Streak at risk',
+      'You missed yesterday and your <strong>' + streakBeforeYesterday + ' day streak</strong> is at risk.<br><br>Would you like to use your grace day to protect it? You get one grace day per streak.',
+      'Use Grace Day',
+      () => { showToast('Grace day used — streak protected!'); }
+    );
+  }, 2000);
+}
+
+function calcStreakBeforeDate(date) {
+  const dates = new Set(tasks
+    .filter(t => t.completed && t.completedAt)
+    .map(t => dateToLocalStr(new Date(t.completedAt))));
+  let streak = 0;
+  const check = new Date(date);
+  check.setDate(check.getDate() - 1); // start from day before the missed day
+  while (true) {
+    const day = check.getDay();
+    if (!settings.streakWeekends && (day === 0 || day === 6)) {
+      check.setDate(check.getDate()-1); continue;
+    }
+    if (dates.has(dateToLocalStr(check))) {
+      streak++; check.setDate(check.getDate()-1);
+    } else break;
+  }
+  return streak;
+}
+
+function updateStreak() {
+  const icon    = document.getElementById('streak-icon');
+  const text    = document.getElementById('streak-text');
+  const best    = document.getElementById('streak-best');
+  const daily   = document.getElementById('streak-daily');
+
+  // Line 1 — did user complete a task today?
+  const completedToday = tasks.some(t => t.completed && t.completedAt && dateToLocalStr(new Date(t.completedAt)) === todayStr());
+  if (daily) {
+    daily.textContent  = completedToday ? '✓ Task completed today' : 'Complete a task today';
+    daily.className    = 'streak-daily' + (completedToday ? ' complete' : '');
+  }
+
+  // Check if vacation mode is active
+  if (settings.vacationMode && settings.vacationReturn) {
+    const today = todayStr();
+    if (today < settings.vacationReturn) {
+      const streak = calcStreak();
+      icon.textContent = '⏸';
+      text.textContent = `Current: ${streak} day${streak !== 1 ? 's' : ''} (paused)`;
+      text.style.color = 'var(--text3)'; icon.style.color = 'var(--text3)';
+      best.textContent = '';
+      return;
+    } else {
+      promptVacationReturn();
+    }
+  }
+
+  const streak  = calcStreak();
+  const longest = calcLongestStreak();
+
+  // Line 2 — current streak
+  if (streak > 0) {
+    icon.textContent = '★';
+    text.textContent = `Current: ${streak} day${streak !== 1 ? 's' : ''}`;
+    text.style.color = 'var(--amber)'; icon.style.color = '';
+  } else {
+    icon.textContent = '○';
+    text.textContent = 'No streak yet';
+    text.style.color = 'var(--text2)';
+  }
+
+  // Line 3 — best streak
+  best.textContent = longest > 0 ? `Best: ${longest} day${longest !== 1 ? 's' : ''}` : '';
+}
+
+function promptVacationReturn() {
+  if (settings._vacationPromptShown) return;
+  settings._vacationPromptShown = true;
+  setTimeout(() => {
+    showConfirmModal(
+      'Welcome back!',
+      'Your streak has been paused while you were away.<br><br>Are you ready to resume your streak?',
+      'Resume Streak',
+      () => {
+        settings.vacationMode   = false;
+        settings.vacationReturn = null;
+        settings._vacationPromptShown = false;
+        api.saveConfig({ settings });
+        updateStreak();
+        showToast('Streak resumed! Welcome back ★');
+      }
+    );
+  }, 1000);
+}
+
+function calcStreak() {
+  const dates = new Set(tasks
+    .filter(t => t.completed && t.completedAt)
+    .map(t => dateToLocalStr(new Date(t.completedAt))));
+  let streak = 0;
+  let check  = new Date();
+  const today = todayStr();
+  let isFirstDay = true;
+  let graceUsed = false;
+  while (true) {
+    const day = check.getDay(); // 0=Sun, 6=Sat
+    // Skip weekends unless streakWeekends is enabled
+    if (!settings.streakWeekends && (day === 0 || day === 6)) {
+      check.setDate(check.getDate()-1);
+      isFirstDay = false;
+      continue;
+    }
+    const ds = dateToLocalStr(check);
+    // Skip vacation days
+    if (settings.vacationMode && settings.vacationReturn && ds >= today) {
+      check.setDate(check.getDate()-1);
+      isFirstDay = false;
+      continue;
+    }
+    if (dates.has(ds)) {
+      streak++; check.setDate(check.getDate()-1);
+      isFirstDay = false;
+    } else if (isFirstDay && ds === today) {
+      // Haven't completed a task today yet — skip today, don't break streak
+      check.setDate(check.getDate()-1);
+      isFirstDay = false;
+    } else if (settings.graceDayEnabled && !graceUsed) {
+      // Use grace day for this missed day
+      graceUsed = true;
+      check.setDate(check.getDate()-1);
+      isFirstDay = false;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function dateToLocalStr(d) {
+  const yyyy = d.getFullYear();
+  const mm   = String(d.getMonth() + 1).padStart(2, '0');
+  const dd   = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function calcLongestStreak() {
+  const dates = new Set(tasks
+    .filter(t => t.completed && t.completedAt)
+    .map(t => dateToLocalStr(new Date(t.completedAt))));
+  if (!dates.size) return 0;
+  const sorted = [...dates].sort();
+  const earliest = new Date(sorted[0] + 'T00:00:00');
+  const today    = new Date();
+  let best = 0, current = 0, check = new Date(earliest);
+  while (check <= today) {
+    const day = check.getDay();
+    if (!settings.streakWeekends && (day === 0 || day === 6)) {
+      check.setDate(check.getDate()+1); continue;
+    }
+    if (dates.has(dateToLocalStr(check))) {
+      current++; best = Math.max(best, current);
+    } else { current = 0; }
+    check.setDate(check.getDate()+1);
+  }
+  return best;
+}
+
+// ── View ───────────────────────────────────────────────────────────────────
+function setView(view, el) {
+  currentView = view;
+  const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
+    'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
+    'status-not-started':'Not Started', 'status-in-progress':'In Progress',
+    'status-blocked':'Blocked', 'status-on-hold':'On Hold' };
+  document.getElementById('view-title').textContent =
+    view.startsWith('tag:') ? '#' + view.slice(4) : (titles[view] || view);
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  if (el) el.classList.add('active');
+  else {
+    const match = document.querySelector(`[data-view="${view}"]`);
+    if (match) match.classList.add('active');
+  }
+  if (view === 'kanban') {
+    ideasMode = false; habitsMode = false; winsMode = false;
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    switchViewMode('kanban');
+  } else if (view === 'ideas') {
+    ideasMode = true; habitsMode = false; winsMode = false;
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.add('active');
+    renderIdeas();
+  } else if (view === 'wins') {
+    winsMode = true; ideasMode = false; habitsMode = false;
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('wins-container').classList.add('active');
+    renderWins();
+  } else {
+    ideasMode = false; habitsMode = false; winsMode = false;
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    switchViewMode('list');
+    renderTasks();
+  }
+}
+
+function switchViewMode(mode) {
+  kanbanMode = mode === 'kanban';
+  const listContainer   = document.getElementById('task-list-container');
+  const kanbanContainer = document.getElementById('kanban-container');
+  const listBtn   = document.getElementById('btn-list-view');
+  const kanbanBtn = document.getElementById('btn-kanban-view');
+  if (kanbanMode) {
+    if (listContainer)   listContainer.style.display = 'none';
+    if (kanbanContainer) { kanbanContainer.style.display = 'flex'; kanbanContainer.style.flexDirection = 'column'; }
+    if (listBtn)   listBtn.classList.remove('active');
+    if (kanbanBtn) kanbanBtn.classList.add('active');
+    renderKanban();
+  } else {
+    if (listContainer)   listContainer.style.display = '';
+    if (kanbanContainer) kanbanContainer.style.display = 'none';
+    if (listBtn)   listBtn.classList.add('active');
+    if (kanbanBtn) kanbanBtn.classList.remove('active');
+    // Ensure task list is always visible when leaving kanban
+    const tlc = document.getElementById('task-list-container');
+    if (tlc) tlc.style.display = '';
+  }
+}
+
+// ── Kanban ─────────────────────────────────────────────────────────────────
+const KANBAN_COLS = [
+  { key: 'not-started', label: 'Not Started', color: 'var(--text3)' },
+  { key: 'in-progress', label: 'In Progress', color: 'var(--blue)' },
+  { key: 'blocked',     label: 'Blocked',     color: 'var(--red)' },
+  { key: 'on-hold',     label: 'On Hold',     color: 'var(--amber)' },
+  { key: 'done',        label: 'Done',        color: 'var(--accent)' },
+];
+
+let kanbanGroupState = {}; // persisted collapse state per tag group
+let dragTaskId = null;
+
+function getKanbanGroupState() {
+  try { return JSON.parse(localStorage.getItem('taskspark_kanban_groups') || '{}'); } catch { return {}; }
+}
+function saveKanbanGroupState(tag, open) {
+  const state = getKanbanGroupState();
+  state[tag] = open;
+  try { localStorage.setItem('taskspark_kanban_groups', JSON.stringify(state)); } catch {}
+}
+
+function renderKanban() {
+  const container = document.getElementById('kanban-container');
+  if (!container) return;
+  const activeTasks = tasks.filter(t => !t.completed && !t.archived);
+  const state = getKanbanGroupState();
+
+  // If groupByTags is off, render a single group with all tasks
+  if (settings.kanbanGroupByTags === false) {
+    const cols = KANBAN_COLS.map(col => {
+      const colTasks = activeTasks.filter(t => (t.status||'not-started') === col.key);
+      const cards = colTasks.map(t => `
+        <div class="kanban-card priority-${t.priority}" draggable="true"
+          data-task-id="${t.id}"
+          ondragstart="onKanbanDragStart(event,${t.id})"
+          ondragend="onKanbanDragEnd(event)">
+          <div class="kanban-card-title" onclick="openTaskModal(${t.id})">${esc(t.title)}</div>
+          <div class="kanban-card-meta">
+            <span class="badge badge-priority-${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>
+            ${t.due ? `<span class="badge badge-due ${dueStatus(t.due)||''}">◷ ${fmtDate(t.due)}</span>` : ''}
+          </div>
+        </div>`).join('');
+      return `
+        <div class="kanban-col"
+          data-status="${col.key}"
+          ondragover="onKanbanDragOver(event)"
+          ondragleave="onKanbanDragLeave(event)"
+          ondrop="onKanbanDrop(event,'${col.key}')">
+          <div class="kanban-col-header" style="color:${col.color}">
+            ${col.label}
+            <span class="kanban-col-count">${colTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">${cards}</div>
+        </div>`;
+    }).join('');
+    container.innerHTML = `<div class="kanban-columns" style="padding-bottom:16px">${cols}</div>`;
+    return;
+  }
+
+  // Get all unique tags + untagged
+  const allTags = [...new Set(activeTasks.flatMap(t => (t.tags||[]).length ? t.tags : ['Untagged']))];
+  allTags.sort((a,b) => a === 'Untagged' ? 1 : b === 'Untagged' ? -1 : a.localeCompare(b));
+
+  container.innerHTML = allTags.map(tag => {
+    const tagTasks = tag === 'Untagged'
+      ? activeTasks.filter(t => !t.tags || !t.tags.length)
+      : activeTasks.filter(t => (t.tags||[]).includes(tag));
+    const isOpen = tag in state ? state[tag] : true;
+    const tagColor = tag === 'Untagged' ? 'var(--text3)' : getTagColor(tag);
+
+    const cols = KANBAN_COLS.map(col => {
+      const colTasks = tagTasks.filter(t => (t.status||'not-started') === col.key);
+      const cards = colTasks.map(t => `
+        <div class="kanban-card priority-${t.priority}" draggable="true"
+          data-task-id="${t.id}"
+          ondragstart="onKanbanDragStart(event,${t.id})"
+          ondragend="onKanbanDragEnd(event)">
+          <div class="kanban-card-title" onclick="openTaskModal(${t.id})">${esc(t.title)}</div>
+          <div class="kanban-card-meta">
+            <span class="badge badge-priority-${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>
+            ${t.due ? `<span class="badge badge-due ${dueStatus(t.due)||''}">◷ ${fmtDate(t.due)}</span>` : ''}
+          </div>
+        </div>`).join('');
+      return `
+        <div class="kanban-col"
+          data-status="${col.key}"
+          ondragover="onKanbanDragOver(event)"
+          ondragleave="onKanbanDragLeave(event)"
+          ondrop="onKanbanDrop(event,'${col.key}')">
+          <div class="kanban-col-header" style="color:${col.color}">
+            ${col.label}
+            <span class="kanban-col-count">${colTasks.length}</span>
+          </div>
+          <div class="kanban-col-body">${cards}</div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="kanban-tag-group">
+        <div class="kanban-tag-header" onclick="toggleKanbanGroup('${esc(tag)}')">
+          <span class="kanban-tag-arrow ${isOpen?'':'collapsed'}">▾</span>
+          <span class="kanban-tag-label" style="color:${tagColor}">${esc(tag)}</span>
+          <span class="kanban-col-count">${tagTasks.length}</span>
+        </div>
+        <div class="kanban-columns" id="kanban-group-${esc(tag)}" style="display:${isOpen?'flex':'none'}">${cols}</div>
+      </div>`;
+  }).join('');
+}
+
+function toggleKanbanGroup(tag) {
+  const el = document.getElementById('kanban-group-' + tag);
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'flex';
+  const arrow = el.previousElementSibling.querySelector('.kanban-tag-arrow');
+  if (arrow) arrow.classList.toggle('collapsed', isOpen);
+  saveKanbanGroupState(tag, !isOpen);
+}
+
+function onKanbanDragStart(e, taskId) {
+  dragTaskId = taskId;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => {
+    const card = e.target.closest('.kanban-card');
+    if (card) card.classList.add('dragging');
+  }, 0);
+}
+
+function onKanbanDragEnd(e) {
+  document.querySelectorAll('.kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
+  document.querySelectorAll('.kanban-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+  dragTaskId = null;
+}
+
+function onKanbanDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const col = e.currentTarget;
+  col.classList.add('drag-over');
+}
+
+function onKanbanDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onKanbanDrop(e, status) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!dragTaskId) return;
+  const task = tasks.find(t => t.id === dragTaskId);
+  if (!task) return;
+  task.status = status;
+  if (status === 'done' && !task.completed) {
+    toggleComplete(task.id);
+    return;
+  }
+  saveTasks();
+  renderKanban();
+}
+
+// ── Task CRUD ──────────────────────────────────────────────────────────────
+function openTaskModal(id = null) {
+  editingId = id;
+  modalTags = [];
+  modalDue  = '';
+  document.getElementById('task-modal-title').textContent = id ? 'Edit Task' : 'New Task';
+
+  if (id) {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    document.getElementById('tm-title').value    = task.title;
+    document.getElementById('tm-desc').value     = task.desc || '';
+    document.getElementById('tm-priority').value = task.priority;
+    document.getElementById('tm-estimate').value = task.estimate || '';
+    document.getElementById('tm-status').value   = task.status || 'not-started';
+    document.getElementById('tm-energy').value   = task.energy || 'medium';
+    loadRecurrenceUI(task.recurrence || { type: 'none' });
+    modalTags = [...(task.tags || [])];
+    modalDue  = task.due || '';
+    modalDueTime = task.dueTime || '';
+    if (document.getElementById('tm-due-time')) document.getElementById('tm-due-time').value = task.dueTime || '';
+  } else {
+    document.getElementById('tm-title').value    = '';
+    document.getElementById('tm-desc').value     = '';
+    document.getElementById('tm-priority').value = 'medium';
+    document.getElementById('tm-estimate').value = '';
+    document.getElementById('tm-status').value   = 'not-started';
+    document.getElementById('tm-energy').value   = 'medium';
+    loadRecurrenceUI({ type: 'none' });
+  }
+
+  renderModalTags();
+  refreshDueBtn();
+  const dupBtn = document.getElementById('tm-duplicate-btn');
+  if (dupBtn) dupBtn.style.display = id ? '' : 'none';
+  document.getElementById('task-modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('tm-title').focus(), 100);
+}
+
+function saveTask() {
+  const title = document.getElementById('tm-title').value.trim();
+  if (!title) { document.getElementById('tm-title').focus(); return; }
+
+  const data = {
+    title,
+    desc:     document.getElementById('tm-desc').value.trim(),
+    priority: document.getElementById('tm-priority').value,
+    due:      modalDue,
+    dueTime:  modalDueTime,
+    tags:     [...modalTags],
+    estimate: parseInt(document.getElementById('tm-estimate').value) || 0,
+    status:     document.getElementById('tm-status').value,
+    energy:     document.getElementById('tm-energy').value,
+    recurrence: getRecurrenceFromUI(),
+  };
+
+  pushUndo(editingId ? 'Edit task' : 'Add task');
+
+  if (editingId) {
+    const task = tasks.find(t => t.id === editingId);
+    if (task) { const subs = task.subtasks; Object.assign(task, data); task.subtasks = subs; }
+  } else {
+    const newTask = {
+      id: Date.now(), completed: false,
+      createdAt: new Date().toISOString(), completedAt: '',
+      timeLogged: 0, timeSessions: [],
+      impact: '', outcome: '', deliverable: '',
+      status: 'not-started', energy: 'medium',
+      subtasks: [],
+      ...data
+    };
+    tasks.push(newTask);
+  }
+
+  closeModal('task-modal-overlay');
+  saveTasks();
+  renderAll();
+}
+
+// ── Subtasks ─────────────────────────────────────────────────────────────────
+function renderSubtasksHTML(task) {
+  if (task.completed) return '';
+  if (settings.subtasksEnabled === false) return '';
+  const subs = task.subtasks || [];
+  const doneCount = subs.filter(s => s.done).length;
+  const savedState = getSubtaskState();
+  const isOpenH = task.id in savedState ? savedState[task.id] : subs.length > 0;
+  const arrowStyle = isOpenH ? '' : 'style="transform:rotate(-90deg)"';
+  const header = subs.length
+    ? `<div class="subtask-header" onclick="toggleSubtasks(${task.id})">
+        <span id="subtask-arrow-${task.id}" class="subtask-arrow" ${arrowStyle}>▾</span>
+        <span class="subtask-count">${doneCount}/${subs.length} subtasks</span>
+       </div>`
+    : `<div class="subtask-header" onclick="toggleSubtasks(${task.id})">
+        <span id="subtask-arrow-${task.id}" class="subtask-arrow" ${arrowStyle}>▾</span>
+        <span class="subtask-count">Add subtasks</span>
+       </div>`;
+  const list = subs.map((s, idx) =>
+    `<div class="subtask-item" draggable="true"
+      data-task-id="${task.id}" data-subtask-id="${s.id}"
+      ondragstart="onSubtaskDragStart(event,${task.id},${s.id})"
+      ondragend="onSubtaskDragEnd(event)"
+      ondragover="onSubtaskDragOver(event)"
+      ondragleave="onSubtaskDragLeave(event)"
+      ondrop="onSubtaskDrop(event,${task.id},${s.id})">
+      <span class="subtask-drag-handle">⠿</span>
+      <div class="subtask-check ${s.done?'checked':''}" onclick="toggleSubtask(${task.id},${s.id})">${s.done?'✓':''}</div>
+      <span class="subtask-title ${s.done?'done':''}" ondblclick="startSubtaskEdit(${task.id},${s.id},this)">${esc(s.title)}</span>
+      <button class="subtask-delete" onclick="deleteSubtask(${task.id},${s.id})">✕</button>
+    </div>`
+  ).join('');
+  const addRow = `<div class="subtask-add-row">
+    <input class="subtask-input" id="subtask-input-${task.id}" placeholder="Add subtask…" onkeydown="handleSubtaskKey(event,${task.id})">
+    <button class="subtask-add-btn" onclick="addSubtask(${task.id})">+</button>
+  </div>`;
+  return `<div class="subtask-section">
+    ${header}
+    <div id="subtask-list-${task.id}" style="display:${isOpenH?'block':'none'}">
+      ${list}${addRow}
+    </div>
+  </div>`;
+}
+
+function getSubtaskState() {
+  try { return JSON.parse(localStorage.getItem('taskspark_subtask_state') || '{}'); } catch { return {}; }
+}
+
+function saveSubtaskState(id, isOpen) {
+  const state = getSubtaskState();
+  state[id] = isOpen;
+  try { localStorage.setItem('taskspark_subtask_state', JSON.stringify(state)); } catch {}
+}
+
+function toggleSubtasks(id) {
+  const el = document.getElementById('subtask-list-' + id);
+  const arrow = document.getElementById('subtask-arrow-' + id);
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.style.transform = isOpen ? 'rotate(-90deg)' : 'rotate(0deg)';
+  saveSubtaskState(id, !isOpen);
+}
+
+function addSubtask(taskId) {
+  const input = document.getElementById('subtask-input-' + taskId);
+  if (!input) return;
+  const title = input.value.trim();
+  if (!title) return;
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  if (!task.subtasks) task.subtasks = [];
+  task.subtasks.push({ id: Date.now(), title, done: false });
+  input.value = '';
+  saveTasks();
+  renderAll();
+}
+
+function toggleSubtask(taskId, subtaskId) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task || !task.subtasks) return;
+  const sub = task.subtasks.find(s => s.id === subtaskId);
+  if (!sub) return;
+  sub.done = !sub.done;
+  // Auto-complete parent if all subtasks done
+  if (task.subtasks.length && task.subtasks.every(s => s.done) && !task.completed) {
+    toggleComplete(taskId);
+    return;
+  }
+  // Set status to in-progress when any subtask is checked
+  if (sub.done && task.status === 'not-started') {
+    task.status = 'in-progress';
+  }
+  saveTasksDebounced();
+  scheduleRender();
+}
+
+function deleteSubtask(taskId, subtaskId) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  task.subtasks = (task.subtasks || []).filter(s => s.id !== subtaskId);
+  saveTasks();
+  renderAll();
+}
+
+function startSubtaskEdit(taskId, subtaskId, el) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  const sub = task.subtasks.find(s => s.id === subtaskId);
+  if (!sub) return;
+  const original = sub.title;
+  el.contentEditable = 'true';
+  el.classList.add('editing');
+  el.focus();
+  // Place cursor at end
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  function save() {
+    const newTitle = el.textContent.trim();
+    el.contentEditable = 'false';
+    el.classList.remove('editing');
+    if (newTitle && newTitle !== original) {
+      sub.title = newTitle;
+      saveTasks();
+      renderAll();
+    } else {
+      el.textContent = original;
+    }
+  }
+  el.addEventListener('blur', save, { once: true });
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+    if (e.key === 'Escape') { el.textContent = original; el.blur(); }
+  }, { once: true });
+}
+
+function handleSubtaskKey(e, taskId) {
+  if (e.key === 'Enter') addSubtask(taskId);
+}
+
+let dragSubtaskId = null;
+let dragSubtaskTaskId = null;
+
+function onSubtaskDragStart(e, taskId, subtaskId) {
+  dragSubtaskId = subtaskId;
+  dragSubtaskTaskId = taskId;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => { const el = e.target.closest('.subtask-item'); if (el) el.classList.add('dragging'); }, 0);
+}
+
+function onSubtaskDragEnd(e) {
+  document.querySelectorAll('.subtask-item.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('.subtask-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+  dragSubtaskId = null; dragSubtaskTaskId = null;
+}
+
+function onSubtaskDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const el = e.currentTarget;
+  if (parseInt(el.dataset.subtaskId) !== dragSubtaskId) el.classList.add('drag-over');
+}
+
+function onSubtaskDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onSubtaskDrop(e, taskId, targetSubtaskId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!dragSubtaskId || dragSubtaskId === targetSubtaskId || dragSubtaskTaskId !== taskId) return;
+  const task = tasks.find(t => t.id === taskId);
+  if (!task || !task.subtasks) return;
+  const fromIdx = task.subtasks.findIndex(s => s.id === dragSubtaskId);
+  const toIdx   = task.subtasks.findIndex(s => s.id === targetSubtaskId);
+  if (fromIdx === -1 || toIdx === -1) return;
+  const [moved] = task.subtasks.splice(fromIdx, 1);
+  task.subtasks.splice(toIdx, 0, moved);
+  saveTasks();
+  renderAll();
+}
+
+function startInlineEdit(id) {
+  const titleEl = document.getElementById('task-title-' + id);
+  if (!titleEl) return;
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const original = task.title;
+  titleEl.contentEditable = 'true';
+  titleEl.classList.add('editing');
+  titleEl.focus();
+  // Place cursor at end
+  const range = document.createRange();
+  range.selectNodeContents(titleEl);
+  range.collapse(false);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  function save() {
+    const newTitle = titleEl.textContent.trim();
+    titleEl.contentEditable = 'false';
+    titleEl.classList.remove('editing');
+    if (newTitle && newTitle !== original) {
+      task.title = newTitle;
+      saveTasks();
+      renderAll();
+    } else {
+      titleEl.textContent = original;
+    }
+  }
+  titleEl.addEventListener('blur', save, { once: true });
+  titleEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); }
+    if (e.key === 'Escape') { titleEl.textContent = original; titleEl.blur(); }
+  }, { once: true });
+}
+
+function duplicateTask(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  // Create new task with only title, desc and priority copied
+  const newTask = {
+    id: Date.now(),
+    title: task.title,
+    desc: task.desc || '',
+    priority: task.priority,
+    due: '',
+    tags: [],
+    completed: false,
+    createdAt: new Date().toISOString(),
+    completedAt: '',
+    timeLogged: 0,
+    timeSessions: [],
+    impact: '', outcome: '', deliverable: '',
+    estimate: 0,
+    status: 'not-started',
+    energy: task.energy || 'medium',
+  };
+  pushUndo('Duplicate task');
+  tasks.push(newTask);
+  saveTasks();
+  renderAll();
+  // Close current modal and open the new task for editing
+  closeModal('task-modal-overlay');
+  setTimeout(() => openTaskModal(newTask.id), 50);
+}
+
+function deleteTask(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  showConfirmModal(
+    'Delete Task',
+    `Delete "<strong>${esc(task.title)}</strong>"? This cannot be undone.`,
+    'Delete',
+    () => {
+      if (activeTimerId === id) cancelTimer();
+      pushUndo('Delete task');
+      tasks = tasks.filter(t => t.id !== id);
+      saveTasks();
+      renderAll();
+    },
+    true // danger style
+  );
+}
+
+function toggleComplete(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const completing = !task.completed;
+  pushUndo(completing ? 'Complete task' : 'Uncomplete task');
+
+  if (completing) {
+    if (activeTimerId === id) stopTimerSave();
+    task.completed  = true;
+    task.completedAt = new Date().toISOString();
+    if (!settings.completionDialog) {
+      saveTasks(); renderAll();
+      if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      return;
+    }
+    // Show completion dialog
+    completionTaskId = id;
+    selectedImpact   = 'medium';
+    document.getElementById('cm-task-name').textContent = task.title.length > 50 ? task.title.slice(0,48)+'…' : task.title;
+    document.getElementById('cm-outcome').value    = '';
+    document.getElementById('cm-deliverable').value = '';
+    selectImpact('medium');
+    document.getElementById('completion-modal-overlay').classList.add('open');
+  } else {
+    task.completed   = false;
+    task.completedAt = '';
+    task.impact = task.outcome = task.deliverable = '';
+    saveTasks(); renderAll();
+  }
+}
+
+function saveCompletion(skip) {
+  const task = tasks.find(t => t.id === completionTaskId);
+  if (task && !skip) {
+    task.impact      = selectedImpact;
+    task.outcome     = document.getElementById('cm-outcome').value.trim();
+    task.deliverable = document.getElementById('cm-deliverable').value.trim();
+  }
+  closeModal('completion-modal-overlay');
+
+  // If break was snoozed, show break now
+  if (breakSnoozed) {
+    breakSnoozed = false;
+    clearBreakTimer();
+    setTimeout(showBreakPanel, 200);
+  }
+
+  saveTasks(); renderAll();
+  // Prompt recurring after completion dialog
+  const completedTask = tasks.find(t => t.id === completionTaskId);
+  if (completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none') {
+    setTimeout(() => promptRecurringTask(completedTask), 300);
+  }
+  // Offer to add to Wins Board if enabled
+  if (settings.winsEnabled !== false && completedTask) {
+    setTimeout(() => {
+      showConfirmModal(
+        'Add to Wins Board',
+        `Capture <strong>${esc(completedTask.title)}</strong> as a win?`,
+        'Add Win',
+        () => addWinFromTask(completedTask.title)
+      );
+    }, 400);
+  }
+}
+
+function selectImpact(level) {
+  selectedImpact = level;
+  ['low','medium','high'].forEach(l => {
+    const el = document.getElementById(`imp-${l}`);
+    el.className = `impact-opt ${l === level ? 'selected-'+l : ''}`;
+  });
+}
+
+// ── Tags ───────────────────────────────────────────────────────────────────
+function handleTagKey(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = e.target.value.trim().replace(/,/g,'');
+    if (val && !modalTags.includes(val)) { modalTags.push(val); getTagColor(val); renderModalTags(); }
+    e.target.value = '';
+  } else if (e.key === 'Backspace' && !e.target.value && modalTags.length) {
+    modalTags.pop(); renderModalTags();
+  }
+}
+
+function removeModalTag(tag) { modalTags = modalTags.filter(t => t !== tag); renderModalTags(); }
+
+function renderModalTags() {
+  document.getElementById('tm-tag-pills').innerHTML = modalTags.map(tag =>
+    `<span class="tag-pill" style="background:${getTagColor(tag)}">${esc(tag)}<button class="tag-pill-x" onclick="removeModalTag('${esc(tag)}')">&times;</button></span>`
+  ).join('');
+}
+
+// ── Calendar ───────────────────────────────────────────────────────────────
+function toggleCalendar() {
+  const popup = document.getElementById('calendar-popup');
+  if (popup.style.display === 'none') {
+    const d = modalDue ? new Date(modalDue + 'T00:00:00') : new Date();
+    calYear = d.getFullYear(); calMonth = d.getMonth();
+    renderCalendar();
+    // Position using fixed coords relative to the button
+    const btn  = document.getElementById('tm-due-btn');
+    const rect = btn.getBoundingClientRect();
+    const popupH = 320; // approximate calendar height
+    const spaceBelow = window.innerHeight - rect.bottom;
+    popup.style.display = 'block';
+    popup.style.left    = rect.left + 'px';
+    popup.style.width   = rect.width + 'px';
+    // Open upward if not enough space below
+    if (spaceBelow < popupH && rect.top > popupH) {
+      popup.style.top    = (rect.top - popup.offsetHeight - 4) + 'px';
+      popup.style.bottom = 'auto';
+    } else {
+      popup.style.top    = (rect.bottom + 4) + 'px';
+      popup.style.bottom = 'auto';
+    }
+    setTimeout(() => document.addEventListener('click', closeCalendarOutside), 0);
+  } else {
+    popup.style.display = 'none';
+  }
+}
+
+function closeCalendarOutside(e) {
+  const popup = document.getElementById('calendar-popup');
+  const btn   = document.getElementById('tm-due-btn');
+  if (!popup.contains(e.target) && !btn.contains(e.target)) {
+    popup.style.display = 'none';
+    document.removeEventListener('click', closeCalendarOutside);
+  }
+}
+
+function renderCalendar() {
+  const popup = document.getElementById('calendar-popup');
+  const monthNames = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const today = todayStr();
+
+  // Get first day and days in month
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const startOffset = (firstDay + 6) % 7; // Monday start
+
+  let cells = '';
+  for (let i = 0; i < startOffset; i++) cells += `<div class="cal-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cls = [
+      'cal-cell',
+      dateStr === today ? 'today' : '',
+      dateStr === modalDue ? 'selected' : '',
+    ].filter(Boolean).join(' ');
+    cells += `<div class="${cls}" onclick="pickDate('${dateStr}')">${d}</div>`;
+  }
+
+  popup.innerHTML = `
+    <div class="cal-header">
+      <button class="cal-nav" onclick="calNav(-1, event)">‹</button>
+      <span class="cal-month">${monthNames[calMonth]} ${calYear}</span>
+      <button class="cal-nav" onclick="calNav(1, event)">›</button>
+    </div>
+    <div class="cal-days-hdr">
+      ${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => `<div class="cal-day-hdr">${d}</div>`).join('')}
+    </div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-clear"><button class="cal-clear-btn" onclick="pickDate('')">Clear date</button></div>`;
+}
+
+function calNav(dir, e) {
+  if (e) e.stopPropagation();
+  calMonth += dir;
+  if (calMonth < 0)  { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0;  calYear++; }
+  renderCalendar();
+}
+
+function pickDate(dateStr) {
+  modalDue = dateStr;
+  refreshDueBtn();
+  document.getElementById('calendar-popup').style.display = 'none';
+  document.removeEventListener('click', closeCalendarOutside);
+}
+
+function refreshDueBtn() {
+  const btn = document.getElementById('tm-due-btn');
+  const lbl = document.getElementById('tm-due-label');
+  if (modalDue) {
+    const timePart = modalDueTime ? ` ${fmtTime(modalDueTime)}` : '';
+    lbl.textContent = fmtDate(modalDue) + timePart;
+    btn.classList.add('has-date');
+  } else {
+    lbl.textContent = 'Pick a date';
+    btn.classList.remove('has-date');
+  }
+}
+
+function onDueTimeChange(val) {
+  modalDueTime = val;
+  refreshDueBtn();
+}
+
+// ── Timer ──────────────────────────────────────────────────────────────────
+function toggleTimer(id) {
+  if (activeTimerId === id) { stopTimer(); return; }
+  if (activeTimerId !== null) stopTimerSave();
+
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+
+  activeTimerId = id;
+  timerStart    = Date.now() / 1000;
+  breakSnoozed  = false;
+  // Auto-set status to in-progress when timer starts
+  if (task.status !== 'done') {
+    task.status = 'in-progress';
+    saveTasks();
+  }
+
+  // Open the separate always-on-top timer window
+  api.timerShow({
+    taskName:   task.title,
+    baseLogged: task.timeLogged || 0,
+  });
+
+  // Start local tick for task card badge updates
+  timerInterval = setInterval(tickTimer, 1000);
+
+  // Schedule break check
+  scheduleBreak();
+  renderTasks();
+
+  // Minimize main window — timer window stays visible
+  api.minimize();
+}
+
+function pauseTimer() {
+  if (!activeTimerId || timerPaused) return;
+  timerPaused = true;
+  // Accumulate elapsed task time so far — preserved on resume
+  timerPausedElapsed += Math.floor(Date.now()/1000 - timerStart);
+  timerPausedAt = Date.now() / 1000;
+  clearInterval(timerInterval);
+  // Only reset the break countdown — task time is preserved
+  clearBreakTimer();
+}
+
+function resumeTimer() {
+  if (!activeTimerId || !timerPaused) return;
+  timerPaused = false;
+  // Resume task timer from where it left off (timerPausedElapsed holds accumulated time)
+  timerStart = Date.now() / 1000;
+  timerPausedAt = null;
+  timerInterval = setInterval(tickTimer, 1000);
+  // Restart break countdown from zero (fresh work session after pause)
+  scheduleBreak();
+}
+
+function tickTimer() {
+  if (!activeTimerId || !timerStart || timerPaused) return;
+  const task    = tasks.find(t => t.id === activeTimerId);
+  const base    = task ? (task.timeLogged || 0) : 0;
+  const elapsed = Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
+  const total   = base + elapsed;
+  // Update live badge in task card
+  const badge = document.getElementById(`time-badge-${activeTimerId}`);
+  if (badge) badge.textContent = `◷ ${fmtSecs(total)}`;
+}
+
+function stopTimer() {
+  // Close the separate timer window — the 'timer-stopped' IPC event
+  // will fire back and handle saving + restoring the main window
+  api.timerHide();
+  // Also clear local state immediately so UI updates
+  clearInterval(timerInterval); timerInterval = null;
+  clearBreakTimer();
+}
+
+function stopTimerSave() {
+  if (!activeTimerId || !timerStart) return;
+  const elapsed = Math.floor(Date.now()/1000 - timerStart);
+  const task    = tasks.find(t => t.id === activeTimerId);
+  if (task) {
+    task.timeLogged = (task.timeLogged || 0) + elapsed;
+    task.timeSessions = task.timeSessions || [];
+    task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
+  }
+  clearInterval(timerInterval);
+  timerInterval = null;
+  activeTimerId = null;
+  timerStart    = null;
+}
+
+function cancelTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+  activeTimerId = null;
+  timerStart    = null;
+  clearBreakTimer();
+  document.getElementById('timer-overlay').classList.remove('active');
+}
+
+// ── Break ──────────────────────────────────────────────────────────────────
+function scheduleBreak() {
+  clearBreakTimer();
+  if (!settings.breakEnabled) return;
+  breakAfterTimer = setTimeout(onBreakDue, getBreakIntervalMs());
+}
+
+function clearBreakTimer() {
+  if (breakAfterTimer) { clearTimeout(breakAfterTimer); breakAfterTimer = null; }
+  if (breakInterval)   { clearInterval(breakInterval);  breakInterval = null; }
+}
+
+function onBreakDue() {
+  if (breakSnoozed || !activeTimerId || timerPaused) return;
+  // Play sound before showing the prompt
+  playBreakSound();
+  // Show as a separate always-on-top window near the timer
+  api.breakPromptShow({ intervalMins: settings.breakIntervalMins });
+}
+
+function takeBreak() {
+  // Save and fully stop the timer
+  if (activeTimerId && timerStart) {
+    const elapsed = Math.floor(Date.now()/1000 - timerStart);
+    const task = tasks.find(t => t.id === activeTimerId);
+    if (task) {
+      task.timeLogged = (task.timeLogged||0) + elapsed;
+      task.timeSessions = task.timeSessions || [];
+      task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
+    }
+    saveTasks();
+  }
+  // Close the timer window and clear state
+  api.timerHide();
+  clearInterval(timerInterval);
+  timerInterval = null;
+  timerStart    = null;
+  activeTimerId = null;
+  clearBreakTimer();
+  // Restore window then show break panel
+  api.restore();
+  setTimeout(showBreakPanel, 150);
+}
+
+function snoozeBreak() {
+  breakSnoozed = true;
+}
+
+function showBreakPanel() {
+  breakRemaining = getBreakDurationS();
+  document.getElementById('break-panel').classList.add('active');
+  tickBreak();
+  breakInterval = setInterval(tickBreak, 1000);
+}
+
+function tickBreak() {
+  const m = Math.floor(breakRemaining/60), s = breakRemaining%60;
+  document.getElementById('break-countdown').textContent = `${m}:${String(s).padStart(2,'0')}`;
+  if (breakRemaining <= 0) { endBreak(); return; }
+  breakRemaining--;
+}
+
+function finishBreak() { endBreak(); }
+
+function endBreak() {
+  clearInterval(breakInterval); breakInterval = null;
+  document.getElementById('break-panel').classList.remove('active');
+  api.restore();
+  // Resume timer if task still active
+  if (activeTimerId) {
+    timerStart    = Date.now() / 1000;
+    timerInterval = setInterval(tickTimer, 1000);
+    document.getElementById('timer-overlay').classList.add('active');
+    scheduleBreak();
+  }
+  renderAll();
+}
+
+// ── What Now ───────────────────────────────────────────────────────────────
+let whatNowTaskId = null;
+
+function whatNow() {
+  const active = tasks.filter(t => !t.completed && t.status !== 'blocked' && t.status !== 'on-hold');
+  if (!active.length) { showToast('No active tasks — add one to get started!'); return; }
+  const t = todayStr();
+  const pmap = { high:0, medium:1, low:2 };
+  // Factor in mood: match energy level to today's mood
+  const todayMood = getTodayMood();
+  const moodEnergyMap = { good: 'high', okay: 'medium', sad: 'low' };
+  const preferredEnergy = moodEnergyMap[todayMood] || null;
+  const emap = { high:0, medium:1, low:2 };
+  const best = active.reduce((a, b) => {
+    // Energy match bonus — tasks matching mood energy get a boost
+    const aEnergyScore = preferredEnergy ? (a.energy === preferredEnergy ? 0 : 1) : 0;
+    const bEnergyScore = preferredEnergy ? (b.energy === preferredEnergy ? 0 : 1) : 0;
+    const sa = [pmap[a.priority]||1, aEnergyScore, a.due&&a.due<t?0:a.due===t?1:a.due?2:3, -(a.id)];
+    const sb = [pmap[b.priority]||1, bEnergyScore, b.due&&b.due<t?0:b.due===t?1:b.due?2:3, -(b.id)];
+    for (let i = 0; i < sa.length; i++) {
+      if (sa[i] !== sb[i]) return sa[i] < sb[i] ? a : b;
+    }
+    return a;
+  });
+  whatNowTaskId = best.id;
+  document.getElementById('wn-title').textContent = best.title;
+  const meta = document.getElementById('wn-meta');
+  meta.innerHTML = `
+    <span class="badge badge-priority-${best.priority}">${best.priority.charAt(0).toUpperCase()+best.priority.slice(1)}</span>
+    ${best.due ? `<span class="badge badge-due ${dueStatus(best.due)||''}">◷ ${fmtDate(best.due)}</span>` : ''}
+    ${(best.tags||[]).map(tg=>`<span class="badge badge-tag" style="background:${getTagColor(tg)}">${esc(tg)}</span>`).join('')}
+  `;
+  document.getElementById('wn-start-btn').onclick = () => {
+    closeModal('whatnow-modal-overlay');
+    toggleTimer(whatNowTaskId);
+  };
+  document.getElementById('whatnow-modal-overlay').classList.add('open');
+}
+
+// ── Quick add ──────────────────────────────────────────────────────────────
+let quickAddFromBackground = false;
+
+function openQuickAdd(fromBackground = false) {
+  quickAddFromBackground = fromBackground;
+  document.getElementById('quick-add-overlay').classList.add('open');
+  document.getElementById('quick-add-input').value = '';
+  setTimeout(() => document.getElementById('quick-add-input').focus(), 50);
+}
+
+function closeQuickAdd(e) {
+  if (e.target === document.getElementById('quick-add-overlay')) {
+    document.getElementById('quick-add-overlay').classList.remove('open');
+    if (quickAddFromBackground) { quickAddFromBackground = false; api.quickaddDone(); }
+  }
+}
+
+function quickAddKey(e) {
+  if (e.key === 'Enter') {
+    const title = e.target.value.trim();
+    if (title) {
+      pushUndo('Add task');
+      tasks.push({ id: Date.now(), title, desc:'', priority:'medium', due:'', tags:[],
+        completed:false, createdAt:new Date().toISOString(), completedAt:'',
+        timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 });
+      saveTasks(); renderAll();
+    }
+    document.getElementById('quick-add-overlay').classList.remove('open');
+    if (quickAddFromBackground) { quickAddFromBackground = false; api.quickaddDone(); }
+  }
+  if (e.key === 'Escape') {
+    document.getElementById('quick-add-overlay').classList.remove('open');
+    if (quickAddFromBackground) { quickAddFromBackground = false; api.quickaddDone(); }
+  }
+}
+
+// ── Modals ─────────────────────────────────────────────────────────────────
+function closeModal(overlayId) {
+  document.getElementById(overlayId).classList.remove('open');
+}
+function closeModalOutside(e, overlayId) {
+  if (e.target.id === overlayId) closeModal(overlayId);
+}
+function closeAllModals() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+  // Clean up any active inline edits
+  document.querySelectorAll('[contenteditable="true"]').forEach(el => {
+    el.contentEditable = 'false';
+    el.classList.remove('editing');
+  });
+  // Close calendar if open
+  const cal = document.getElementById('calendar-popup');
+  if (cal) { cal.style.display = 'none'; document.removeEventListener('click', closeCalendarOutside); }
+}
+
+
+// -- Settings --
+function applySettings() {
+  const s = settings;
+  // Tags sidebar + form
+  const tagsHdr = document.getElementById('tags-hdr');
+  const tagsSection = document.getElementById('tags-section');
+  if (tagsHdr) tagsHdr.style.display = s.tagsEnabled ? '' : 'none';
+  if (tagsSection) tagsSection.style.display = s.tagsEnabled ? '' : 'none';
+  const tagFormGroup = document.getElementById('tag-form-group');
+  if (tagFormGroup) tagFormGroup.style.display = s.tagsEnabled ? '' : 'none';
+  // Streak widget
+  const sw = document.querySelector('.streak-widget');
+  if (sw) sw.style.display = s.streakEnabled ? '' : 'none';
+  // What Now button
+  const wnb = document.querySelector('.btn-what-now');
+  if (wnb) wnb.style.display = s.whatNowEnabled ? '' : 'none';
+  // Estimate form row
+  const estRow = document.getElementById('estimate-form-group');
+  if (estRow) estRow.style.display = s.estimatesEnabled ? '' : 'none';
+  const dueFormGroup = document.getElementById('due-form-group');
+  if (dueFormGroup) dueFormGroup.style.display = s.dueEnabled !== false ? '' : 'none';
+  const dueTimeFormGroup = document.getElementById('due-time-form-group');
+  if (dueTimeFormGroup) dueTimeFormGroup.style.display = (s.dueEnabled !== false && s.dueTimeEnabled !== false) ? '' : 'none';
+  // Mood check-in button
+  const moodBtn = document.getElementById('mood-sidebar-btn');
+  if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
+  if (!s.moodEnabled) closeModal('mood-modal-overlay');
+  // Status sidebar group (includes divider), form field
+  const statusGroup = document.getElementById('status-sidebar-group');
+  if (statusGroup) statusGroup.style.display = s.statusEnabled !== false ? '' : 'none';
+  const statusFormGroup = document.getElementById('status-form-group');
+  if (statusFormGroup) statusFormGroup.style.display = s.statusEnabled !== false ? '' : 'none';
+  // Energy form field
+  const energyFormGroup = document.getElementById('energy-form-group');
+  if (energyFormGroup) energyFormGroup.style.display = s.energyEnabled !== false ? '' : 'none';
+  // Recurrence form section
+  const recurrenceSection = document.getElementById('recurrence-form-group');
+  if (recurrenceSection) recurrenceSection.style.display = s.recurrenceEnabled !== false ? '' : 'none';
+  // Kanban sidebar item + feature settings sub-btn
+  const kanbanItem = document.querySelector('[data-view="kanban"]');
+  if (kanbanItem) kanbanItem.style.display = s.kanbanEnabled !== false ? '' : 'none';
+  const kanbanSubBtn = document.querySelector('.feature-sub-btn[onclick*="kanban"]');
+  if (kanbanSubBtn) kanbanSubBtn.style.display = s.kanbanEnabled !== false ? '' : 'none';
+  const timerSubBtn2 = document.querySelector('.feature-sub-btn[onclick*="timer"]');
+  if (timerSubBtn2) timerSubBtn2.style.display = s.breakEnabled ? '' : 'none';
+  if (!s.breakEnabled) {
+    const timerTab = document.getElementById('feature-tab-timer');
+    if (timerTab && timerTab.classList.contains('active')) {
+      switchFeatureTab('streak', document.querySelectorAll('.feature-sub-btn')[1]);
+    }
+  }
+  // If kanban sub-tab is active and kanban is disabled, switch to timer tab
+  if (s.kanbanEnabled === false) {
+    const kanbanTab = document.getElementById('feature-tab-kanban');
+    if (kanbanTab && kanbanTab.classList.contains('active')) {
+      switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
+    }
+  }
+  // If kanban is disabled and currently active, switch to list view
+  if (s.kanbanEnabled === false && kanbanMode) {
+    kanbanMode = false;
+    const listContainer   = document.getElementById('task-list-container');
+    const kanbanContainer = document.getElementById('kanban-container');
+    if (listContainer)   listContainer.style.display = '';
+    if (kanbanContainer) kanbanContainer.classList.remove('active');
+    currentView = 'all';
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    const allItem = document.querySelector('[data-view="all"]');
+    if (allItem) allItem.classList.add('active');
+    document.getElementById('view-title').textContent = 'All Tasks';
+    renderTasks();
+  }
+  // Ideas and Habits toggles
+  const ideasItem = document.querySelector('[data-view="ideas"]');
+  if (ideasItem) ideasItem.style.display = s.ideasEnabled !== false ? '' : 'none';
+  const habitsItem = document.getElementById('sidebar-habits-main');
+  if (habitsItem) habitsItem.style.display = s.habitsEnabled !== false ? '' : 'none';
+  const winsItem = document.querySelector('[data-view="wins"]');
+  if (winsItem) winsItem.style.display = s.winsEnabled !== false ? '' : 'none';
+  // Hide the entire TOOLS section if all three are disabled
+  const toolsSection = document.getElementById('sidebar-tools-section');
+  if (toolsSection) toolsSection.style.display = (s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false) ? '' : 'none';
+  const wsDropdown = document.getElementById('workspace-dropdown');
+  const wsTitle = document.getElementById('workspace-title');
+  if (wsDropdown) wsDropdown.style.display = s.workspacesEnabled !== false ? '' : 'none';
+  if (wsTitle) wsTitle.style.display = s.workspacesEnabled !== false ? '' : 'none';
+  if (s.habitsEnabled === false && document.getElementById('habits-container')?.classList.contains('active')) {
+    habitsMode = false;
+    setView('all', document.querySelector('[data-view="all"]'));
+  }
+  if (s.ideasEnabled === false && currentView === 'ideas') {
+    setView('all', document.querySelector('[data-view="all"]'));
+  }
+  if (s.winsEnabled === false && currentView === 'wins') {
+    winsMode = false;
+    setView('all', document.querySelector('[data-view="all"]'));
+  }
+  // Show empty state in Feature Settings if no features with settings are enabled
+  const hasFeatureSettings = s.breakEnabled || s.streakEnabled !== false || s.kanbanEnabled !== false;
+  const emptyState = document.getElementById('feature-settings-empty');
+  const featureSubNav = document.getElementById('settings-tab-feature-settings')?.querySelector('div[style*="flex"]');
+  if (emptyState) emptyState.style.display = hasFeatureSettings ? 'none' : 'block';
+  document.querySelectorAll('.feature-sub-btn').forEach(b => {
+    if (!hasFeatureSettings) b.closest('div') && (b.closest('div[style]').style.display = 'none');
+  });
+  document.querySelectorAll('.feature-sub-section').forEach(el => {
+    if (!hasFeatureSettings) el.style.display = 'none';
+  });
+}
+
+async function openSettings() {
+  const s = settings;
+  // Sync dark mode toggle to current theme
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.getElementById('set-darkmode').checked = isDark;
+  // Sync accent theme picker
+  const currentAccent = document.documentElement.getAttribute('data-accent') || 'forest';
+  document.querySelectorAll('.colour-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.accent === currentAccent);
+  });
+  const nameEl = document.getElementById('colour-theme-name');
+  if (nameEl) nameEl.textContent = ACCENT_NAMES[currentAccent] || '';
+  if (document.getElementById('set-break-enabled')) document.getElementById('set-break-enabled').checked = s.breakEnabled;
+  document.getElementById('set-break-interval').value       = s.breakIntervalMins;
+  document.getElementById('set-break-duration').value       = s.breakDurationMins;
+  document.getElementById('set-tags').checked               = s.tagsEnabled;
+  document.getElementById('set-streak').checked             = s.streakEnabled;
+  document.getElementById('set-estimates').checked          = s.estimatesEnabled;
+  if (document.getElementById('set-due-enabled'))      document.getElementById('set-due-enabled').checked      = s.dueEnabled !== false;
+  if (document.getElementById('set-due-time-enabled')) document.getElementById('set-due-time-enabled').checked = s.dueTimeEnabled !== false;
+  document.getElementById('set-quickadd').checked           = s.quickAddEnabled;
+  document.getElementById('set-whatnow').checked            = s.whatNowEnabled;
+  document.getElementById('set-completion').checked         = s.completionDialog;
+  document.getElementById('set-sound-enabled').checked      = s.soundEnabled;
+  document.getElementById('set-mood-enabled').checked        = s.moodEnabled;
+  document.getElementById('set-streak-weekends').checked     = s.streakWeekends;
+  if (document.getElementById('set-grace-day')) document.getElementById('set-grace-day').checked = s.graceDayEnabled !== false;
+  if (document.getElementById('set-energy-enabled'))    document.getElementById('set-energy-enabled').checked    = s.energyEnabled !== false;
+  if (document.getElementById('set-status-enabled'))    document.getElementById('set-status-enabled').checked    = s.statusEnabled !== false;
+  if (document.getElementById('set-subtasks-enabled'))  document.getElementById('set-subtasks-enabled').checked  = s.subtasksEnabled !== false;
+  if (document.getElementById('set-recurrence-enabled')) document.getElementById('set-recurrence-enabled').checked = s.recurrenceEnabled !== false;
+  if (document.getElementById('set-kanban-enabled'))    document.getElementById('set-kanban-enabled').checked    = s.kanbanEnabled !== false;
+  if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
+  if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
+  if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
+  if (document.getElementById('set-wins-enabled'))      document.getElementById('set-wins-enabled').checked      = s.winsEnabled !== false;
+  if (document.getElementById('set-workspaces-enabled')) document.getElementById('set-workspaces-enabled').checked = s.workspacesEnabled !== false;
+  if (document.getElementById('set-break-enabled-general')) document.getElementById('set-break-enabled-general').checked = s.breakEnabled;
+  // Show/hide timer feature settings based on break enabled
+  const timerSubBtn = document.querySelector('.feature-sub-btn[onclick*="timer"]');
+  if (timerSubBtn) timerSubBtn.style.display = s.breakEnabled ? '' : 'none';
+  updateVacationUI();
+  toggleStreakSettings();
+  // Populate account info
+  const emailEl    = document.getElementById('account-email-display');
+  const statusEl   = document.getElementById('account-status-display');
+  const signoutRow = document.getElementById('account-signout-row');
+  const connectRow = document.getElementById('account-connect-row');
+  if (offlineMode) {
+    if (emailEl)     emailEl.textContent        = 'Offline mode';
+    if (statusEl)    statusEl.textContent       = 'Tasks are stored locally on this computer';
+    if (signoutRow)  signoutRow.style.display   = 'none';
+    if (connectRow)  connectRow.style.display   = '';
+  } else {
+    const cfg = await api.loadConfig();
+    if (emailEl)     emailEl.textContent        = (cfg && cfg.userEmail) || 'Google account';
+    if (statusEl)    statusEl.textContent       = 'Syncing to Google Sheets';
+    if (signoutRow)  signoutRow.style.display   = '';
+    if (connectRow)  connectRow.style.display   = 'none';
+  }
+  // Reset to first tab
+  switchSettingsTab('general', document.querySelector('.settings-nav-item'));
+  // Only switch to timer tab if break is enabled, otherwise go to streak
+  const firstFeatureBtn = s.breakEnabled
+    ? document.querySelector('.feature-sub-btn')
+    : document.querySelectorAll('.feature-sub-btn')[1];
+  if (firstFeatureBtn) switchFeatureTab(firstFeatureBtn.getAttribute('onclick').match(/'([^']+)'/)[1], firstFeatureBtn);
+  const soundPath = document.getElementById('sound-file-path');
+  soundPath.textContent = s.soundFile ? s.soundFile.split(/[\\/]/).pop() : 'Default (chime)';
+  soundPath.style.color = s.soundFile ? 'var(--text)' : 'var(--text3)';
+  document.getElementById('settings-modal-overlay').classList.add('open');
+}
+
+async function pickSoundFile() {
+  const filePath = await api.pickSoundFile();
+  if (!filePath) return;
+  settings.soundFile = filePath;
+  const soundPath = document.getElementById('sound-file-path');
+  soundPath.textContent = filePath.split(/[\\/]/).pop();
+  soundPath.style.color = 'var(--text)';
+}
+
+function clearSoundFile() {
+  settings.soundFile = null;
+  const soundPath = document.getElementById('sound-file-path');
+  soundPath.textContent = 'Default (gentle ambient tone)';
+  soundPath.style.color = 'var(--text3)';
+}
+
+function previewSound() {
+  const wasEnabled = settings.soundEnabled;
+  settings.soundEnabled = true;
+  // Temporarily use whatever file is currently selected in the UI
+  const soundPath = document.getElementById('sound-file-path').textContent;
+  playBreakSound();
+  settings.soundEnabled = wasEnabled;
+}
+
+function updateVacationUI() {
+  const s = settings;
+  const activeDiv = document.getElementById('vacation-active');
+  const setDiv    = document.getElementById('vacation-set');
+  const returnLbl = document.getElementById('vacation-return-date');
+  if (s.vacationMode && s.vacationReturn) {
+    if (activeDiv) activeDiv.style.display = '';
+    if (setDiv)    setDiv.style.display    = 'none';
+    if (returnLbl) returnLbl.textContent   = s.vacationReturn;
+  } else {
+    if (activeDiv) activeDiv.style.display = 'none';
+    if (setDiv)    setDiv.style.display    = '';
+  }
+}
+
+function activateVacationMode() {
+  const dateInput = document.getElementById('vacation-return-input');
+  const returnDate = dateInput ? dateInput.value : null;
+  if (!returnDate) { showToast('Please pick a return date first'); return; }
+  if (returnDate <= todayStr()) { showToast('Return date must be in the future'); return; }
+  settings.vacationMode   = true;
+  settings.vacationReturn = returnDate;
+  api.saveConfig({ settings });
+  updateVacationUI();
+  updateStreak();
+  showToast('Vacation mode on — streak paused until ' + returnDate + ' ⏸');
+  closeModal('settings-modal-overlay');
+}
+
+function cancelVacationMode() {
+  settings.vacationMode   = false;
+  settings.vacationReturn = null;
+  api.saveConfig({ settings });
+  updateVacationUI();
+  updateStreak();
+  showToast('Vacation mode cancelled');
+}
+
+function toggleStreakSettings() {
+  const enabled = document.getElementById('set-streak') && document.getElementById('set-streak').checked;
+  const section = document.getElementById('streak-extra-settings');
+  if (section) section.style.display = enabled ? '' : 'none';
+  // Also hide the Streak sub-nav button in Feature Settings
+  document.querySelectorAll('.feature-sub-btn').forEach(btn => {
+    if (btn.textContent.trim() === 'Streak') btn.style.display = enabled ? '' : 'none';
+  });
+  // If streak is being hidden and is currently active, switch to Timer tab
+  if (!enabled) {
+    const streakTab = document.getElementById('feature-tab-streak');
+    if (streakTab && streakTab.classList.contains('active')) {
+      switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
+    }
+  }
+}
+
+function switchSettingsTab(tab, el) {
+  document.querySelectorAll('.settings-nav-item').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.settings-panel-section').forEach(s => s.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const panel = document.getElementById('settings-tab-' + tab);
+  if (panel) panel.classList.add('active');
+  // Reset feature sub-nav when switching to feature settings
+  if (tab === 'feature-settings') switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
+}
+
+function switchFeatureTab(tab, el) {
+  document.querySelectorAll('.feature-sub-btn').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.feature-sub-section').forEach(s => s.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const panel = document.getElementById('feature-tab-' + tab);
+  if (panel) panel.classList.add('active');
+}
+
+// ── Recurring tasks ─────────────────────────────────────────────────────────
+function promptRecurringTask(task) {
+  const label = {
+    daily: 'daily', weekly: 'weekly', monthly: 'monthly',
+    custom: 'every ' + (task.recurrence.interval||1) + ' days',
+    days: 'on selected days'
+  }[task.recurrence.type] || 'recurring';
+  showConfirmModal(
+    'Recurring Task',
+    'This is a <strong>' + label + '</strong> task. Would you like to create the next occurrence?',
+    'Create Next',
+    () => _createRecurrenceOccurrence(task)
+  );
+}
+
+function _createRecurrenceOccurrence(task) {
+  const newTask = {
+    id: Date.now(),
+    title: task.title,
+    desc: task.desc || '',
+    priority: task.priority,
+    due: calcNextDueDate(task),
+    tags: [...(task.tags||[])],
+    completed: false,
+    createdAt: new Date().toISOString(),
+    completedAt: '',
+    timeLogged: 0, timeSessions: [],
+    impact: '', outcome: '', deliverable: '',
+    estimate: task.estimate || 0,
+    status: 'not-started',
+    energy: task.energy || 'medium',
+    subtasks: [],
+    recurrence: { ...task.recurrence },
+  };
+  tasks.push(newTask);
+  saveTasks();
+  renderAll();
+  showToast('Next occurrence created ↺');
+}
+
+function calcNextDueDate(task) {
+  const r = task.recurrence;
+  if (!r || r.type === 'none') return task.due || '';
+  const base = task.due ? new Date(task.due + 'T00:00:00') : new Date();
+  if (r.type === 'daily')        { base.setDate(base.getDate() + 1); }
+  else if (r.type === 'weekly')  { base.setDate(base.getDate() + 7); }
+  else if (r.type === 'monthly') { base.setMonth(base.getMonth() + 1); }
+  else if (r.type === 'custom')  { base.setDate(base.getDate() + (parseInt(r.interval)||1)); }
+  else if (r.type === 'days') {
+    const days = r.days || [];
+    if (!days.length) return task.due || '';
+    let next = new Date(base); next.setDate(next.getDate() + 1);
+    for (let i = 0; i < 7; i++) {
+      if (days.includes(next.getDay())) break;
+      next.setDate(next.getDate() + 1);
+    }
+    return dateToLocalStr(next);
+  }
+  return dateToLocalStr(base);
+}
+
+function loadRecurrenceUI(r) {
+  const type = (r && r.type) || 'none';
+  const sel = document.getElementById('tm-recurrence-type');
+  if (sel) sel.value = type;
+  // Reset day buttons
+  document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('selected'));
+  updateRecurrenceUI();
+  if (type === 'custom') {
+    const inp = document.getElementById('tm-recurrence-interval');
+    if (inp) inp.value = r.interval || 1;
+  }
+  if (type === 'days' && r.days) {
+    r.days.forEach(d => {
+      const btn = document.querySelector(`.day-btn[data-day='${d}']`);
+      if (btn) btn.classList.add('selected');
+    });
+  }
+}
+
+function updateRecurrenceUI() {
+  const sel = document.getElementById('tm-recurrence-type');
+  const type = sel ? sel.value : 'none';
+  const customRow = document.getElementById('recurrence-custom-row');
+  const daysRow   = document.getElementById('recurrence-days-row');
+  if (customRow) customRow.style.display = type === 'custom' ? '' : 'none';
+  if (daysRow)   daysRow.style.display   = type === 'days'   ? '' : 'none';
+}
+
+function toggleDayBtn(btn, event) {
+  if (event) event.stopPropagation();
+  btn.classList.toggle('selected');
+}
+
+function getRecurrenceFromUI() {
+  const sel = document.getElementById('tm-recurrence-type');
+  const type = sel ? sel.value : 'none';
+  if (type === 'none') return { type: 'none' };
+  if (type === 'custom') {
+    const interval = parseInt(document.getElementById('tm-recurrence-interval')?.value) || 1;
+    return { type: 'custom', interval };
+  }
+  if (type === 'days') {
+    const days = [...document.querySelectorAll('.day-btn.selected')].map(b => parseInt(b.dataset.day));
+    return { type: 'days', days };
+  }
+  return { type };
+}
+
+function toggleBreakFeatureTab() {
+  const enabled = document.getElementById('set-break-enabled-general')?.checked;
+  const timerSubBtn = document.querySelector('.feature-sub-btn[onclick*="timer"]');
+  if (timerSubBtn) timerSubBtn.style.display = enabled ? '' : 'none';
+  if (!enabled) {
+    const timerTab = document.getElementById('feature-tab-timer');
+    if (timerTab && timerTab.classList.contains('active')) {
+      const nextBtn = document.querySelector('.feature-sub-btn:not([style*="none"])');
+      if (nextBtn) switchFeatureTab(nextBtn.getAttribute('onclick').match(/'([^']+)'/)[1], nextBtn);
+    }
+  }
+}
+
+function toggleBreakInputs() {
+  const el = document.getElementById('set-break-enabled') || document.getElementById('set-break-enabled-general');
+  const enabled = el ? el.checked : settings.breakEnabled;
+  const row = document.getElementById('break-timing-row');
+  if (row) row.style.opacity = enabled ? '1' : '0.4';
+  document.getElementById('set-break-interval').disabled = !enabled;
+  document.getElementById('set-break-duration').disabled = !enabled;
+}
+
+function saveSettingsFromModal() {
+  settings.breakEnabled      = document.getElementById('set-break-enabled-general')
+    ? document.getElementById('set-break-enabled-general').checked
+    : (document.getElementById('set-break-enabled') ? document.getElementById('set-break-enabled').checked : settings.breakEnabled);
+  settings.breakIntervalMins = parseInt(document.getElementById('set-break-interval').value) || 30;
+  settings.breakDurationMins = parseInt(document.getElementById('set-break-duration').value) || 5;
+  settings.tagsEnabled       = document.getElementById('set-tags').checked;
+  settings.streakEnabled     = document.getElementById('set-streak').checked;
+  settings.estimatesEnabled  = document.getElementById('set-estimates').checked;
+  if (document.getElementById('set-due-enabled'))     settings.dueEnabled     = document.getElementById('set-due-enabled').checked;
+  if (document.getElementById('set-due-time-enabled')) settings.dueTimeEnabled = document.getElementById('set-due-time-enabled').checked;
+  settings.quickAddEnabled   = document.getElementById('set-quickadd').checked;
+  settings.whatNowEnabled    = document.getElementById('set-whatnow').checked;
+  settings.completionDialog  = document.getElementById('set-completion').checked;
+  settings.soundEnabled      = document.getElementById('set-sound-enabled').checked;
+  settings.moodEnabled       = document.getElementById('set-mood-enabled').checked;
+  settings.streakWeekends    = document.getElementById('set-streak-weekends').checked;
+  if (document.getElementById('set-grace-day')) settings.graceDayEnabled = document.getElementById('set-grace-day').checked;
+  if (document.getElementById('set-energy-enabled'))    settings.energyEnabled    = document.getElementById('set-energy-enabled').checked;
+  if (document.getElementById('set-status-enabled'))    settings.statusEnabled    = document.getElementById('set-status-enabled').checked;
+  if (document.getElementById('set-subtasks-enabled'))  settings.subtasksEnabled  = document.getElementById('set-subtasks-enabled').checked;
+  if (document.getElementById('set-recurrence-enabled')) settings.recurrenceEnabled = document.getElementById('set-recurrence-enabled').checked;
+  if (document.getElementById('set-kanban-enabled'))    settings.kanbanEnabled    = document.getElementById('set-kanban-enabled').checked;
+  if (document.getElementById('set-kanban-group-tags')) settings.kanbanGroupByTags = document.getElementById('set-kanban-group-tags').checked;
+  if (document.getElementById('set-ideas-enabled'))     settings.ideasEnabled     = document.getElementById('set-ideas-enabled').checked;
+  if (document.getElementById('set-habits-enabled'))    settings.habitsEnabled    = document.getElementById('set-habits-enabled').checked;
+  if (document.getElementById('set-wins-enabled'))      settings.winsEnabled      = document.getElementById('set-wins-enabled').checked;
+  if (document.getElementById('set-workspaces-enabled')) settings.workspacesEnabled = document.getElementById('set-workspaces-enabled').checked;
+  if (document.getElementById('set-break-enabled-general')) settings.breakEnabled = document.getElementById('set-break-enabled-general').checked;
+  // V3: Also save to workspace if it has its own settings
+  const _ws = getActiveWorkspace();
+  if (_ws && _ws.settings) {
+    _ws.settings = { ...settings };
+    saveWorkspaces();
+  }
+  api.saveConfig({ settings });
+  applySettings();
+  renderAll();
+  closeModal('settings-modal-overlay');
+  showToast('Settings saved');
+}
+
+// ── Habits ────────────────────────────────────────────────────────────────────
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function showHabitsView() {
+  // Hide other containers, show habits
+  document.getElementById('task-list-container').style.display = 'none';
+  document.getElementById('kanban-container').style.display = 'none';
+  document.getElementById('ideas-container').classList.remove('active');
+  document.getElementById('wins-container').classList.remove('active');
+  document.getElementById('habits-container').classList.add('active');
+  kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false;
+  // Update sidebar active state
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  const habitsBtn = document.getElementById('sidebar-habits-main');
+  if (habitsBtn) habitsBtn.classList.add('active');
+  document.getElementById('view-title').textContent = 'Habits';
+  renderHabits();
+}
+
+function renderHabits() {
+  const container = document.getElementById('habits-container');
+  if (!container) return;
+  updateHabitsSidebar();
+
+  const header = `
+    <div class="habits-header">
+      <div class="habits-view-toggle">
+        <button class="habits-view-btn ${habitsViewDays===7?'active':''}" onclick="setHabitsView(7)">7 days</button>
+        <button class="habits-view-btn ${habitsViewDays===30?'active':''}" onclick="setHabitsView(30)">30 days</button>
+      </div>
+      <button class="btn-primary" onclick="openHabitModal()">+ New Habit</button>
+    </div>`;
+
+  if (!habits.length) {
+    container.innerHTML = header + `
+      <div class="habits-empty">
+        <div style="font-size:40px;margin-bottom:12px">🔄</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px">No habits yet</div>
+        <div style="font-size:13px">Add your first habit to start tracking</div>
+      </div>`;
+    return;
+  }
+
+  const cards = habits.map(h => renderHabitCard(h)).join('');
+  container.innerHTML = header + cards;
+}
+
+function setHabitsView(days) {
+  habitsViewDays = days;
+  renderHabits();
+}
+
+function renderHabitCard(habit) {
+  const today = new Date();
+  const days = [];
+  for (let i = habitsViewDays - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    days.push(d);
+  }
+
+  const streak = calcHabitStreak(habit);
+  const best   = calcHabitBestStreak(habit);
+
+  const cells = days.map(d => {
+    const dow     = d.getDay();
+    const ds      = dateToLocalStr(d);
+    const isFuture = ds > todayStr();
+    const isNA    = !habit.days.includes(dow);
+    const isDone  = (habit.completions || {})[ds];
+    const isToday = ds === todayStr();
+
+    let cls = 'habit-day-cell';
+    let title = '';
+    if (isNA)          { cls += ' na'; title = 'N/A'; }
+    else if (isFuture) { cls += ' future'; }
+    else if (isDone)   { cls += ' done'; title = '✓'; }
+    else if (isToday)  { cls += ' today-empty'; title = '○'; }
+    else               { cls += ' missed'; title = '✕'; }
+
+    const onclick = (!isNA && !isFuture) ? `onclick="toggleHabitDay('${habit.id}','${ds}')"` : '';
+    const label = habitsViewDays <= 7 ? `<div class="habit-day-label">${DAY_NAMES[dow].slice(0,1)}</div>` : '';
+
+    return `<div>
+      <div class="${cls}" ${onclick} title="${ds}">${isDone?'✓':isNA?'':isToday?'':''}</div>
+      ${label}
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="habit-card">
+      <div class="habit-card-top">
+        <div class="habit-card-left">
+          <div class="habit-icon">${habit.icon||'🔄'}</div>
+          <div>
+            <div class="habit-name">${esc(habit.name)}</div>
+            <div class="habit-days-label">${habit.days.map(d=>DAY_NAMES[d]).join(', ')}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="habit-streaks">
+            <div class="habit-streak-item">
+              <div class="habit-streak-num">${streak}</div>
+              <div class="habit-streak-label">Streak</div>
+            </div>
+            <div class="habit-streak-item">
+              <div class="habit-streak-num" style="color:var(--amber)">${best}</div>
+              <div class="habit-streak-label">Best</div>
+            </div>
+          </div>
+          <div class="habit-actions">
+            <button class="action-btn" onclick="openHabitModal('${habit.id}')" title="Edit">✎</button>
+            <button class="action-btn delete" onclick="deleteHabit('${habit.id}')" title="Delete">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="habit-grid-wrap">
+        <div class="habit-grid">${cells}</div>
+      </div>
+    </div>`;
+}
+
+function toggleHabitDay(habitId, dateStr) {
+  const habit = habits.find(h => h.id === habitId);
+  if (!habit) return;
+  if (!habit.completions) habit.completions = {};
+  if (habit.completions[dateStr]) delete habit.completions[dateStr];
+  else habit.completions[dateStr] = true;
+  saveHabitsDebounced();
+  renderHabits();
+}
+
+function calcHabitStreak(habit) {
+  const completions = habit.completions || {};
+  let streak = 0;
+  const check = new Date();
+  // If today is an active day and not completed yet, still check previous days
+  while (true) {
+    const dow = check.getDay();
+    const ds  = dateToLocalStr(check);
+    if (!habit.days.includes(dow)) { check.setDate(check.getDate()-1); continue; }
+    if (completions[ds]) { streak++; check.setDate(check.getDate()-1); }
+    else if (ds === todayStr()) { check.setDate(check.getDate()-1); } // today not done yet, skip
+    else break;
+  }
+  return streak;
+}
+
+function calcHabitBestStreak(habit) {
+  const completions = habit.completions || {};
+  const dates = Object.keys(completions).filter(d => completions[d]).sort();
+  if (!dates.length) return 0;
+  let best = 0, current = 0;
+  const start = new Date(dates[0] + 'T00:00:00');
+  const end   = new Date();
+  const check = new Date(start);
+  while (check <= end) {
+    const dow = check.getDay();
+    const ds  = dateToLocalStr(check);
+    if (habit.days.includes(dow)) {
+      if (completions[ds]) { current++; best = Math.max(best, current); }
+      else if (ds < todayStr()) current = 0;
+    }
+    check.setDate(check.getDate()+1);
+  }
+  return best;
+}
+
+function pickHabitEmoji(emoji) {
+  if (!emoji || !emoji.trim()) return;
+  const val = emoji.trim();
+  document.getElementById('habit-icon').value = val;
+  document.getElementById('habit-icon-preview').textContent = val;
+  const customInput = document.getElementById('habit-icon-custom');
+  if (customInput && !customInput.matches(':focus')) customInput.value = val;
+  document.querySelectorAll('.emoji-pick-btn').forEach(b => {
+    b.classList.toggle('selected', b.textContent.trim() === val);
+  });
+}
+
+function openHabitModal(id = null) {
+  editingHabitId = id || null;
+  document.getElementById('habit-modal-title').textContent = id ? '✎ Edit Habit' : '＋ New Habit';
+  // Reset day buttons
+  document.querySelectorAll('#habit-day-picker .day-btn').forEach(b => b.classList.remove('selected'));
+  if (id) {
+    const habit = habits.find(h => h.id === id);
+    if (!habit) return;
+    document.getElementById('habit-name').value = habit.name;
+    const icon = habit.icon || '🔄';
+    document.getElementById('habit-icon').value = icon;
+    document.getElementById('habit-icon-preview').textContent = icon;
+    document.querySelectorAll('.emoji-pick-btn').forEach(b => {
+      b.classList.toggle('selected', b.textContent.trim() === icon);
+    });
+    habit.days.forEach(d => {
+      const btn = document.querySelector(`#habit-day-picker .day-btn[data-day="${d}"]`);
+      if (btn) btn.classList.add('selected');
+    });
+  } else {
+    document.getElementById('habit-name').value = '';
+    document.getElementById('habit-icon').value = '🔄';
+    document.getElementById('habit-icon-preview').textContent = '🔄';
+    // Select all days by default
+    document.querySelectorAll('#habit-day-picker .day-btn').forEach(b => b.classList.add('selected'));
+    const defaultBtn = document.querySelector('.emoji-pick-btn[onclick*="🔄"]');
+    if (defaultBtn) defaultBtn.classList.add('selected');
+  }
+  document.getElementById('habit-modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('habit-name').focus(), 50);
+}
+
+function saveHabit() {
+  const name = document.getElementById('habit-name').value.trim();
+  if (!name) { showToast('Please enter a habit name'); return; }
+  const icon = document.getElementById('habit-icon').value.trim() || '🔄';
+  const days = [...document.querySelectorAll('#habit-day-picker .day-btn.selected')].map(b => parseInt(b.dataset.day));
+  if (!days.length) { showToast('Please select at least one active day'); return; }
+
+  if (editingHabitId) {
+    const habit = habits.find(h => h.id === editingHabitId);
+    if (habit) { habit.name = name; habit.icon = icon; habit.days = days; }
+  } else {
+    habits.push({ id: String(Date.now()), name, icon, days, completions: {}, createdAt: new Date().toISOString() });
+  }
+  closeModal('habit-modal-overlay');
+  saveHabits();
+  renderHabits();
+}
+
+function deleteHabit(id) {
+  const habit = habits.find(h => h.id === id);
+  if (!habit) return;
+  showConfirmModal('Delete Habit', `Delete <strong>${esc(habit.name)}</strong>? This cannot be undone.`, 'Delete', () => {
+    habits = habits.filter(h => h.id !== id);
+    saveHabits();
+    renderHabits();
+  }, true);
+}
+
+function updateHabitsSidebar() {
+  // Individual habits no longer shown in sidebar
+}
+
+async function saveHabits() {
+  api.saveConfig({ habits });
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      await api.habitsSave({ accessToken, spreadsheetId, habits });
+    } catch (e) { console.error('Habits save error:', e); }
+  }
+}
+
+async function loadHabits() {
+  habits = [];
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      const remote = await api.habitsLoad({ accessToken, spreadsheetId });
+      if (remote) habits = remote;
+    } catch (e) {
+      console.error('Habits load error:', e);
+      // Fallback to config cache only if sheet load fails
+      try { const cfg = await api.loadConfig(); habits = cfg && cfg.habits ? cfg.habits : []; } catch {}
+    }
+  } else {
+    try { const cfg = await api.loadConfig(); habits = cfg && cfg.habits ? cfg.habits : []; } catch { habits = []; }
+  }
+  updateHabitsSidebar();
+}
+
+// ── Ideas ─────────────────────────────────────────────────────────────────────
+function renderIdeas() {
+  const container = document.getElementById('ideas-container');
+  if (!container) return;
+  const cntEl = document.getElementById('cnt-ideas');
+  if (cntEl) cntEl.textContent = ideas.length;
+
+  if (!ideas.length) {
+    container.innerHTML = `
+      <div class="ideas-header">
+        <div></div>
+        <button class="btn-primary" onclick="openIdeaModal()">+ New Idea</button>
+      </div>
+      <div class="idea-empty">
+        <div class="idea-empty-icon">💡</div>
+        <div class="idea-empty-text">No ideas yet</div>
+        <div class="idea-empty-sub">Capture thoughts here and turn them into tasks when you're ready</div>
+      </div>`;
+    return;
+  }
+
+  const cards = ideas.map(idea => {
+    const tags = (idea.tags||[]).map(t =>
+      `<span class="badge badge-tag" style="background:${getTagColor(t)}">${esc(t)}</span>`).join('');
+    return `
+      <div class="idea-card">
+        <div class="idea-card-title">${esc(idea.title)}</div>
+        ${idea.desc ? `<div class="idea-card-desc">${esc(idea.desc)}</div>` : ''}
+        <div class="idea-card-actions">
+          <div class="idea-card-tags" style="flex:1">${tags}</div>
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px" onclick="openIdeaModal(${idea.id})">Edit</button>
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red);border-color:var(--red)" onclick="deleteIdea(${idea.id})">Delete</button>
+          <button class="btn-primary" style="font-size:12px;padding:5px 10px" onclick="convertIdeaToTask(${idea.id})">→ Make task</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="ideas-header">
+      <div style="font-size:13px;color:var(--text3)">${ideas.length} idea${ideas.length !== 1 ? 's' : ''}</div>
+      <button class="btn-primary" onclick="openIdeaModal()">+ New Idea</button>
+    </div>
+    <div class="ideas-grid">${cards}</div>`;
+}
+
+function openIdeaModal(id = null) {
+  editingIdeaId = id;
+  ideaTags = [];
+  document.getElementById('idea-modal-title').textContent = id ? '💡 Edit Idea' : '💡 New Idea';
+  if (id) {
+    const idea = ideas.find(i => i.id === id);
+    if (!idea) return;
+    document.getElementById('idea-title').value = idea.title;
+    document.getElementById('idea-desc').value  = idea.desc || '';
+    ideaTags = [...(idea.tags || [])];
+  } else {
+    document.getElementById('idea-title').value = '';
+    document.getElementById('idea-desc').value  = '';
+  }
+  renderIdeaTags();
+  document.getElementById('idea-modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('idea-title').focus(), 50);
+}
+
+function renderIdeaTags() {
+  const area = document.getElementById('idea-tag-area');
+  if (!area) return;
+  const pills = ideaTags.map(t =>
+    `<span class="tag-pill" style="background:${getTagColor(t)}">${esc(t)}<button class="tag-pill-x" onclick="removeIdeaTag('${esc(t)}')">&times;</button></span>`
+  ).join('');
+  area.innerHTML = pills + `<input class="tag-text-input" id="idea-tag-input" placeholder="${ideaTags.length ? '' : 'Add tag…'}" onkeydown="handleIdeaTagKey(event)">`;
+}
+
+function handleIdeaTagKey(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const val = e.target.value.trim().replace(',', '');
+    if (val && !ideaTags.includes(val)) { ideaTags.push(val); renderIdeaTags(); setTimeout(() => document.getElementById('idea-tag-input')?.focus(), 0); }
+    else e.target.value = '';
+  }
+}
+
+function removeIdeaTag(tag) {
+  ideaTags = ideaTags.filter(t => t !== tag);
+  renderIdeaTags();
+}
+
+function saveIdea() {
+  const title = document.getElementById('idea-title').value.trim();
+  if (!title) { showToast('Please enter a title'); return; }
+  if (editingIdeaId) {
+    const idea = ideas.find(i => i.id === editingIdeaId);
+    if (idea) { idea.title = title; idea.desc = document.getElementById('idea-desc').value.trim(); idea.tags = [...ideaTags]; }
+  } else {
+    ideas.push({ id: Date.now(), title, desc: document.getElementById('idea-desc').value.trim(), tags: [...ideaTags], createdAt: new Date().toISOString() });
+  }
+  closeModal('idea-modal-overlay');
+  saveIdeas();
+  renderIdeas();
+}
+
+function deleteIdea(id) {
+  const idea = ideas.find(i => i.id === id);
+  showConfirmModal('Delete Idea', idea ? `Delete <strong>${esc(idea.title)}</strong>? This cannot be undone.` : 'Delete this idea?', 'Delete', () => {
+    ideas = ideas.filter(i => i.id !== id);
+    saveIdeas();
+    renderIdeas();
+  }, true);
+}
+
+function convertIdeaToTask(id) {
+  const idea = ideas.find(i => i.id === id);
+  if (!idea) return;
+  pushUndo('Convert idea to task');
+  tasks.push({
+    id: Date.now(), title: idea.title, desc: idea.desc || '',
+    priority: 'medium', due: '', tags: [...(idea.tags||[])],
+    completed: false, createdAt: new Date().toISOString(), completedAt: '',
+    timeLogged: 0, timeSessions: [], impact: '', outcome: '', deliverable: '',
+    estimate: 0, status: 'not-started', energy: 'medium', subtasks: [],
+    recurrence: { type: 'none' },
+  });
+  ideas = ideas.filter(i => i.id !== id);
+  saveTasks();
+  saveIdeas();
+  renderIdeas();
+  showToast('Idea converted to task ✓');
+}
+
+async function saveIdeas() {
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      await api.ideasSave({ accessToken, spreadsheetId, ideas });
+    } catch (e) { console.error('Ideas save error:', e); }
+  }
+  // Also keep a local copy in config
+  api.saveConfig({ ideas });
+}
+
+async function loadIdeas() {
+  ideas = [];
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      const remote = await api.ideasLoad({ accessToken, spreadsheetId });
+      if (remote) ideas = remote;
+    } catch (e) {
+      console.error('Ideas load error:', e);
+      try { const cfg = await api.loadConfig(); ideas = cfg && cfg.ideas ? cfg.ideas : []; } catch {}
+    }
+  } else {
+    try { const cfg = await api.loadConfig(); ideas = cfg && cfg.ideas ? cfg.ideas : []; } catch { ideas = []; }
+  }
+  const cntEl = document.getElementById('cnt-ideas');
+  if (cntEl) cntEl.textContent = ideas.length;
+}
+
+// ── Wins Board ────────────────────────────────────────────────────────────────
+const WIN_MOODS = [
+  { key: 'proud',    emoji: '💪', label: 'Proud' },
+  { key: 'grateful', emoji: '🙏', label: 'Grateful' },
+  { key: 'excited',  emoji: '🎉', label: 'Excited' },
+  { key: 'relieved', emoji: '😌', label: 'Relieved' },
+  { key: 'inspired', emoji: '✨', label: 'Inspired' },
+];
+const WIN_CATEGORIES = ['Work', 'Personal', 'Client', 'Milestone', 'Health', 'Learning', 'Other'];
+
+function showWinsView() {
+  document.getElementById('task-list-container').style.display = 'none';
+  document.getElementById('kanban-container').style.display = 'none';
+  document.getElementById('ideas-container').classList.remove('active');
+  document.getElementById('habits-container').classList.remove('active');
+  document.getElementById('wins-container').classList.add('active');
+  kanbanMode = false; ideasMode = false; habitsMode = false; winsMode = true;
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  const winsBtn = document.querySelector('[data-view="wins"]');
+  if (winsBtn) winsBtn.classList.add('active');
+  document.getElementById('view-title').textContent = 'Wins Board';
+  renderWins();
+}
+
+function renderWins() {
+  const container = document.getElementById('wins-container');
+  if (!container) return;
+  const cntEl = document.getElementById('cnt-wins');
+  if (cntEl) cntEl.textContent = wins.length;
+
+  const header = `
+    <div class="wins-header">
+      <div style="font-size:13px;color:var(--text3)">${wins.length} win${wins.length !== 1 ? 's' : ''}</div>
+      <div style="display:flex;gap:8px">
+        ${wins.length ? `<button class="btn-secondary wins-random-btn" onclick="showRandomWin()">🎲 Random Win</button>` : ''}
+        <button class="btn-primary" onclick="openWinModal()">+ Add Win</button>
+      </div>
+    </div>`;
+
+  if (!wins.length) {
+    container.innerHTML = `
+      <div class="wins-header">
+        <div></div>
+        <button class="btn-primary" onclick="openWinModal()">+ Add Win</button>
+      </div>
+      <div class="wins-empty">
+        <div class="wins-empty-icon">⭐</div>
+        <div class="wins-empty-title">Your Wins Board is empty</div>
+        <div class="wins-empty-sub">Capture praise, achievements and moments you're proud of.<br>Come back here whenever you need a reminder of how far you've come.</div>
+      </div>`;
+    return;
+  }
+
+  const cards = wins.slice().reverse().map(win => {
+    const mood = WIN_MOODS.find(m => m.key === win.mood);
+    const moodBadge = mood ? `<span class="badge wins-mood-badge wins-mood-${win.mood}">${mood.emoji} ${mood.label}</span>` : '';
+    const catBadge  = win.category ? `<span class="badge wins-cat-badge">${esc(win.category)}</span>` : '';
+    const dateStr   = win.date ? fmtDate(win.date) : '';
+    const source    = win.source ? `<div class="win-card-source">— ${esc(win.source)}</div>` : '';
+    return `
+      <div class="win-card">
+        <div class="win-card-quote">"${esc(win.quote)}"</div>
+        ${source}
+        <div class="win-card-meta">
+          ${moodBadge}${catBadge}
+          ${dateStr ? `<span class="badge wins-date-badge">📅 ${dateStr}</span>` : ''}
+        </div>
+        <div class="win-card-actions">
+          <button class="action-btn" onclick="openWinModal('${win.id}')" title="Edit">✎</button>
+          <button class="action-btn delete" onclick="deleteWin('${win.id}')" title="Delete">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = header + `<div class="wins-grid">${cards}</div>`;
+}
+
+function showRandomWin() {
+  if (!wins.length) return;
+  const win = wins[Math.floor(Math.random() * wins.length)];
+  const mood = WIN_MOODS.find(m => m.key === win.mood);
+  const overlay = document.getElementById('random-win-overlay');
+  document.getElementById('rw-emoji').textContent  = mood ? mood.emoji : '⭐';
+  document.getElementById('rw-quote').textContent  = `"${win.quote}"`;
+  document.getElementById('rw-source').textContent = win.source ? `— ${win.source}` : '';
+  document.getElementById('rw-source').style.display = win.source ? '' : 'none';
+  const moodBadge = mood ? `<span class="badge wins-mood-badge wins-mood-${win.mood}">${mood.emoji} ${mood.label}</span>` : '';
+  const catBadge  = win.category ? `<span class="badge wins-cat-badge">${esc(win.category)}</span>` : '';
+  const dateStr   = win.date ? fmtDate(win.date) : '';
+  const dateBadge = dateStr ? `<span class="badge wins-date-badge">📅 ${dateStr}</span>` : '';
+  document.getElementById('rw-badges').innerHTML = moodBadge + catBadge + dateBadge;
+  overlay.classList.add('open');
+}
+
+function openWinModal(id = null) {
+  editingWinId = id || null;
+  const isEdit = !!id;
+  document.getElementById('win-modal-title').textContent = isEdit ? '✎ Edit Win' : '⭐ Add a Win';
+
+  if (isEdit) {
+    const win = wins.find(w => w.id === id);
+    if (!win) return;
+    document.getElementById('win-quote').value    = win.quote || '';
+    document.getElementById('win-source').value   = win.source || '';
+    document.getElementById('win-category').value = win.category || '';
+    document.getElementById('win-date').value     = win.date || '';
+    // Set mood
+    document.querySelectorAll('.win-mood-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset.mood === win.mood);
+    });
+  } else {
+    document.getElementById('win-quote').value    = '';
+    document.getElementById('win-source').value   = '';
+    document.getElementById('win-category').value = '';
+    document.getElementById('win-date').value     = todayStr();
+    document.querySelectorAll('.win-mood-btn').forEach(b => b.classList.remove('selected'));
+    // Default to 'proud'
+    const defaultBtn = document.querySelector('.win-mood-btn[data-mood="proud"]');
+    if (defaultBtn) defaultBtn.classList.add('selected');
+  }
+  document.getElementById('win-modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('win-quote').focus(), 50);
+}
+
+function selectWinMood(btn) {
+  document.querySelectorAll('.win-mood-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+function saveWin() {
+  const quote = document.getElementById('win-quote').value.trim();
+  if (!quote) { showToast('Please enter the win or feedback'); return; }
+  const source   = document.getElementById('win-source').value.trim();
+  const category = document.getElementById('win-category').value;
+  const date     = document.getElementById('win-date').value || todayStr();
+  const moodBtn  = document.querySelector('.win-mood-btn.selected');
+  const mood     = moodBtn ? moodBtn.dataset.mood : 'proud';
+
+  if (editingWinId) {
+    const win = wins.find(w => w.id === editingWinId);
+    if (win) { win.quote = quote; win.source = source; win.category = category; win.date = date; win.mood = mood; }
+  } else {
+    wins.push({ id: String(Date.now()), quote, source, category, date, mood, createdAt: new Date().toISOString() });
+  }
+  closeModal('win-modal-overlay');
+  saveWinsDebounced();
+  renderWins();
+  const cntEl = document.getElementById('cnt-wins');
+  if (cntEl) cntEl.textContent = wins.length;
+}
+
+function deleteWin(id) {
+  showConfirmModal('Delete Win', 'Delete this win? This cannot be undone.', 'Delete', () => {
+    wins = wins.filter(w => w.id !== id);
+    saveWinsDebounced ? saveWinsDebounced() : saveWins();
+    renderWins();
+    const cntEl = document.getElementById('cnt-wins');
+    if (cntEl) cntEl.textContent = wins.length;
+  }, true);
+}
+
+// Called from completion dialog — quick-add a win from a completed task
+function addWinFromTask(taskTitle) {
+  closeModal('completion-modal-overlay');
+  document.getElementById('win-quote').value    = '';
+  document.getElementById('win-source').value   = `Completed: ${taskTitle}`;
+  document.getElementById('win-category').value = 'Milestone';
+  document.getElementById('win-date').value     = todayStr();
+  document.querySelectorAll('.win-mood-btn').forEach(b => b.classList.remove('selected'));
+  const proudBtn = document.querySelector('.win-mood-btn[data-mood="proud"]');
+  if (proudBtn) proudBtn.classList.add('selected');
+  editingWinId = null;
+  document.getElementById('win-modal-title').textContent = '⭐ Add a Win';
+  document.getElementById('win-modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('win-quote').focus(), 50);
+}
+
+async function saveWins() {
+  api.saveConfig({ wins });
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      await api.winsSave({ accessToken, spreadsheetId, wins });
+    } catch (e) { console.error('Wins save error:', e); }
+  }
+}
+
+async function loadWins() {
+  wins = [];
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      const remote = await api.winsLoad({ accessToken, spreadsheetId });
+      if (remote) wins = remote;
+    } catch (e) {
+      console.error('Wins load error:', e);
+      try { const cfg = await api.loadConfig(); wins = cfg && cfg.wins ? cfg.wins : []; } catch {}
+    }
+  } else {
+    try { const cfg = await api.loadConfig(); wins = cfg && cfg.wins ? cfg.wins : []; } catch { wins = []; }
+  }
+  const cntEl = document.getElementById('cnt-wins');
+  if (cntEl) cntEl.textContent = wins.length;
+}
+
+function openArchiveModal() {
+  document.getElementById('archive-modal-overlay').classList.add('open');
+  const d = new Date(); d.setDate(1);
+  document.getElementById('archive-date-input').value = dateToLocalStr(d);
+  updateArchivePreview();
+}
+
+function updateArchivePreview() {
+  const dateVal = document.getElementById('archive-date-input').value;
+  if (!dateVal) return;
+  const count = tasks.filter(t => t.completed && t.completedAt &&
+    dateToLocalStr(new Date(t.completedAt)) < dateVal).length;
+  const el = document.getElementById('archive-preview-count');
+  if (el) el.textContent = count + ' task' + (count !== 1 ? 's' : '') + ' will be archived';
+}
+
+async function confirmArchive() {
+  const dateVal = document.getElementById('archive-date-input').value;
+  if (!dateVal) return;
+  const toArchive = tasks.filter(t => t.completed && t.completedAt &&
+    dateToLocalStr(new Date(t.completedAt)) < dateVal);
+  if (!toArchive.length) { showToast('No tasks to archive'); return; }
+  showConfirmModal(
+    'Archive Tasks',
+    'Archive <strong>' + toArchive.length + ' task' + (toArchive.length !== 1 ? 's' : '') + '</strong>? They will be moved to your Archived tab in Google Sheets.',
+    'Archive',
+    () => _doArchive(toArchive)
+  );
+}
+
+async function _doArchive(toArchive) {
+  const archivedTasks = toArchive.map(t => ({ ...t, archivedAt: new Date().toISOString() }));
+  toArchive.forEach(t => {
+    const task = tasks.find(x => x.id === t.id);
+    if (task) { task.archived = true; task.archivedAt = new Date().toISOString(); }
+  });
+  closeModal('archive-modal-overlay');
+  showToast('Archived ' + archivedTasks.length + ' task' + (archivedTasks.length !== 1 ? 's' : ''));
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      await api.archiveAppend({ accessToken, spreadsheetId, tasks: archivedTasks });
+    } catch (e) { console.error('Archive error:', e); }
+  }
+  saveTasks();
+  renderAll();
+}
+
+function unarchiveTask(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  task.archived = false;
+  task.archivedAt = '';
+  saveTasks();
+  renderAll();
+  showToast('Task restored ✓');
+}
+
+function unarchiveSelected() {
+  const checked = document.querySelectorAll('.archive-select-cb:checked');
+  if (!checked.length) { showToast('Select at least one task to restore'); return; }
+  checked.forEach(cb => {
+    const task = tasks.find(t => t.id === parseInt(cb.dataset.id));
+    if (task) { task.archived = false; task.archivedAt = ''; }
+  });
+  saveTasks(); renderAll();
+  showToast(checked.length + ' task' + (checked.length !== 1 ? 's' : '') + ' restored ✓');
+}
+
+// ── Export ─────────────────────────────────────────────────────────────────
+// ── Export ─────────────────────────────────────────────────────────────────
+let exportOption = 'all';
+
+function openExportModal() {
+  selectExportOption('all');
+  document.getElementById('export-modal-overlay').classList.add('open');
+}
+
+// ── Import from template ──────────────────────────────────────────────────────
+function triggerImport() {
+  closeModal('settings-modal-overlay');
+  setTimeout(() => {
+    document.getElementById('import-file-input').value = '';
+    document.getElementById('import-file-input').click();
+  }, 200);
+}
+
+let pendingImport = [];
+
+function handleImportFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = parseTemplateCSV(e.target.result);
+      if (!imported.length) {
+        showToast('No tasks found in file — check it is a valid TaskSpark CSV');
+        return;
+      }
+      showImportPreview(imported);
+    } catch (err) {
+      showToast('Could not read file — check it is a valid TaskSpark CSV');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function showImportPreview(imported) {
+  pendingImport = imported;
+  const pColor = { high: 'var(--red)', medium: 'var(--amber)', low: 'var(--blue)' };
+  document.getElementById('import-preview-summary').textContent =
+    `${imported.length} task${imported.length !== 1 ? 's' : ''} found — select which ones to import then click Import Tasks.`;
+  document.getElementById('import-preview-list').innerHTML = imported.map((t, i) => `
+    <div style="padding:12px 14px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border);display:flex;gap:12px;align-items:flex-start">
+      <input type="checkbox" class="import-task-cb" data-index="${i}" checked
+        style="width:16px;height:16px;margin-top:2px;accent-color:var(--accent);cursor:pointer;flex-shrink:0"
+        onchange="updateImportCount()">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:3px">${esc(t.title)}</div>
+        ${t.desc ? `<div style="font-size:12px;color:var(--text3);margin-bottom:5px;line-height:1.5">${esc(t.desc)}</div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:11px;font-weight:600;color:${pColor[t.priority]||'var(--text3)'}">${t.priority}</span>
+          ${t.estimate ? `<span style="font-size:11px;color:var(--text3)">~${t.estimate}m</span>` : ''}
+          ${(t.tags||[]).map(tag => `<span style="font-size:11px;background:var(--accent-l);color:var(--accent);padding:1px 6px;border-radius:4px">${esc(tag)}</span>`).join('')}
+        </div>
+      </div>
+    </div>`).join('');
+  const selectAll = document.getElementById('import-select-all');
+  if (selectAll) selectAll.checked = true;
+  updateImportCount();
+  document.getElementById('import-modal-overlay').classList.add('open');
+}
+
+function updateImportCount() {
+  const checked = document.querySelectorAll('.import-task-cb:checked').length;
+  const total = document.querySelectorAll('.import-task-cb').length;
+  const btn = document.getElementById('import-confirm-btn');
+  if (btn) btn.textContent = checked === 0 ? 'Import Tasks' : `Import ${checked} Task${checked !== 1 ? 's' : ''}`;
+  const selectAll = document.getElementById('import-select-all');
+  if (selectAll) selectAll.checked = checked === total;
+}
+
+function toggleImportSelectAll(checked) {
+  document.querySelectorAll('.import-task-cb').forEach(cb => cb.checked = checked);
+  updateImportCount();
+}
+
+function confirmImport() {
+  const checked = [...document.querySelectorAll('.import-task-cb:checked')].map(cb => parseInt(cb.dataset.index));
+  if (!checked.length) { showToast('No tasks selected'); return; }
+  const toImport = checked.map(i => pendingImport[i]);
+  pushUndo('Import template');
+  tasks.push(...toImport);
+  pendingImport = [];
+  saveTasks();
+  renderAll();
+  closeModal('import-modal-overlay');
+  showToast(`✓ Imported ${toImport.length} task${toImport.length !== 1 ? 's' : ''}`);
+}
+
+function parseTemplateCSV(csv) {
+  const lines = csv.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(l => l);
+  if (lines.length < 2) return [];
+  const headers = parseCSVRow(lines[0]);
+  const col = (name) => headers.indexOf(name);
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCSVRow(lines[i]);
+    if (!row[col('title')] || !row[col('title')].trim()) continue;
+    results.push({
+      id: Date.now() + i,
+      title: row[col('title')] || '',
+      desc: row[col('desc')] || '',
+      priority: row[col('priority')] || 'medium',
+      due: row[col('due')] || '',
+      dueTime: row[col('dueTime')] || '',
+      tags: row[col('tags')] ? row[col('tags')].split(',').map(t => t.trim()).filter(Boolean) : [],
+      energy: row[col('energy')] || 'medium',
+      status: row[col('status')] || 'not-started',
+      estimate: parseInt(row[col('estimate')]) || 0,
+      completed: false, archived: false,
+      createdAt: new Date().toISOString(),
+      completedAt: '', timeLogged: 0, timeSessions: [],
+      impact: '', outcome: '', deliverable: '',
+      subtasks: [], recurrence: { type: 'none' },
+    });
+  }
+  return results;
+}
+
+function parseCSVRow(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current); current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function selectExportOption(opt) {
+  exportOption = opt;
+  document.getElementById('export-opt-all').classList.toggle('selected', opt === 'all');
+  document.getElementById('export-opt-completed').classList.toggle('selected', opt === 'completed');
+}
+
+function runExport() {
+  const excludeArchived = document.getElementById('export-exclude-archived')?.checked;
+  let toExport = exportOption === 'completed'
+    ? tasks.filter(t => t.completed)
+    : [...tasks];
+  if (excludeArchived) toExport = toExport.filter(t => !t.archived);
+
+  if (!toExport.length) {
+    showToast(exportOption === 'completed' ? 'No completed tasks to export yet.' : 'No tasks to export yet.');
+    return;
+  }
+
+  const headers = ['Title','Description','Priority','Status','Tags','Due Date',
+    'Time Logged','Impact','Outcome','Deliverable','Completed At','Created At'];
+
+  const rows = toExport.map(t => [
+    t.title, t.desc||'',
+    t.priority.charAt(0).toUpperCase()+t.priority.slice(1),
+    t.completed ? 'Completed' : 'Active',
+    (t.tags||[]).join(';'),
+    t.due ? fmtDate(t.due) : '',
+    t.timeLogged ? fmtSecs(t.timeLogged) : '',
+    t.impact||'', t.outcome||'', t.deliverable||'',
+    t.completedAt ? new Date(t.completedAt).toLocaleString() : '',
+    t.createdAt   ? new Date(t.createdAt).toLocaleString()   : '',
+  ].map(v => `"${String(v).replace(/"/g,'""')}"`).join(','));
+
+  const csv      = [headers.join(','), ...rows].join('\n');
+  const blob     = new Blob([csv], { type:'text/csv' });
+  const url      = URL.createObjectURL(blob);
+  const a        = document.createElement('a');
+  const filename = exportOption === 'completed'
+    ? `completed-tasks-${todayStr()}.csv`
+    : `all-tasks-${todayStr()}.csv`;
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+  closeModal('export-modal-overlay');
+}
+
+
+// ── Mood check-in ───────────────────────────────────────────────────────────
+const MOOD_LABELS = { sad: 'Not great 😔', neutral: 'Okay 😐', happy: 'Good 😊' };
+
+function openMoodModal() {
+  const saved = getTodayMood();
+  highlightMoodBtn(saved);
+  const savedText = document.getElementById('mood-saved-text');
+  if (savedText) savedText.textContent = saved ? 'Today: ' + MOOD_LABELS[saved] : '';
+  document.getElementById('mood-modal-overlay').classList.add('open');
+}
+
+function closeMoodBanner() {}
+
+function selectMood(mood) {
+  highlightMoodBtn(mood);
+  saveTodayMood(mood);
+  const savedText = document.getElementById('mood-saved-text');
+  if (savedText) savedText.textContent = 'Today: ' + MOOD_LABELS[mood];
+  updateMoodSidebarBtn();
+  setTimeout(() => closeModal('mood-modal-overlay'), 700);
+}
+
+function updateMoodSidebarBtn() {
+  const btn = document.getElementById('mood-sidebar-btn');
+  if (!btn) return;
+  const mood = getTodayMood();
+  if (mood) {
+    const icons = { sad: '😔', okay: '😐', good: '😊' };
+    btn.textContent = `${icons[mood] || '♥'} \u00a0You're feeling ${mood === 'sad' ? 'not great' : mood} today`;
+  } else {
+    btn.innerHTML = '\u2665 \u00a0How are you feeling?';
+  }
+}
+
+function highlightMoodBtn(mood) {
+  ['sad','neutral','happy'].forEach(m => {
+    const btn = document.getElementById('mood-'+m);
+    if (btn) btn.classList.toggle('selected', m === mood);
+  });
+}
+
+function getTodayMood() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('taskspark_mood') || '{}');
+    return stored.date === todayStr() ? stored.mood : null;
+  } catch { return null; }
+}
+
+function saveTodayMood(mood) {
+  try {
+    localStorage.setItem('taskspark_mood', JSON.stringify({ date: todayStr(), mood }));
+  } catch {}
+  // Save to mood history in Google Sheets
+  if (!offlineMode && accessToken && spreadsheetId) {
+    saveMoodHistory(todayStr(), mood);
+  }
+}
+
+async function saveMoodHistory(date, mood) {
+  try {
+    await ensureToken();
+    await api.moodAppend({ accessToken, spreadsheetId, date, mood });
+  } catch (e) {}
+}
+
+// ── What's New ───────────────────────────────────────────────────────────────
+async function checkWhatsNew(currentVersion) {
+  try {
+    const cfg = await api.loadConfig();
+    const lastSeen = cfg && cfg.lastSeenVersion;
+    if (lastSeen === currentVersion) return; // already seen this version
+    // Fetch changelog from GitHub
+    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
+    const release = await res.json();
+    if (!release || !release.tag_name) return;
+    // Show modal after a short delay so app finishes loading first
+    setTimeout(() => showWhatsNew(currentVersion, release), 1500);
+  } catch (e) {
+    console.warn('Could not fetch changelog:', e);
+  }
+}
+
+function showWhatsNew(version, release) {
+  const overlay = document.getElementById('whatsnew-modal-overlay');
+  const versionEl = document.getElementById('whatsnew-version');
+  const bodyEl = document.getElementById('whatsnew-body');
+  if (!overlay) return;
+  versionEl.textContent = `Version ${version}`;
+  // Parse the markdown release notes into readable text
+  const body = release.body || 'No changelog available for this release.';
+  bodyEl.textContent = body;
+  overlay.classList.add('open');
+}
+
+function closeWhatsNew() {
+  document.getElementById('whatsnew-modal-overlay').classList.remove('open');
+  // Save current version so modal doesn't show again
+  api.getVersion().then(v => api.saveConfig({ lastSeenVersion: v }));
+}
+
+// ── Tutorial ─────────────────────────────────────────────────────────────────
+const TUTORIAL_STEPS = [
+  {
+    target: null,
+    title: 'Welcome to TaskSpark! 👋',
+    desc: 'TaskSpark is built for neuro-diverse minds — reducing decision fatigue, fighting time blindness, and making it easier to start, focus, and actually finish. Let\'s take a quick tour.'
+  },
+  {
+    target: '#task-list',
+    title: 'Your Task List',
+    desc: 'This is where all your tasks live. Each card shows the priority, due date, tags, status and energy level at a glance. Click the checkbox to complete a task.'
+  },
+  {
+    target: '.btn-new-task',
+    title: 'Adding Tasks',
+    desc: 'Click "+ New Task" to add something new. You can set a title, description, priority, due date, tags, status and energy level. You can also press Ctrl+Space from anywhere to quickly capture a task.'
+  },
+  {
+    target: '.btn-what-now',
+    title: 'What Now?',
+    desc: 'Not sure where to start? Hit "What Now?" and TaskSpark will pick the most important task for you based on priority, due date, and how you\'re feeling today.'
+  },
+  {
+    target: '.streak-widget',
+    title: 'Your Streak',
+    desc: 'Complete at least one task every day to build your streak. TaskSpark tracks your current streak and your best ever. Weekends can be included or excluded in Settings.'
+  },
+  {
+    target: '#sidebar-scroll',
+    title: 'Sidebar Filters',
+    desc: 'Use the sidebar to filter tasks by view, priority, status or tag. "Due Today" and "Overdue" help you stay on top of what needs attention right now.'
+  },
+  {
+    target: '.mood-sidebar-btn, #mood-sidebar-btn',
+    title: 'Mood Check-in',
+    desc: 'Tell TaskSpark how you\'re feeling today. Your mood influences what "What Now?" recommends — on low energy days it suggests lighter tasks, on good days it pushes the big ones.'
+  },
+  {
+    target: '.sidebar-bottom',
+    title: 'Settings & Refresh',
+    desc: 'Open Settings to customise every feature — turn things on or off, adjust timers, manage your account and export your data.'
+  },
+  {
+    target: null,
+    title: 'How would you like to get started?',
+    desc: 'Choose a starting configuration — you can always change anything in Settings later.',
+    preset: true
+  }
+];
+
+let tutorialStep = 0;
+
+function startTutorial() {
+  tutorialStep = 0;
+  document.getElementById('tutorial-overlay').classList.add('active');
+  showTutorialStep(0);
+}
+
+function showTutorialStep(index) {
+  const steps = TUTORIAL_STEPS;
+  if (index >= steps.length) { endTutorial(); return; }
+  const step = steps[index];
+
+  document.getElementById('tut-step-label').textContent = `Step ${index + 1} of ${steps.length}`;
+  document.getElementById('tut-title').textContent = step.title;
+  document.getElementById('tut-desc').textContent   = step.desc;
+  document.getElementById('tut-next-btn').textContent = step.last ? 'Get started!' : 'Next';
+  const normalActions = document.getElementById('tut-normal-actions');
+  const presetActions = document.getElementById('tut-preset-actions');
+  if (normalActions) normalActions.style.display = step.preset ? 'none' : 'flex';
+  if (presetActions) presetActions.style.display = step.preset ? 'flex' : 'none';
+
+  // Highlight target element
+  const hl = document.getElementById('tutorial-highlight');
+  if (step.target) {
+    const el = document.querySelector(step.target);
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const pad = 6;
+      hl.style.left   = (r.left - pad) + 'px';
+      hl.style.top    = (r.top - pad) + 'px';
+      hl.style.width  = (r.width + pad * 2) + 'px';
+      hl.style.height = (r.height + pad * 2) + 'px';
+      hl.style.display = 'block';
+    } else {
+      hl.style.display = 'none';
+    }
+  } else {
+    hl.style.display = 'none';
+  }
+}
+
+function tutorialNext() {
+  tutorialStep++;
+  if (tutorialStep >= TUTORIAL_STEPS.length) {
+    endTutorial();
+  } else {
+    showTutorialStep(tutorialStep);
+  }
+}
+
+function skipTutorial() {
+  endTutorial();
+}
+
+function applyPreset(preset) {
+  if (preset === 'basic') {
+    settings.tagsEnabled = false; settings.streakEnabled = false;
+    settings.estimatesEnabled = false; settings.quickAddEnabled = false;
+    settings.whatNowEnabled = false; settings.completionDialog = false;
+    settings.moodEnabled = false; settings.energyEnabled = false;
+    settings.statusEnabled = false; settings.soundEnabled = false;
+    settings.breakEnabled = false;
+  } else if (preset === 'full') {
+    settings.tagsEnabled = true; settings.streakEnabled = true;
+    settings.estimatesEnabled = true; settings.quickAddEnabled = true;
+    settings.whatNowEnabled = true; settings.completionDialog = true;
+    settings.moodEnabled = true; settings.energyEnabled = true;
+    settings.statusEnabled = true; settings.soundEnabled = true;
+    settings.breakEnabled = true;
+  }
+  api.saveConfig({ settings });
+  applySettings();
+  renderAll();
+  endTutorial();
+  if (preset === 'basic') showToast('Basic mode set — start simple, add more later!');
+  if (preset === 'full')  showToast('Full mode set — all features on!');
+}
+
+function applyCustomPreset() {
+  endTutorial();
+  setTimeout(() => openSettings(), 200);
+}
+
+function endTutorial() {
+  document.getElementById('tutorial-overlay').classList.remove('active');
+  document.getElementById('tutorial-highlight').style.display = 'none';
+  api.saveConfig({ tutorialComplete: true });
+}
+
+// ── Performance ─────────────────────────────────────────────────────────────
+
+
+// ── Styled Confirm Modal ───────────────────────────────────────────────────────
+let _confirmCallback = null;
+
+function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false) {
+  _confirmCallback = callback;
+  document.getElementById('confirm-modal-title').textContent = title;
+  document.getElementById('confirm-modal-body').innerHTML = bodyHtml;
+  const okBtn = document.getElementById('confirm-modal-ok');
+  okBtn.textContent = okLabel || 'Confirm';
+  okBtn.style.background = danger ? 'var(--red)' : '';
+  okBtn.style.borderColor = danger ? 'var(--red)' : '';
+  document.getElementById('confirm-modal-overlay').classList.add('open');
+}
+
+function closeConfirmModal() {
+  _confirmCallback = null;
+  document.getElementById('confirm-modal-overlay').classList.remove('open');
+}
+
+function confirmModalOk() {
+  const cb = _confirmCallback;
+  closeConfirmModal();
+  if (cb) cb();
+}
+
+// ── Workspaces ────────────────────────────────────────────────────────────────
+
+
+async function prefetchAllWorkspaces() {
+  // Silently fetch all non-active workspaces in the background after startup
+  const others = workspaces.filter(w => w.id !== activeWorkspaceId);
+  for (const ws of others) {
+    try {
+      await ensureToken();
+      const [wsTasks, wsHabits, wsIdeas, wsWins] = await Promise.all([
+        api.sheetsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+        api.habitsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+        api.ideasLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+        api.winsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+      ]);
+      _wsCache[ws.id] = {
+        tasks: wsTasks || [],
+        habits: wsHabits || [],
+        ideas: wsIdeas || [],
+        wins: wsWins || [],
+      };
+    } catch (e) {
+      console.warn(`[prefetch] Failed for workspace ${ws.name}:`, e.message);
+    }
+  }
+}
+
+
+function setWorkspaceSwitching(name) {
+  const btn = document.getElementById('workspace-dropdown-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:ws-spin .6s linear infinite;flex-shrink:0;margin-right:8px"></span><span style="flex:1;color:var(--text2)">Switching to ${esc(name)}…</span>`;
+}
+
+function clearWorkspaceSwitching() {
+  const btn = document.getElementById('workspace-dropdown-btn');
+  if (!btn) return;
+  btn.disabled = false;
+  renderWorkspaceDropdown();
+}
+
+function getActiveWorkspace() {
+  return workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0] || null;
+}
+
+async function saveWorkspaces() {
+  await api.workspacesSave({ workspaces, activeWorkspaceId });
+}
+
+function updateWorkspaceTitle() {
+  const ws = getActiveWorkspace();
+  const el = document.getElementById('workspace-title');
+  if (!el) return;
+  if (ws && workspaces.length > 1) {
+    const colour = WORKSPACE_COLOURS.find(c => c.id === ws.colour);
+    el.textContent = ws.name;
+    el.style.color = colour ? colour.hex : 'var(--accent)';
+    el.style.display = 'inline-block';
+  } else if (ws) {
+    const colour = WORKSPACE_COLOURS.find(c => c.id === ws.colour);
+    el.textContent = ws.name;
+    el.style.color = colour ? colour.hex : 'var(--accent)';
+    el.style.display = 'inline-block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function renderWorkspaceDropdown() {
+  const btn = document.getElementById('workspace-dropdown-btn');
+  const menu = document.getElementById('workspace-dropdown-menu');
+  if (!btn || !menu) return;
+
+  const ws = getActiveWorkspace();
+  const colour = ws ? (WORKSPACE_COLOURS.find(c => c.id === ws.colour) || WORKSPACE_COLOURS[0]) : WORKSPACE_COLOURS[0];
+
+  btn.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colour.hex};margin-right:6px;flex-shrink:0"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ws ? ws.name : 'My Workspace'}</span><span style="margin-left:4px;font-size:10px;color:var(--text3)">▾</span>`;
+
+  menu.innerHTML = workspaces.map(w => {
+    const c = WORKSPACE_COLOURS.find(x => x.id === w.colour) || WORKSPACE_COLOURS[0];
+    const isActive = w.id === activeWorkspaceId;
+    return `<div class="ws-menu-item${isActive ? ' ws-active' : ''}" onclick="switchWorkspace('${w.id}')">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.hex};margin-right:8px;flex-shrink:0"></span>
+      <span style="flex:1">${esc(w.name)}</span>
+      ${isActive ? '<span style="color:var(--accent);font-size:12px">✓</span>' : ''}
+    </div>`;
+  }).join('') +
+  `<div class="ws-menu-divider"></div>` +
+  (workspaces.length < MAX_WORKSPACES ? `<div class="ws-menu-item" onclick="openNewWorkspaceModal()"><span style="margin-right:8px">+</span>New Workspace</div>` : `<div class="ws-menu-item ws-disabled"><span style="margin-right:8px">+</span>Max ${MAX_WORKSPACES} workspaces</div>`) +
+  `<div class="ws-menu-item" onclick="openManageWorkspacesModal()"><span style="margin-right:8px">⚙</span>Manage Workspaces</div>`;
+}
+
+function toggleWorkspaceDropdown(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('workspace-dropdown-menu');
+  if (!menu) return;
+  const isOpen = menu.classList.contains('open');
+  closeWorkspaceDropdown();
+  if (!isOpen) {
+    menu.classList.add('open');
+    renderWorkspaceDropdown();
+  }
+}
+
+function closeWorkspaceDropdown() {
+  const menu = document.getElementById('workspace-dropdown-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+async function switchWorkspace(id) {
+  closeWorkspaceDropdown();
+  if (id === activeWorkspaceId) return;
+
+  const target = workspaces.find(w => w.id === id);
+  if (!target) return;
+  setWorkspaceSwitching(target.name);
+
+  try {
+    // Snapshot current data into cache before leaving
+    _wsCache[activeWorkspaceId] = {
+      tasks: [...tasks],
+      habits: [...habits],
+      ideas: [...ideas],
+      wins: [...wins],
+    };
+
+    activeWorkspaceId = id;
+    spreadsheetId = target.spreadsheetId;
+
+    // Apply per-workspace settings if they exist
+    if (target.settings) {
+      settings = { ...DEFAULT_SETTINGS, ...target.settings };
+      applySettings();
+    }
+
+    await saveWorkspaces();
+    updateWorkspaceTitle();
+    renderWorkspaceDropdown();
+
+    // If we have pre-fetched data, show instantly then sync in background
+    if (_wsCache[id]) {
+      tasks   = _wsCache[id].tasks   || [];
+      habits  = _wsCache[id].habits  || [];
+      ideas   = _wsCache[id].ideas   || [];
+      wins    = _wsCache[id].wins    || [];
+      renderAll();
+      updateHabitsSidebar();
+      const cntIdeas = document.getElementById('cnt-ideas');
+      if (cntIdeas) cntIdeas.textContent = ideas.length;
+      const cntWins = document.getElementById('cnt-wins');
+      if (cntWins) cntWins.textContent = wins.length;
+      clearWorkspaceSwitching();
+      showToast(`Switched to ${target.name}`);
+      // Background sync to pick up any remote changes
+      setTimeout(async () => {
+        await api.saveCache([]);
+        await connectToSheets();
+        await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
+        _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+      }, 500);
+    } else {
+      // No cache yet — load fresh
+      tasks = []; habits = []; ideas = []; wins = [];
+      await api.saveCache([]);
+      renderAll();
+      await connectToSheets();
+      await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
+      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+      clearWorkspaceSwitching();
+      showToast(`Switched to ${target.name}`);
+    }
+  } catch (e) {
+    console.error('[switchWorkspace] error:', e.message);
+    clearWorkspaceSwitching();
+    showToast('Switch failed — please try again');
+  }
+}
+
+// ── First-time setup modal (for V2 → V3 upgrade) ──────────────────────────
+function showWorkspaceSetupModal() {
+  const overlay = document.getElementById('ws-setup-modal-overlay');
+  if (overlay) overlay.classList.add('open');
+}
+
+async function confirmWorkspaceSetup() {
+  const nameInput = document.getElementById('ws-setup-name');
+  const name = (nameInput ? nameInput.value.trim() : '') || 'My Workspace';
+  const colourId = document.querySelector('.ws-colour-btn.selected')?.dataset.colour || 'green';
+
+  const ws = {
+    id: 'ws_' + Date.now(),
+    name,
+    colour: colourId,
+    spreadsheetId,
+    settings: null,
+  };
+  workspaces = [ws];
+  activeWorkspaceId = ws.id;
+  await saveWorkspaces();
+
+  const overlay = document.getElementById('ws-setup-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+
+  workspaceSetupPending = false;
+  updateWorkspaceTitle();
+  renderWorkspaceDropdown();
+  showToast('Workspace set up!');
+}
+
+// ── New workspace modal ────────────────────────────────────────────────────
+function openNewWorkspaceModal() {
+  closeWorkspaceDropdown();
+  if (workspaces.length >= MAX_WORKSPACES) {
+    showToast(`Maximum ${MAX_WORKSPACES} workspaces allowed`);
+    return;
+  }
+  const overlay = document.getElementById('ws-new-modal-overlay');
+  if (!overlay) return;
+  const input = document.getElementById('ws-new-name');
+  if (input) input.value = '';
+  // Reset colour selection
+  document.querySelectorAll('#ws-new-modal-overlay .ws-colour-btn').forEach(b => b.classList.remove('selected'));
+  const first = document.querySelector('#ws-new-modal-overlay .ws-colour-btn');
+  if (first) first.classList.add('selected');
+  overlay.classList.add('open');
+}
+
+function closeNewWorkspaceModal() {
+  const overlay = document.getElementById('ws-new-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+async function confirmNewWorkspace() {
+  const nameInput = document.getElementById('ws-new-name');
+  const name = (nameInput ? nameInput.value.trim() : '');
+  if (!name) { showToast('Please enter a workspace name'); return; }
+  const colourId = document.querySelector('#ws-new-modal-overlay .ws-colour-btn.selected')?.dataset.colour || 'green';
+
+  const statusEl = document.getElementById('ws-new-status');
+  if (statusEl) statusEl.textContent = 'Creating spreadsheet…';
+
+  try {
+    await ensureToken();
+    const sheetName = `TaskSpark – ${name}`;
+    const sheet = await api.driveCreateSheetNamed({ accessToken, name: sheetName });
+    if (!sheet.spreadsheetId) throw new Error('Could not create spreadsheet');
+
+    const ws = {
+      id: 'ws_' + Date.now(),
+      name,
+      colour: colourId,
+      spreadsheetId: sheet.spreadsheetId,
+      settings: null,
+    };
+    workspaces.push(ws);
+    await saveWorkspaces();
+    closeNewWorkspaceModal();
+    if (statusEl) statusEl.textContent = '';
+    showToast(`Workspace "${name}" created`);
+    renderWorkspaceDropdown();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `Error: ${e.message}`;
+  }
+}
+
+// ── Manage workspaces modal ────────────────────────────────────────────────
+function openManageWorkspacesModal() {
+  closeWorkspaceDropdown();
+  renderManageWorkspacesList();
+  renderWorkspaceSettingsBadge();
+  const overlay = document.getElementById('ws-manage-modal-overlay');
+  if (overlay) overlay.classList.add('open');
+}
+
+function closeManageWorkspacesModal() {
+  const overlay = document.getElementById('ws-manage-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function renderManageWorkspacesList() {
+  const list = document.getElementById('ws-manage-list');
+  if (!list) return;
+  list.innerHTML = workspaces.map(w => {
+    const c = WORKSPACE_COLOURS.find(x => x.id === w.colour) || WORKSPACE_COLOURS[0];
+    const isActive = w.id === activeWorkspaceId;
+    return `<div class="ws-manage-item" data-id="${w.id}">
+      <span class="ws-manage-dot" style="background:${c.hex}"></span>
+      <span class="ws-manage-name">${esc(w.name)}</span>
+      ${isActive ? '<span class="ws-manage-badge">Active</span>' : ''}
+      <div class="ws-manage-actions">
+        <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openRenameWorkspace('${w.id}')">Rename</button>
+        ${workspaces.length > 1 ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="promptDeleteWorkspace('${w.id}')">Delete</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openRenameWorkspace(id) {
+  const ws = workspaces.find(w => w.id === id);
+  if (!ws) return;
+  // Use an inline rename row instead of prompt() for Electron compatibility
+  const item = document.querySelector(`.ws-manage-item[data-id="${id}"]`);
+  if (!item) return;
+  const nameEl = item.querySelector('.ws-manage-name');
+  if (!nameEl) return;
+  const current = ws.name;
+  nameEl.innerHTML = `<input class="form-input" id="ws-rename-input-${id}" value="${esc(current)}" style="font-size:13px;padding:5px 8px;width:160px" maxlength="30">`;
+  const inp = document.getElementById(`ws-rename-input-${id}`);
+  inp.focus(); inp.select();
+  inp.onkeydown = (e) => {
+    if (e.key === 'Enter') confirmRename(id, inp.value);
+    if (e.key === 'Escape') { renderManageWorkspacesList(); }
+  };
+  inp.onblur = () => { setTimeout(() => confirmRename(id, inp.value), 150); };
+}
+
+function confirmRename(id, value) {
+  const ws = workspaces.find(w => w.id === id);
+  if (!ws) return;
+  const trimmed = value.trim();
+  if (trimmed && trimmed !== ws.name) {
+    ws.name = trimmed;
+    saveWorkspaces();
+    renderWorkspaceDropdown();
+    updateWorkspaceTitle();
+  }
+  renderManageWorkspacesList();
+}
+
+async function promptDeleteWorkspace(id) {
+  const ws = workspaces.find(w => w.id === id);
+  if (!ws) return;
+  if (workspaces.length <= 1) { showToast('Cannot delete the last workspace'); return; }
+
+  showConfirmModal(
+    `Delete "${ws.name}"`,
+    `This workspace will be removed from TaskSpark.<br><br>The Google Sheet linked to this workspace will <strong>not</strong> be deleted from your Google Drive — you can manage it there.`,
+    'Delete Workspace',
+    async () => {
+      workspaces = workspaces.filter(w => w.id !== id);
+      if (activeWorkspaceId === id) {
+        await switchWorkspace(workspaces[0].id);
+      } else {
+        await saveWorkspaces();
+      }
+      renderManageWorkspacesList();
+      renderWorkspaceDropdown();
+      showToast(`Workspace "${ws.name}" removed`);
+    },
+    true
+  );
+}
+
+// Per-workspace settings toggle
+function toggleWorkspaceSharedSettings() {
+  const ws = getActiveWorkspace();
+  if (!ws) return;
+  if (ws.settings) {
+    ws.settings = null;
+    showToast('This workspace now shares settings with all workspaces');
+  } else {
+    ws.settings = { ...settings };
+    showToast('This workspace now has its own settings');
+  }
+  saveWorkspaces();
+  renderWorkspaceSettingsBadge();
+}
+
+function renderWorkspaceSettingsBadge() {
+  const ws = getActiveWorkspace();
+  const desc = document.getElementById('ws-settings-description');
+  const btn = document.getElementById('ws-settings-toggle-btn');
+  if (!ws) return;
+  if (ws.settings) {
+    if (desc) desc.textContent = 'This workspace has its own settings. Changes to sort order, features, and break timers only affect this workspace.';
+    if (btn) btn.textContent = 'Switch to shared settings';
+  } else {
+    if (desc) desc.textContent = 'This workspace shares settings with all other workspaces. Changes to sort order, features, and break timers apply everywhere.';
+    if (btn) btn.textContent = 'Give this workspace its own settings';
+  }
+}
+
+function selectWorkspaceColour(btn, modalPrefix) {
+  document.querySelectorAll(`#${modalPrefix} .ws-colour-btn`).forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+// Close workspace dropdown on outside click
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#workspace-dropdown-btn') && !e.target.closest('#workspace-dropdown-menu')) {
+    closeWorkspaceDropdown();
+  }
+});
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+// Debounced Google Sheets saves — batch rapid changes into a single API call
+const saveTasksDebounced  = debounce(() => saveTasks(), 1500);
+const saveHabitsDebounced = debounce(() => saveHabits(), 2000);
+const saveIdeasDebounced  = debounce(() => saveIdeas(), 2000);
+const saveWinsDebounced   = debounce(() => saveWins(), 2000);
+
+// Debounced render — collapses rapid successive renderAll calls
+let renderPending = false;
+function scheduleRender() {
+  if (renderPending) return;
+  renderPending = true;
+  requestAnimationFrame(() => { renderPending = false; renderAll(); });
+}
+
+// ── Offline mode ─────────────────────────────────────────────────────────────
+function showOfflineConfirm() {
+  document.getElementById('offline-confirm-screen').classList.add('active');
+}
+
+function cancelOfflineConfirm() {
+  document.getElementById('offline-confirm-screen').classList.remove('active');
+}
+
+async function startOfflineMode() {
+  offlineMode = true;
+  await api.saveConfig({ offlineMode: true });
+  document.getElementById('offline-confirm-screen').classList.remove('active');
+  showApp();
+  loadOfflineTasks();
+  setTimeout(startTutorial, 1000);
+}
+
+async function loadOfflineTasks() {
+  tasks = await api.loadCache();
+  if (!tasks.length) tasks = sampleTasks();
+  await api.saveCache(tasks);
+  setSyncStatus('offline');
+  const btn = document.getElementById('connect-google-btn');
+  if (btn) btn.style.display = '';
+  renderAll();
+}
+
+async function connectGoogle() {
+  const localTasks = await api.loadCache();
+  if (localTasks.length) {
+    await new Promise(resolve => {
+      showConfirmModal(
+        'Migrate Local Tasks',
+        'You have <strong>' + localTasks.length + ' task' + (localTasks.length === 1 ? '' : 's') + '</strong> saved locally.<br><br>Would you like to migrate them to your Google account, or start fresh?',
+        'Migrate Tasks',
+        () => resolve(true),
+      );
+      // If cancelled, clear cache and resolve
+      const origCancel = document.getElementById('confirm-modal-cancel').onclick;
+      document.getElementById('confirm-modal-cancel').onclick = async () => {
+        await api.saveCache([]);
+        closeConfirmModal();
+        resolve(false);
+      };
+    });
+  }
+  offlineMode = false;
+  await api.saveConfig({ offlineMode: false });
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-screen').classList.add('active');
+  document.getElementById('btn-google-signin').onclick = startOAuth;
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+// Listen for break choice from the separate break prompt window
+api.onBreakChoice((choice) => {
+  if (choice === 'break') takeBreak();
+  else snoozeBreak();
+});
+
+// Listen for stop signal from the separate timer window
+api.onTimerPauseRequest(() => pauseTimer());
+api.onTimerResumeRequest(() => resumeTimer());
+api.onGlobalQuickAdd((data) => {
+  if (settings.quickAddEnabled) {
+    const fromBackground = !!(data && !data.wasFocused);
+    openQuickAdd(fromBackground);
+  }
+});
+api.onTimerStopped((elapsed) => {
+  const wasSnoozed = breakSnoozed;
+  // Save elapsed time to task
+  const task = tasks.find(t => t.id === activeTimerId);
+  if (task && elapsed > 0) {
+    task.timeLogged = (task.timeLogged || 0) + elapsed;
+    task.timeSessions = task.timeSessions || [];
+    task.timeSessions.push({ start: new Date((Date.now() - elapsed*1000)).toISOString(), elapsed });
+  }
+  // Clear timer state
+  clearInterval(timerInterval); timerInterval = null;
+  timerStart    = null;
+  activeTimerId = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
+  clearBreakTimer();
+  breakSnoozed  = false;
+  saveTasks();
+  renderAll();
+  // Restore main window
+  if (wasSnoozed) {
+    setTimeout(showBreakPanel, 200);
+  } else {
+    api.restore();
+  }
+});
+
+init();

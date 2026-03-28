@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #1a1814;
+    border-radius: 12px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+
+  #wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    height: 70px;
+    gap: 10px;
+  }
+
+  #left {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    flex: 1;
+  }
+
+  #task-name {
+    font-size: 11px;
+    color: #6a6358;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+
+  #timer-time {
+    font-size: 26px;
+    font-weight: 700;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+
+  #timer-time.paused { color: #a09880; }
+
+  #pause-label {
+    font-size: 10px;
+    color: #a09880;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 2px;
+    display: none;
+  }
+
+  .btn-group {
+    display: flex;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+    flex-shrink: 0;
+  }
+
+  .timer-btn {
+    border: none;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+
+  #pause-btn {
+    background: #3d3a34;
+    color: #d0c8b8;
+  }
+  #pause-btn:hover { background: #4d4a44; }
+  #pause-btn.paused { background: #2d6a4f; color: #fff; }
+  #pause-btn.paused:hover { background: #1b4d38; }
+
+  #stop-btn {
+    background: #c0392b;
+    color: white;
+  }
+  #stop-btn:hover { background: #9b2c2c; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="left">
+    <div id="task-name">Task</div>
+    <div id="timer-time">00:00</div>
+    <div id="pause-label">Paused</div>
+  </div>
+  <div class="btn-group">
+    <button id="pause-btn" class="timer-btn" onclick="togglePause()">‖ Pause</button>
+    <button id="stop-btn"  class="timer-btn" onclick="stopTimer()">■ Stop</button>
+  </div>
+</div>
+
+<script>
+  let timerInterval = null;
+  let startTime     = null;
+  let baseLogged    = 0;
+  let isPaused      = false;
+  let displayTotal  = 0; // tracks display time so it freezes correctly on pause
+  let pausedAt      = 0; // displayTotal at the moment of pause
+
+  window.timerAPI.onStart((data) => {
+    document.getElementById('task-name').textContent =
+      data.taskName.length > 28 ? data.taskName.slice(0, 26) + '…' : data.taskName;
+    baseLogged = data.baseLogged || 0;
+    startTime  = Date.now() / 1000;
+    isPaused   = false;
+    pausedAt   = 0;
+    displayTotal = baseLogged;
+    tick();
+    timerInterval = setInterval(tick, 1000);
+  });
+
+  // Paused signal from main renderer — freeze display at current total
+  window.timerAPI.onPaused(() => {
+    isPaused = true;
+    pausedAt = displayTotal; // remember exactly where we paused
+    clearInterval(timerInterval);
+    document.getElementById('pause-btn').textContent = '▶ Resume';
+    document.getElementById('pause-btn').classList.add('paused');
+    document.getElementById('timer-time').classList.add('paused');
+    document.getElementById('pause-label').style.display = 'block';
+  });
+
+  // Resumed signal — continue from where we paused
+  window.timerAPI.onResumed(() => {
+    isPaused = false;
+    // Use pausedAt as the new base so elapsed continues from the paused total
+    baseLogged = pausedAt;
+    startTime  = Date.now() / 1000;
+    timerInterval = setInterval(tick, 1000);
+    document.getElementById('pause-btn').textContent = '‖ Pause';
+    document.getElementById('pause-btn').classList.remove('paused');
+    document.getElementById('timer-time').classList.remove('paused');
+    document.getElementById('pause-label').style.display = 'none';
+    tick();
+  });
+
+  function tick() {
+    if (!startTime || isPaused) return;
+    displayTotal = baseLogged + Math.floor(Date.now() / 1000 - startTime);
+    const h = Math.floor(displayTotal / 3600);
+    const m = Math.floor((displayTotal % 3600) / 60);
+    const s = displayTotal % 60;
+    document.getElementById('timer-time').textContent =
+      h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function togglePause() {
+    // Just signal the main renderer — it handles all elapsed time tracking
+    if (isPaused) {
+      window.timerAPI.resume();
+    } else {
+      window.timerAPI.pause();
+    }
+  }
+
+  function stopTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    // Calculate correct elapsed — displayTotal already tracks paused time correctly
+    const elapsed = displayTotal - baseLogged;
+    window.timerAPI.stop(elapsed);
+  }
+</script>
+</body>
+</html>

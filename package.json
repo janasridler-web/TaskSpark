@@ -1,0 +1,49 @@
+{
+  "name": "taskspark",
+  "version": "3.0.0",
+  "description": "TaskSpark — Focus · Flow · Finish",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir"
+  },
+  "build": {
+    "appId": "com.taskspark.app",
+    "productName": "TaskSpark",
+    "publish": {
+      "provider": "github",
+      "owner": "janasridler-web",
+      "repo": "taskspark"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/taskspark.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "TaskSpark.Setup.exe"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "electron-updater": "^6.1.7"
+  },
+  "author": {
+    "name": "Jana Sridler",
+    "email": "janasridler@gmail.com",
+    "url": "https://taskspark.tech"
+  }
+}
