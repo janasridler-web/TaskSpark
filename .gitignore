@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+src/credentials.js
+# main.js contains credentials — never push to GitHub
+src/main.js
