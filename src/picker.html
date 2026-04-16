@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restore TaskSpark Data</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d1f14;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      padding: 32px;
+      text-align: center;
+    }
+    .logo { font-size: 40px; margin-bottom: 16px; }
+    h1 { font-size: 20px; font-weight: 600; color: #fff; margin-bottom: 12px; }
+    p { font-size: 14px; color: #aaa; line-height: 1.6; max-width: 460px; margin-bottom: 12px; }
+    .hint {
+      background: #1a2e1f;
+      border: 1px solid #2e4d35;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 13px;
+      color: #8bc48f;
+      max-width: 420px;
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+    .hint strong { color: #a8d5ab; }
+    .btn {
+      background: #4caf50;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 28px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 12px;
+      width: 100%;
+      max-width: 320px;
+    }
+    .btn:hover { background: #45a049; }
+    .btn-secondary {
+      background: none;
+      border: 1px solid #444;
+      color: #aaa;
+      font-size: 13px;
+      padding: 10px 24px;
+    }
+    .btn-secondary:hover { border-color: #666; color: #ccc; }
+    #status { font-size: 13px; color: #aaa; margin-top: 16px; min-height: 20px; }
+    #picker-container { width: 100%; display: flex; flex-direction: column; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="logo">&#10022;</div>
+  <h1>Restore Your TaskSpark Data</h1>
+  <p>
+    It looks like you're signing in on a new device. To reconnect to your existing tasks,
+    select your TaskSpark config file from Google Drive.
+  </p>
+  <div class="hint">
+    Look for a file called <strong>TaskSpark-Config</strong> &mdash; it's a Google Sheet
+    created automatically by TaskSpark. The Picker will only show files with that name.
+    This only needs to be done once on this device.
+  </div>
+  <div id="picker-container">
+    <button class="btn" id="btn-open-picker">Find My TaskSpark-Config File</button>
+    <button class="btn btn-secondary" id="btn-cancel">Start Fresh Instead</button>
+  </div>
+  <div id="status"></div>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script>
+    let accessToken = null;
+    let clientId = null;
+
+    window.pickerApi.onInit(({ accessToken: token, clientId: id }) => {
+      accessToken = token;
+      clientId = id;
+    });
+
+    document.getElementById('btn-open-picker').addEventListener('click', () => {
+      if (!accessToken || !clientId) {
+        document.getElementById('status').textContent = 'Still loading... please wait a moment.';
+        return;
+      }
+      document.getElementById('status').textContent = 'Loading Drive Picker...';
+      gapi.load('picker', () => {
+        const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
+          .setLabel('TaskSpark Config Files')
+          .setQuery('TaskSpark-Config');
+        const picker = new google.picker.PickerBuilder()
+          .addView(view)
+          .setOAuthToken(accessToken)
+          .setAppId(clientId.split('-')[0])
+          .setTitle('Select your TaskSpark-Config file')
+          .setCallback((data) => {
+            if (data.action === google.picker.Action.PICKED) {
+              const fileId = data.docs[0].id;
+              document.getElementById('status').textContent = 'Connecting...';
+              window.pickerApi.selected(fileId);
+            } else if (data.action === google.picker.Action.CANCEL) {
+              document.getElementById('status').textContent = '';
+            }
+          })
+          .build();
+        picker.setVisible(true);
+        document.getElementById('status').textContent = '';
+      });
+    });
+
+    document.getElementById('btn-cancel').addEventListener('click', () => {
+      window.pickerApi.cancelled();
+    });
+  </script>
+</body>
+</html>
