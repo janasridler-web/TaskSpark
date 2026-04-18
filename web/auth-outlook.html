@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskSpark — Connecting Outlook…</title>
+<link rel="icon" href="assets/taskspark.ico">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Outfit',sans-serif;background:#f0ede8;height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#18160f}
+  .logo{width:120px;margin-bottom:8px}
+  .msg{font-size:16px;font-weight:600;color:#5c5750}
+  .spinner{width:32px;height:32px;border:3px solid #e4dfd8;border-top-color:#5b3fd4;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<img class="logo" src="assets/taskspark_sidebar.png" alt="TaskSpark">
+<div class="spinner"></div>
+<div class="msg">Connecting Outlook calendar…</div>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const error = params.get('error');
+  if (error) {
+    document.querySelector('.msg').textContent = 'Connection cancelled.';
+    sessionStorage.setItem('outlook_error', error);
+    setTimeout(() => window.close(), 1500);
+  } else if (code) {
+    // Save code to sessionStorage so main app can read it
+    sessionStorage.setItem('outlook_code', code);
+    document.querySelector('.msg').textContent = 'Outlook connected! You can close this window.';
+    document.querySelector('.spinner').style.display = 'none';
+    // Try to notify opener if this is a popup
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.sessionStorage.setItem('outlook_code', code);
+        setTimeout(() => window.close(), 500);
+      } else {
+        // Redirect flow — go back to main app
+        setTimeout(() => window.location.href = 'index.html', 500);
+      }
+    } catch(e) {
+      setTimeout(() => window.location.href = 'index.html', 500);
+    }
+  } else {
+    document.querySelector('.msg').textContent = 'Something went wrong.';
+    setTimeout(() => window.close(), 1500);
+  }
+</script>
+</body>
+</html>

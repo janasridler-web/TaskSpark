@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskSpark — Signing in…</title>
+<link rel="icon" href="assets/taskspark.ico">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Outfit',sans-serif;background:#f0ede8;height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#18160f}
+  .logo{width:120px;margin-bottom:8px}
+  .msg{font-size:16px;font-weight:600;color:#5c5750}
+  .spinner{width:32px;height:32px;border:3px solid #e4dfd8;border-top-color:#2d6a4f;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<img class="logo" src="assets/taskspark_sidebar.png" alt="TaskSpark">
+<div class="spinner"></div>
+<div class="msg">Completing sign-in…</div>
+<script>
+  // Extract the auth code from the URL and pass it back to the main app
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  const error = params.get('error');
+  if (error) {
+    document.querySelector('.msg').textContent = 'Sign-in cancelled. Redirecting…';
+    sessionStorage.setItem('oauth_error', error);
+    setTimeout(() => { window.location.href = '/'; }, 1500);
+  } else if (code) {
+    // Store in sessionStorage to avoid Mod_Security blocking long URL params
+    sessionStorage.setItem('oauth_code', code);
+    if (state) sessionStorage.setItem('oauth_callback_state', state);
+    window.location.href = '/';
+  } else {
+    document.querySelector('.msg').textContent = 'No auth code received. Redirecting…';
+    setTimeout(() => { window.location.href = '/'; }, 1500);
+  }
+</script>
+</body>
+</html>
