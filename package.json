@@ -1,6 +1,6 @@
 {
   "name": "taskspark",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "TaskSpark — Focus · Flow · Finish",
   "main": "src/main.js",
   "scripts": {
