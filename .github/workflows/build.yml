@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare main.js from template
+        run: cp src/main.template.js src/main.js
+
       - name: Inject OAuth credentials
         shell: node {0}
         run: |
@@ -36,18 +39,6 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Restore credential placeholders
-        if: always()
-        shell: node {0}
-        run: |
-          const fs = require('fs');
-          const path = require('path');
-          const mainJsPath = path.join(process.cwd(), 'src', 'main.js');
-          let src = fs.readFileSync(mainJsPath, 'utf8');
-          src = src.replace(/'[^']*apps\.googleusercontent\.com'/g, "'__APP_CLIENT_ID__'");
-          src = src.replace(/'GOCSPX-[^']*'/g,                      "'__APP_CLIENT_SECRET__'");
-          fs.writeFileSync(mainJsPath, src);
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
