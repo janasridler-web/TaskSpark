@@ -69,9 +69,12 @@ let spreadsheetId = null;
 let redirectUri   = null;
 
 // Timer state
-let activeTimerId   = null;
-let timerStart      = null;
-let timerInterval   = null;
+let activeTimerId      = null;
+let timerStart         = null;
+let timerInterval      = null;
+let timerPaused        = false;
+let timerPausedAt      = null;
+let timerPausedElapsed = 0;
 let breakSnoozed    = false;
 let breakAfterTimer = null;
 let breakInterval   = null;
@@ -135,20 +138,17 @@ function getBreakDurationS()  { return settings.breakDurationMins * 60; }
 
 function playBreakSound() {
   if (!settings.soundEnabled) return;
-  try {
-    // Use custom file if set, otherwise fall back to bundled chime
-    const src = settings.soundFile
-      ? `file:///${settings.soundFile.replace(/\\/g, '/')}`
-      : '../assets/break-chime.mp3';
-    const audio = new Audio(src);
-    audio.volume = 0.75;
-    audio.play().catch(() => {
-      // Silently fail if audio can't play
-      const fallback = new Audio('../assets/break-chime.mp3');
-      fallback.volume = 0.75;
-      fallback.play().catch(() => {});
-    });
-  } catch (e) {}
+  const src = settings.soundFile
+    ? `file:///${settings.soundFile.replace(/\\/g, '/')}`
+    : '../assets/break-chime.mp3';
+  const audio = new Audio(src);
+  audio.volume = 0.75;
+  audio.play().catch(() => {
+    if (!settings.soundFile) return;
+    const fallback = new Audio('../assets/break-chime.mp3');
+    fallback.volume = 0.75;
+    fallback.play().catch(() => {});
+  });
 }
 
 
@@ -564,7 +564,9 @@ async function ensureToken() {
       tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
       await api.saveConfig({ accessToken, tokenExpiry });
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Token refresh failed:', e);
+  }
 }
 
 async function signOut() {
@@ -911,6 +913,14 @@ function taskCardHTML(task) {
       ${currentView === 'archived' ? `<input type="checkbox" class="archive-select-cb" data-id="${task.id}" style="margin-left:4px;accent-color:var(--accent);cursor:pointer">` : ''}
     </div>`}
   </div>`;
+}
+
+function rerenderTaskCard(taskId) {
+  const card = document.getElementById('task-card-' + taskId);
+  const task = tasks.find(t => t.id === taskId);
+  if (!card || !task) { renderAll(); return; }
+  card.outerHTML = taskCardHTML(task);
+  updateCounts();
 }
 
 function updateStats() {
@@ -1276,6 +1286,37 @@ function saveKanbanGroupState(tag, open) {
   try { localStorage.setItem('taskspark_kanban_groups', JSON.stringify(state)); } catch {}
 }
 
+function kanbanColumnsHTML(sourceTasks, extraDoneTasks) {
+  return KANBAN_COLS.map(col => {
+    let colTasks = sourceTasks.filter(t => (t.status||'not-started') === col.key);
+    if (col.key === 'done' && extraDoneTasks) colTasks = [...colTasks, ...extraDoneTasks];
+    const cards = colTasks.map(t => `
+      <div class="kanban-card priority-${t.priority}${t.completed ? ' kanban-card-completed' : ''}" draggable="${(t.completed || isReadOnly()) ? 'false' : 'true'}"
+        data-task-id="${t.id}"
+        ondragstart="${isReadOnly() ? '' : `onKanbanDragStart(event,${t.id})`}"
+        ondragend="${isReadOnly() ? '' : 'onKanbanDragEnd(event)'}">
+        <div class="kanban-card-title" onclick="openTaskModal(${t.id})">${esc(t.title)}</div>
+        <div class="kanban-card-meta">
+          <span class="badge badge-priority-${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>
+          ${t.due ? `<span class="badge badge-due ${dueStatus(t.due)||''}">◷ ${fmtDate(t.due)}</span>` : ''}
+          ${renderAttachmentBadges(t)}
+        </div>
+      </div>`).join('');
+    return `
+      <div class="kanban-col"
+        data-status="${col.key}"
+        ondragover="${isReadOnly() ? '' : 'onKanbanDragOver(event)'}"
+        ondragleave="${isReadOnly() ? '' : 'onKanbanDragLeave(event)'}"
+        ondrop="${isReadOnly() ? '' : `onKanbanDrop(event,'${col.key}')`}">
+        <div class="kanban-col-header" style="color:${col.color}">
+          ${col.label}
+          <span class="kanban-col-count">${colTasks.length}</span>
+        </div>
+        <div class="kanban-col-body">${cards}</div>
+      </div>`;
+  }).join('');
+}
+
 function renderKanban() {
   const container = document.getElementById('kanban-container');
   if (!container) return;
@@ -1284,41 +1325,11 @@ function renderKanban() {
   const showCompleted = settings.kanbanShowCompleted === true;
   const state = getKanbanGroupState();
 
-  // If groupByTags is off, render a single group with all tasks
   if (settings.kanbanGroupByTags === false) {
-    const cols = KANBAN_COLS.map(col => {
-      let colTasks = activeTasks.filter(t => (t.status||'not-started') === col.key);
-      if (col.key === 'done' && showCompleted) colTasks = [...colTasks, ...completedTasks];
-      const cards = colTasks.map(t => `
-        <div class="kanban-card priority-${t.priority}${t.completed ? ' kanban-card-completed' : ''}" draggable="${(t.completed || isReadOnly()) ? 'false' : 'true'}"
-          data-task-id="${t.id}"
-          ondragstart="${isReadOnly() ? '' : `onKanbanDragStart(event,${t.id})`}"
-          ondragend="${isReadOnly() ? '' : 'onKanbanDragEnd(event)'}">
-          <div class="kanban-card-title" onclick="openTaskModal(${t.id})">${esc(t.title)}</div>
-          <div class="kanban-card-meta">
-            <span class="badge badge-priority-${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>
-            ${t.due ? `<span class="badge badge-due ${dueStatus(t.due)||''}">◷ ${fmtDate(t.due)}</span>` : ''}
-            ${renderAttachmentBadges(t)}
-          </div>
-        </div>`).join('');
-      return `
-        <div class="kanban-col"
-          data-status="${col.key}"
-          ondragover="${isReadOnly() ? '' : 'onKanbanDragOver(event)'}"
-          ondragleave="${isReadOnly() ? '' : 'onKanbanDragLeave(event)'}"
-          ondrop="${isReadOnly() ? '' : `onKanbanDrop(event,'${col.key}')`}">
-          <div class="kanban-col-header" style="color:${col.color}">
-            ${col.label}
-            <span class="kanban-col-count">${colTasks.length}</span>
-          </div>
-          <div class="kanban-col-body">${cards}</div>
-        </div>`;
-    }).join('');
-    container.innerHTML = `<div class="kanban-columns" style="padding-bottom:16px">${cols}</div>`;
+    container.innerHTML = `<div class="kanban-columns" style="padding-bottom:16px">${kanbanColumnsHTML(activeTasks, showCompleted ? completedTasks : null)}</div>`;
     return;
   }
 
-  // Get all unique tags + untagged
   const allTags = [...new Set(activeTasks.flatMap(t => (t.tags||[]).length ? t.tags : ['Untagged']))];
   if (showCompleted) {
     completedTasks.forEach(t => {
@@ -1334,39 +1345,9 @@ function renderKanban() {
       : activeTasks.filter(t => (t.tags||[]).includes(tag));
     const tagCompletedTasks = showCompleted
       ? (tag === 'Untagged' ? completedTasks.filter(t => !t.tags || !t.tags.length) : completedTasks.filter(t => (t.tags||[]).includes(tag)))
-      : [];
+      : null;
     const isOpen = tag in state ? state[tag] : true;
     const tagColor = tag === 'Untagged' ? 'var(--text3)' : getTagColor(tag);
-
-    const cols = KANBAN_COLS.map(col => {
-      let colTasks = tagTasks.filter(t => (t.status||'not-started') === col.key);
-      if (col.key === 'done') colTasks = [...colTasks, ...tagCompletedTasks];
-      const cards = colTasks.map(t => `
-        <div class="kanban-card priority-${t.priority}${t.completed ? ' kanban-card-completed' : ''}" draggable="${(t.completed || isReadOnly()) ? 'false' : 'true'}"
-          data-task-id="${t.id}"
-          ondragstart="${isReadOnly() ? '' : `onKanbanDragStart(event,${t.id})`}"
-          ondragend="${isReadOnly() ? '' : 'onKanbanDragEnd(event)'}">
-          <div class="kanban-card-title" onclick="openTaskModal(${t.id})">${esc(t.title)}</div>
-          <div class="kanban-card-meta">
-            <span class="badge badge-priority-${t.priority}">${t.priority.charAt(0).toUpperCase()+t.priority.slice(1)}</span>
-            ${t.due ? `<span class="badge badge-due ${dueStatus(t.due)||''}">◷ ${fmtDate(t.due)}</span>` : ''}
-            ${renderAttachmentBadges(t)}
-          </div>
-        </div>`).join('');
-      return `
-        <div class="kanban-col"
-          data-status="${col.key}"
-          ondragover="${isReadOnly() ? '' : 'onKanbanDragOver(event)'}"
-          ondragleave="${isReadOnly() ? '' : 'onKanbanDragLeave(event)'}"
-          ondrop="${isReadOnly() ? '' : `onKanbanDrop(event,'${col.key}')`}">
-          <div class="kanban-col-header" style="color:${col.color}">
-            ${col.label}
-            <span class="kanban-col-count">${colTasks.length}</span>
-          </div>
-          <div class="kanban-col-body">${cards}</div>
-        </div>`;
-    }).join('');
-
     return `
       <div class="kanban-tag-group">
         <div class="kanban-tag-header" onclick="toggleKanbanGroup('${esc(tag)}')">
@@ -1374,7 +1355,7 @@ function renderKanban() {
           <span class="kanban-tag-label" style="color:${tagColor}">${esc(tag)}</span>
           <span class="kanban-col-count">${tagTasks.length}</span>
         </div>
-        <div class="kanban-columns" id="kanban-group-${esc(tag)}" style="display:${isOpen?'flex':'none'}">${cols}</div>
+        <div class="kanban-columns" id="kanban-group-${esc(tag)}" style="display:${isOpen?'flex':'none'}">${kanbanColumnsHTML(tagTasks, tagCompletedTasks)}</div>
       </div>`;
   }).join('');
 }
@@ -2400,7 +2381,7 @@ function addSubtask(taskId) {
   task.subtasks.push({ id: Date.now(), title, done: false });
   input.value = '';
   saveTasks();
-  renderAll();
+  rerenderTaskCard(taskId);
 }
 
 function toggleSubtask(taskId, subtaskId) {
@@ -2427,7 +2408,7 @@ function deleteSubtask(taskId, subtaskId) {
   if (!task) return;
   task.subtasks = (task.subtasks || []).filter(s => s.id !== subtaskId);
   saveTasks();
-  renderAll();
+  rerenderTaskCard(taskId);
 }
 
 function startSubtaskEdit(taskId, subtaskId, el) {
@@ -2452,7 +2433,7 @@ function startSubtaskEdit(taskId, subtaskId, el) {
     if (newTitle && newTitle !== original) {
       sub.title = newTitle;
       saveTasks();
-      renderAll();
+      rerenderTaskCard(taskId);
     } else {
       el.textContent = original;
     }
@@ -2507,7 +2488,7 @@ function onSubtaskDrop(e, taskId, targetSubtaskId) {
   const [moved] = task.subtasks.splice(fromIdx, 1);
   task.subtasks.splice(toIdx, 0, moved);
   saveTasks();
-  renderAll();
+  rerenderTaskCard(taskId);
 }
 
 function startInlineEdit(id) {
@@ -2738,9 +2719,20 @@ function hideTagSuggestions() {
 function removeModalTag(tag) { modalTags = modalTags.filter(t => t !== tag); renderModalTags(); }
 
 function renderModalTags() {
-  document.getElementById('tm-tag-pills').innerHTML = modalTags.map(tag =>
-    `<span class="tag-pill" style="background:${getTagColor(tag)}">${esc(tag)}<button class="tag-pill-x" onclick="removeModalTag('${esc(tag)}')">&times;</button></span>`
-  ).join('');
+  const container = document.getElementById('tm-tag-pills');
+  container.innerHTML = '';
+  modalTags.forEach(tag => {
+    const span = document.createElement('span');
+    span.className = 'tag-pill';
+    span.style.background = getTagColor(tag);
+    span.textContent = tag;
+    const btn = document.createElement('button');
+    btn.className = 'tag-pill-x';
+    btn.textContent = '\u00d7';
+    btn.addEventListener('click', () => removeModalTag(tag));
+    span.appendChild(btn);
+    container.appendChild(span);
+  });
 }
 
 // ── Calendar ───────────────────────────────────────────────────────────────
@@ -4783,7 +4775,9 @@ async function saveMoodHistory(date, mood) {
   try {
     await ensureToken();
     await api.moodAppend({ accessToken, spreadsheetId, date, mood });
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to save mood history:', e);
+  }
 }
 
 // ── Start of Day / End of Day ────────────────────────────────────────────────

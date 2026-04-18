@@ -1,0 +1,59 @@
+name: Build Desktop App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Inject OAuth credentials
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const mainJsPath = path.join(process.cwd(), 'src', 'main.js');
+          let src = fs.readFileSync(mainJsPath, 'utf8');
+          src = src.replace("'__APP_CLIENT_ID__'",     `'${process.env.GOOGLE_CLIENT_ID}'`);
+          src = src.replace("'__APP_CLIENT_SECRET__'", `'${process.env.GOOGLE_CLIENT_SECRET}'`);
+          fs.writeFileSync(mainJsPath, src);
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+
+      - name: Build
+        run: npm run build
+
+      - name: Restore credential placeholders
+        if: always()
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const mainJsPath = path.join(process.cwd(), 'src', 'main.js');
+          let src = fs.readFileSync(mainJsPath, 'utf8');
+          src = src.replace(/'[^']*apps\.googleusercontent\.com'/g, "'__APP_CLIENT_ID__'");
+          src = src.replace(/'GOCSPX-[^']*'/g,                      "'__APP_CLIENT_SECRET__'");
+          fs.writeFileSync(mainJsPath, src);
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskSpark-installer
+          path: |
+            dist/TaskSpark.Setup.exe
+            dist/latest.yml
+          retention-days: 30
