@@ -6378,6 +6378,8 @@ async function confirmAddSharedWorkspace() {
     if (statusEl) statusEl.textContent = `Error: ${e.message}`;
   }
 }
+
+async function confirmCreateWorkspace() {
   const nameInput = document.getElementById('ws-new-name');
   const name = (nameInput ? nameInput.value.trim() : '');
   if (!name) { showToast('Please enter a workspace name'); return; }
