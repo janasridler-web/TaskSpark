@@ -30,12 +30,16 @@ jobs:
           const path = require('path');
           const mainJsPath = path.join(process.cwd(), 'src', 'main.js');
           let src = fs.readFileSync(mainJsPath, 'utf8');
-          src = src.replace("'__APP_CLIENT_ID__'",     `'${process.env.GOOGLE_CLIENT_ID}'`);
-          src = src.replace("'__APP_CLIENT_SECRET__'", `'${process.env.GOOGLE_CLIENT_SECRET}'`);
+          src = src.replace("'__APP_CLIENT_ID__'",         `'${process.env.GOOGLE_CLIENT_ID}'`);
+          src = src.replace("'__APP_CLIENT_SECRET__'",     `'${process.env.GOOGLE_CLIENT_SECRET}'`);
+          src = src.replace("'__OUTLOOK_CLIENT_ID__'",     `'${process.env.OUTLOOK_CLIENT_ID}'`);
+          src = src.replace("'__OUTLOOK_CLIENT_SECRET__'", `'${process.env.OUTLOOK_CLIENT_SECRET}'`);
           fs.writeFileSync(mainJsPath, src);
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          OUTLOOK_CLIENT_SECRET: ${{ secrets.OUTLOOK_CLIENT_SECRET }}
 
       - name: Build
         run: npm run build -- --publish never
