@@ -653,9 +653,12 @@ let spreadsheetId = null;
 let redirectUri   = null;
 
 // Timer state
-let activeTimerId   = null;
-let timerStart      = null;
-let timerInterval   = null;
+let activeTimerId      = null;
+let timerStart         = null;
+let timerInterval      = null;
+let timerPaused        = false;
+let timerPausedAt      = null;
+let timerPausedElapsed = 0;
 let breakSnoozed    = false;
 let breakAfterTimer = null;
 let breakInterval   = null;
@@ -717,20 +720,17 @@ function getBreakDurationS()  { return settings.breakDurationMins * 60; }
 
 function playBreakSound() {
   if (!settings.soundEnabled) return;
-  try {
-    // Use custom file if set, otherwise fall back to bundled chime
-    const src = settings.soundFile
-      ? `file:///${settings.soundFile.replace(/\\/g, '/')}`
-      : '../assets/break-chime.mp3';
-    const audio = new Audio(src);
-    audio.volume = 0.75;
-    audio.play().catch(() => {
-      // Silently fail if audio can't play
-      const fallback = new Audio('../assets/break-chime.mp3');
-      fallback.volume = 0.75;
-      fallback.play().catch(() => {});
-    });
-  } catch (e) {}
+  const src = settings.soundFile
+    ? `file:///${settings.soundFile.replace(/\\/g, '/')}`
+    : '../assets/break-chime.mp3';
+  const audio = new Audio(src);
+  audio.volume = 0.75;
+  audio.play().catch(() => {
+    if (!settings.soundFile) return;
+    const fallback = new Audio('../assets/break-chime.mp3');
+    fallback.volume = 0.75;
+    fallback.play().catch(() => {});
+  });
 }
 
 
@@ -1117,7 +1117,9 @@ async function ensureToken() {
       tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
       await api.saveConfig({ accessToken, tokenExpiry });
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Token refresh failed:', e);
+  }
 }
 
 async function signOut() {
@@ -1458,6 +1460,14 @@ function taskCardHTML(task) {
       ${currentView === 'archived' ? `<input type="checkbox" class="archive-select-cb" data-id="${task.id}" style="margin-left:4px;accent-color:var(--accent);cursor:pointer">` : ''}
     </div>`}
   </div>`;
+}
+
+function rerenderTaskCard(taskId) {
+  const card = document.getElementById('task-card-' + taskId);
+  const task = tasks.find(t => t.id === taskId);
+  if (!card || !task) { renderAll(); return; }
+  card.outerHTML = taskCardHTML(task);
+  updateCounts();
 }
 
 function updateStats() {
@@ -3267,7 +3277,7 @@ function addSubtask(taskId) {
   task.subtasks.push({ id: Date.now(), title, done: false });
   input.value = '';
   saveTasks();
-  renderAll();
+  rerenderTaskCard(taskId);
 }
 
 function toggleSubtask(taskId, subtaskId) {
@@ -3294,7 +3304,7 @@ function deleteSubtask(taskId, subtaskId) {
   if (!task) return;
   task.subtasks = (task.subtasks || []).filter(s => s.id !== subtaskId);
   saveTasks();
-  renderAll();
+  rerenderTaskCard(taskId);
 }
 
 function startSubtaskEdit(taskId, subtaskId, el) {
@@ -3319,7 +3329,7 @@ function startSubtaskEdit(taskId, subtaskId, el) {
     if (newTitle && newTitle !== original) {
       sub.title = newTitle;
       saveTasks();
-      renderAll();
+      rerenderTaskCard(taskId);
     } else {
       el.textContent = original;
     }
@@ -3374,7 +3384,7 @@ function onSubtaskDrop(e, taskId, targetSubtaskId) {
   const [moved] = task.subtasks.splice(fromIdx, 1);
   task.subtasks.splice(toIdx, 0, moved);
   saveTasks();
-  renderAll();
+  rerenderTaskCard(taskId);
 }
 
 function startInlineEdit(id) {
@@ -5632,7 +5642,9 @@ async function saveMoodHistory(date, mood) {
   try {
     await ensureToken();
     await api.moodAppend({ accessToken, spreadsheetId, date, mood });
-  } catch (e) {}
+  } catch (e) {
+    console.warn('Failed to save mood history:', e);
+  }
 }
 
 // ── What's New ───────────────────────────────────────────────────────────────
