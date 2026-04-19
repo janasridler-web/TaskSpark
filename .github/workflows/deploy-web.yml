@@ -16,6 +16,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Inject OAuth credentials
+        run: |
+          sed -i "s/YOUR_GOOGLE_CLIENT_ID_HERE/${{ secrets.GOOGLE_CLIENT_ID }}/g" web/oauth-config.js
+          sed -i "s/YOUR_GOOGLE_CLIENT_SECRET_HERE/${{ secrets.GOOGLE_CLIENT_SECRET }}/g" web/oauth-config.js
+
       - name: Deploy to cPanel via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
