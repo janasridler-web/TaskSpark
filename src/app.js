@@ -5116,6 +5116,7 @@ function endTutorial() {
   document.getElementById('tutorial-overlay').classList.remove('active');
   document.getElementById('tutorial-highlight').style.display = 'none';
   api.saveConfig({ tutorialComplete: true });
+  if (workspaceSetupPending) showWorkspaceSetupModal();
 }
 
 // ── Performance ─────────────────────────────────────────────────────────────
@@ -5401,9 +5402,12 @@ function hideFirstRunWelcomeModal() {
 
 async function welcomeGetStarted() {
   hideFirstRunWelcomeModal();
+  if (workspaces.length === 0) workspaceSetupPending = true;
   setTimeout(() => {
     if (confirm('Would you like a quick tour of TaskSpark?')) {
       startTutorial();
+    } else if (workspaceSetupPending) {
+      showWorkspaceSetupModal();
     }
   }, 1200);
   if (welcomeModalResolver) { const r = welcomeModalResolver; welcomeModalResolver = null; r(); }

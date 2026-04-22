@@ -550,6 +550,7 @@ async function handleOAuthCallback() {
       await connectToSheets();
       await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
+      if (workspaces.length === 0) setTimeout(showWorkspaceSetupModal, 800);
     } else {
       throw new Error(tokens.error_description || 'No access token received');
     }
@@ -5967,6 +5968,7 @@ function endTutorial() {
   document.getElementById('tutorial-overlay').classList.remove('active');
   document.getElementById('tutorial-highlight').style.display = 'none';
   api.saveConfig({ tutorialComplete: true });
+  if (workspaceSetupPending) showWorkspaceSetupModal();
 }
 
 // ── Performance ─────────────────────────────────────────────────────────────
@@ -6221,9 +6223,12 @@ function hideFirstRunWelcomeModal() {
 
 function welcomeGetStarted() {
   hideFirstRunWelcomeModal();
+  if (workspaces.length === 0) workspaceSetupPending = true;
   setTimeout(() => {
     if (confirm('Would you like a quick tour of TaskSpark?')) {
       startTutorial();
+    } else if (workspaceSetupPending) {
+      showWorkspaceSetupModal();
     }
   }, 1200);
   if (welcomeModalResolver) { const r = welcomeModalResolver; welcomeModalResolver = null; r(); }
