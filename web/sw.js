@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taskspark-v33';
+const CACHE_NAME = 'taskspark-v34';
 const ASSETS = [
   '/',
   '/index.html',
