@@ -5127,9 +5127,11 @@ function endTutorial() {
 
 // ── Styled Confirm Modal ───────────────────────────────────────────────────────
 let _confirmCallback = null;
+let _cancelCallback = null;
 
-function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false) {
+function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false, cancelCallback = null) {
   _confirmCallback = callback;
+  _cancelCallback = cancelCallback;
   document.getElementById('confirm-modal-title').textContent = title;
   document.getElementById('confirm-modal-body').innerHTML = bodyHtml;
   const okBtn = document.getElementById('confirm-modal-ok');
@@ -5140,13 +5142,18 @@ function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false) {
 }
 
 function closeConfirmModal() {
+  const cb = _cancelCallback;
   _confirmCallback = null;
+  _cancelCallback = null;
   document.getElementById('confirm-modal-overlay').classList.remove('open');
+  if (cb) cb();
 }
 
 function confirmModalOk() {
   const cb = _confirmCallback;
-  closeConfirmModal();
+  _confirmCallback = null;
+  _cancelCallback = null;
+  document.getElementById('confirm-modal-overlay').classList.remove('open');
   if (cb) cb();
 }
 
@@ -5406,14 +5413,17 @@ function hideFirstRunWelcomeModal() {
 async function welcomeGetStarted() {
   hideFirstRunWelcomeModal();
   if (workspaces.length === 0) workspaceSetupPending = true;
-  setTimeout(() => {
-    if (confirm('Would you like a quick tour of TaskSpark?')) {
-      startTutorial();
-    } else if (workspaceSetupPending) {
-      showWorkspaceSetupModal();
-    }
-  }, 1200);
   if (welcomeModalResolver) { const r = welcomeModalResolver; welcomeModalResolver = null; r(); }
+  setTimeout(() => {
+    showConfirmModal(
+      'Quick tour?',
+      'Would you like a quick tour of TaskSpark before setting up your workspace?',
+      'Take tour',
+      () => startTutorial(),
+      false,
+      () => { if (workspaceSetupPending) showWorkspaceSetupModal(); }
+    );
+  }, 500);
 }
 
 async function welcomeRestoreExisting() {
