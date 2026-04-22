@@ -910,6 +910,27 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .auth-logo{width:180px;margin-bottom:24px}
 .auth-title{font-size:26px;font-weight:700;color:var(--text);margin-bottom:8px;text-align:center}
 .auth-sub{font-size:15px;color:var(--text2);margin-bottom:32px;text-align:center;max-width:420px;line-height:1.6}
+/* ── First-run welcome modal (V3.5.1) ──────────────────────────────────────── */
+#welcome-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;
+  display:none;align-items:center;justify-content:center;padding:24px}
+#welcome-modal-overlay.open{display:flex}
+.welcome-modal{background:var(--surface);border-radius:var(--radius-lg);
+  padding:36px 32px;max-width:460px;width:100%;box-shadow:var(--shadow-lg);
+  border:1px solid var(--border);text-align:center}
+.welcome-modal-title{font-size:24px;font-weight:700;color:var(--text);margin-bottom:10px}
+.welcome-modal-sub{font-size:14px;color:var(--text2);margin-bottom:28px;line-height:1.6}
+.welcome-choice-btn{width:100%;padding:16px 20px;background:var(--accent);color:#fff;
+  border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;
+  margin-bottom:12px;font-family:'Outfit',sans-serif;display:flex;align-items:center;
+  justify-content:center;gap:10px;transition:background 0.15s}
+.welcome-choice-btn:hover{background:var(--accent-h,var(--accent))}
+.welcome-choice-btn .welcome-icon{font-size:18px;font-weight:700}
+.welcome-restore-link{background:none;border:none;color:var(--text3);font-size:13px;
+  cursor:pointer;font-family:'Outfit',sans-serif;text-decoration:underline;
+  text-underline-offset:3px;padding:10px;margin-top:6px;display:inline-flex;
+  align-items:center;gap:6px}
+.welcome-restore-link:hover{color:var(--text2)}
+.welcome-restore-link .welcome-icon{font-size:14px}
 .auth-card{background:var(--surface);border-radius:var(--radius-lg);padding:28px;
   width:100%;max-width:440px;box-shadow:var(--shadow-lg);border:1px solid var(--border)}
 .auth-card-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:16px}
@@ -1049,6 +1070,22 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
         Continue without signing in
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ── First-run welcome modal (V3.5.1) ───────────────────────────────────── -->
+<div id="welcome-modal-overlay">
+  <div class="welcome-modal">
+    <div class="welcome-modal-title">Welcome to TaskSpark!</div>
+    <div class="welcome-modal-sub">Let's set things up the way you want to get started.</div>
+    <button class="welcome-choice-btn" onclick="welcomeGetStarted()">
+      <span class="welcome-icon">◆</span>
+      <span>Get Started</span>
+    </button>
+    <button class="welcome-restore-link" onclick="welcomeRestoreExisting()">
+      <span class="welcome-icon">↩</span>
+      <span>I already use TaskSpark — find my existing data</span>
+    </button>
   </div>
 </div>
 

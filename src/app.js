@@ -490,26 +490,10 @@ api.onOauthCode(async ({ code }) => {
           renderWorkspaceDropdown();
           updateWorkspaceTitle();
         } else {
-          // No workspaces found — could be new device, different account, or brand new user.
-          // Always show Picker so returning users can restore their data.
-          // New users will see no files and can click "Start Fresh".
+          // V3.5.1: No workspaces found locally — show welcome modal so new users
+          // are not confronted with a Restore screen that doesn't apply to them.
           configSheetId = null;
-          const pickedId = await api.showConfigPicker({ accessToken, clientId: '624005249370-1hd55m0lu98tlr0ll3fcpnjgtnmi2d5b.apps.googleusercontent.com' });
-          if (pickedId) {
-            configSheetId = pickedId;
-            api.saveConfig({ configSheetId });
-            const restored = await api.driveWorkspacesLoad({ accessToken, configSheetId });
-            if (restored && restored.data && restored.data.workspaces && restored.data.workspaces.length) {
-              workspaces = restored.data.workspaces;
-              activeWorkspaceId = restored.data.activeWorkspaceId || workspaces[0].id;
-              await api.workspacesSave({ workspaces, activeWorkspaceId });
-              const active = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
-              if (active) spreadsheetId = active.spreadsheetId;
-              renderWorkspaceDropdown();
-              updateWorkspaceTitle();
-            }
-          }
-          // If pickedId is null, user chose "Start Fresh" — proceed to workspace setup modal
+          await showFirstRunWelcomeModal();
         }
       } catch (e) { console.warn('[onOauthCode] workspace load failed:', e.message); }
 
@@ -5395,6 +5379,59 @@ async function switchWorkspace(id) {
     clearWorkspaceSwitching();
     showToast('Switch failed — please try again');
   }
+}
+
+// ── First-run welcome modal (V3.5.1) ───────────────────────────────────────
+// Presents new users with a friendly choice instead of the bare restore picker.
+let welcomeModalResolver = null;
+
+function showFirstRunWelcomeModal() {
+  return new Promise((resolve) => {
+    welcomeModalResolver = resolve;
+    const overlay = document.getElementById('welcome-modal-overlay');
+    if (!overlay) { resolve(); return; }
+    overlay.classList.add('open');
+  });
+}
+
+function hideFirstRunWelcomeModal() {
+  const overlay = document.getElementById('welcome-modal-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+
+async function welcomeGetStarted() {
+  hideFirstRunWelcomeModal();
+  setTimeout(() => {
+    if (confirm('Would you like a quick tour of TaskSpark?')) {
+      startTutorial();
+    }
+  }, 1200);
+  if (welcomeModalResolver) { const r = welcomeModalResolver; welcomeModalResolver = null; r(); }
+}
+
+async function welcomeRestoreExisting() {
+  hideFirstRunWelcomeModal();
+  try {
+    const pickedId = await api.showConfigPicker({
+      accessToken,
+      clientId: '624005249370-1hd55m0lu98tlr0ll3fcpnjgtnmi2d5b.apps.googleusercontent.com'
+    });
+    if (pickedId) {
+      configSheetId = pickedId;
+      api.saveConfig({ configSheetId });
+      const restored = await api.driveWorkspacesLoad({ accessToken, configSheetId });
+      if (restored && restored.data && restored.data.workspaces && restored.data.workspaces.length) {
+        workspaces = restored.data.workspaces;
+        activeWorkspaceId = restored.data.activeWorkspaceId || workspaces[0].id;
+        await api.workspacesSave({ workspaces, activeWorkspaceId });
+        const active = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+        if (active) spreadsheetId = active.spreadsheetId;
+        renderWorkspaceDropdown();
+        updateWorkspaceTitle();
+      }
+    }
+  } catch (e) { console.warn('[welcome] restore failed:', e.message); }
+  if (welcomeModalResolver) { const r = welcomeModalResolver; welcomeModalResolver = null; r(); }
 }
 
 // ── First-time setup modal (for V2 → V3 upgrade) ──────────────────────────
