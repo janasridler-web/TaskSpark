@@ -3098,7 +3098,10 @@ function closeModalOutside(e, overlayId) {
   if (e.target.id === overlayId) closeModal(overlayId);
 }
 function closeAllModals() {
-  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('open'));
+  document.querySelectorAll('.modal-overlay').forEach(m => {
+    if (m.id === 'ws-setup-modal-overlay') return;
+    m.classList.remove('open');
+  });
   // Clean up any active inline edits
   document.querySelectorAll('[contenteditable="true"]').forEach(el => {
     el.contentEditable = 'false';
@@ -5442,6 +5445,10 @@ async function welcomeRestoreExisting() {
 function showWorkspaceSetupModal() {
   const overlay = document.getElementById('ws-setup-modal-overlay');
   if (overlay) overlay.classList.add('open');
+  setTimeout(() => {
+    const nameInput = document.getElementById('ws-setup-name');
+    if (nameInput) { nameInput.value = ''; nameInput.focus(); }
+  }, 100);
 }
 
 async function confirmWorkspaceSetup() {
