@@ -290,7 +290,6 @@ const APP_CLIENT_SECRET = '__APP_CLIENT_SECRET__';
 const OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/documents',
   'openid', 'email', 'profile',
 ].join(' ');
 
@@ -879,37 +878,42 @@ ipcMain.handle('drive-create-sheet-named', async (_, { accessToken, name }) => {
   });
 });
 
-ipcMain.handle('drive-create-doc', async (_, { accessToken, title, content }) => {
-  function httpsPost(hostname, path, token, body) {
-    return new Promise((resolve, reject) => {
-      const buf = Buffer.from(body, 'utf8');
-      const req = https.request({
-        hostname, path, method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Content-Length': buf.length,
-        },
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Parse error')); } });
+// Creates a Google Doc by uploading HTML via Drive multipart upload (drive.file scope only).
+ipcMain.handle('drive-create-doc', async (_, { accessToken, title, html }) => {
+  return new Promise((resolve, reject) => {
+    const boundary = 'ts_doc_boundary_' + Date.now();
+    const metadata = JSON.stringify({ name: title, mimeType: 'application/vnd.google-apps.document' });
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`),
+      Buffer.from(metadata, 'utf8'),
+      Buffer.from(`\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n`),
+      Buffer.from(html, 'utf8'),
+      Buffer.from(`\r\n--${boundary}--`),
+    ]);
+    const req = https.request({
+      hostname: 'www.googleapis.com',
+      path: '/upload/drive/v3/files?uploadType=multipart&fields=id',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': body.length,
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          if (result.id) resolve(result);
+          else reject(new Error(result.error ? JSON.stringify(result.error) : 'Upload failed'));
+        } catch { reject(new Error('Parse error')); }
       });
-      req.on('error', reject); req.write(buf); req.end();
     });
-  }
-
-  const doc = await httpsPost('docs.googleapis.com', '/v1/documents', accessToken, JSON.stringify({ title }));
-  if (!doc.documentId) throw new Error(doc.error ? JSON.stringify(doc.error) : 'Failed to create document');
-
-  await httpsPost(
-    'docs.googleapis.com',
-    `/v1/documents/${doc.documentId}:batchUpdate`,
-    accessToken,
-    JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text: content } }] })
-  );
-
-  return { documentId: doc.documentId };
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
 });
 
 ipcMain.handle('drive-find-sheet-by-id', async (_, { accessToken, spreadsheetId }) => {

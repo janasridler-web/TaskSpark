@@ -2406,64 +2406,72 @@ async function statsExportToGoogleDoc() {
     const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const title   = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
 
-    const lines = [];
-    lines.push(title);
-    lines.push('');
-
     const comp   = statsCalcCompleted(start, end);
     const active = statsCalcActiveDays(start, end, totalDays);
-    lines.push('Summary');
-    lines.push('─'.repeat(40));
-    lines.push(`Completed:    ${comp.count} task${comp.count !== 1 ? 's' : ''}`);
-    lines.push(`Active days:  ${active.activeDays} / ${active.totalDays} (${active.avg.toFixed(1)} tasks per active day)`);
+
+    let summaryRows = `
+      <tr><td><b>Completed</b></td><td>${comp.count} task${comp.count !== 1 ? 's' : ''}</td></tr>
+      <tr><td><b>Active days</b></td><td>${active.activeDays} / ${active.totalDays} &nbsp;(${active.avg.toFixed(1)} tasks per active day)</td></tr>`;
     if (profile !== 'PROFILE_BASIC') {
       const tt  = statsCalcTimeTracked(start, end);
       const avg = statsCalcAvgTime(start, end);
-      lines.push(`Time tracked: ${statsFmtTime(tt.totalSecs)} (across ${tt.sessionCount} session${tt.sessionCount !== 1 ? 's' : ''})`);
-      if (avg.mean > 0) lines.push(`Avg time:     ${Math.round(avg.mean / 60)} min per task`);
+      summaryRows += `<tr><td><b>Time tracked</b></td><td>${statsFmtTime(tt.totalSecs)} &nbsp;(${tt.sessionCount} session${tt.sessionCount !== 1 ? 's' : ''})</td></tr>`;
+      if (avg.mean > 0) summaryRows += `<tr><td><b>Avg time per task</b></td><td>${Math.round(avg.mean / 60)} min</td></tr>`;
     }
-    lines.push('');
 
     const completed = statsCompletedInRange(start, end)
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    let tasksHtml = '';
     if (completed.length) {
-      lines.push('Completed Tasks');
-      lines.push('─'.repeat(40));
       const groups = {};
       completed.forEach(t => {
         const k = dateToLocalStr(new Date(t.completedAt));
         if (!groups[k]) groups[k] = [];
         groups[k].push(t);
       });
+      tasksHtml = '<h2>Completed Tasks</h2>';
       Object.entries(groups).sort(([a], [b]) => b.localeCompare(a)).forEach(([k, ts]) => {
         const label = new Date(k + 'T00:00:00').toLocaleDateString('en-GB', {
-          weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
         });
-        lines.push('');
-        lines.push(label);
+        tasksHtml += `<h3>${label}</h3><ul>`;
         ts.forEach(t => {
           const secs = statsTaskTimeInRange(t, start, end);
-          const time = secs ? `  [${statsFmtTime(secs)}]` : '';
-          const tags = (t.tags || []).map(g => `#${g}`).join(' ');
-          lines.push(`  • ${t.title}${tags ? '  ' + tags : ''}${time}`);
+          const time = secs ? ` <span style="color:#666">[${statsFmtTime(secs)}]</span>` : '';
+          const tags = (t.tags || []).map(g => `<span style="color:#888">#${g}</span>`).join(' ');
+          tasksHtml += `<li>${t.title}${tags ? ' ' + tags : ''}${time}</li>`;
         });
+        tasksHtml += '</ul>';
       });
     }
-    lines.push('');
-    lines.push(`Exported from TaskSpark on ${dateStr}`);
 
-    const result = await api.driveCreateDoc({ accessToken, title, content: lines.join('\n') });
-    if (result && result.documentId) {
-      api.openAttachment(`https://docs.google.com/document/d/${result.documentId}`);
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #111; max-width: 700px; margin: 40px auto; }
+  h1 { font-size: 18pt; margin-bottom: 4px; }
+  h2 { font-size: 13pt; margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  h3 { font-size: 11pt; font-weight: bold; margin: 16px 0 4px; }
+  table { border-collapse: collapse; margin: 12px 0; }
+  td { padding: 4px 20px 4px 0; vertical-align: top; }
+  ul { margin: 4px 0 0 0; padding-left: 20px; }
+  li { margin-bottom: 3px; }
+  .footer { margin-top: 40px; color: #888; font-size: 9pt; }
+</style>
+</head><body>
+<h1>${title}</h1>
+<h2>Summary</h2>
+<table>${summaryRows}</table>
+${tasksHtml}
+<p class="footer">Exported from TaskSpark on ${dateStr}</p>
+</body></html>`;
+
+    const result = await api.driveCreateDoc({ accessToken, title, html });
+    if (result && result.id) {
+      api.openAttachment(`https://docs.google.com/document/d/${result.id}`);
     }
   } catch (e) {
     console.error('Export to Google Doc failed:', e);
-    const msg = e.message || '';
-    if (msg.includes('403') || msg.includes('permission') || msg.includes('scope')) {
-      alert('Permission denied. Please disconnect and reconnect your Google account to enable Google Docs export, then try again.');
-    } else {
-      alert('Export failed. Please try again.');
-    }
+    alert('Export failed. Please try again.');
   } finally {
     if (btn) { btn.textContent = 'Export to Doc'; btn.disabled = false; }
   }
