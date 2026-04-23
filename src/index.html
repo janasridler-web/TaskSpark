@@ -733,6 +733,127 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .budget-summary-value.over{color:var(--red)}
 .budget-empty{text-align:center;padding:32px 16px;color:var(--text3);font-size:13px}
 
+/* ── Stats View ──────────────────────────────────────────────────────────── */
+#stats-container{display:none;flex:1;overflow-y:auto;flex-direction:column}
+#stats-container.active{display:flex}
+.stats-page{padding:20px 28px 40px;max-width:1200px;width:100%}
+.stats-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.stats-page-title{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.stats-page-subtitle{color:var(--text2);font-size:13px;margin-top:4px}
+.stats-range-picker{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:3px}
+.stats-range-btn{padding:6px 13px;font-size:13px;border:none;background:transparent;color:var(--text2);cursor:pointer;border-radius:6px;font-family:inherit;font-weight:500;transition:background .15s,color .15s}
+.stats-range-btn:hover{background:var(--surface2);color:var(--text)}
+.stats-range-btn.active{background:var(--text);color:#fff}
+.stats-date-banner{font-size:13px;color:var(--text2);margin-bottom:16px}
+.stats-kpi-row{display:grid;gap:12px;margin-bottom:20px}
+.stats-kpi-cols-2{grid-template-columns:repeat(2,1fr);max-width:600px}
+.stats-kpi-cols-3{grid-template-columns:repeat(3,1fr)}
+.stats-kpi-cols-4{grid-template-columns:repeat(4,1fr)}
+.stats-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+.stats-kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);font-weight:700;margin-bottom:8px}
+.stats-kpi-value{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1;font-variant-numeric:tabular-nums}
+.stats-kpi-unit{font-size:14px;font-weight:500;color:var(--text2);margin-left:2px}
+.stats-kpi-delta{margin-top:8px;font-size:12px;color:var(--text2)}
+.stats-kpi-delta.up{color:var(--accent)}
+.stats-kpi-delta.down{color:var(--amber)}
+.stats-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+.stats-grid-wide{grid-template-columns:1fr 1fr}
+.stats-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}
+.stats-card-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.stats-card-title{font-size:14px;font-weight:600;letter-spacing:-.1px}
+.stats-card-hint{font-size:12px;color:var(--text3)}
+.stats-chart-placeholder{height:180px;background:var(--surface2);border-radius:8px;border:1px dashed var(--border2)}
+.stats-section-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);font-weight:700;margin-bottom:12px}
+.stats-footnote{text-align:center;color:var(--text3);font-size:12px;margin-top:24px;padding:16px;font-style:italic}
+.stats-empty-msg{padding:28px 16px;text-align:center;color:var(--text3);font-size:13px;font-style:italic}
+/* Welcome state */
+.stats-welcome-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:32px;margin-bottom:20px;display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center}
+.stats-welcome-title{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-bottom:12px}
+.stats-welcome-body{color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:20px}
+.stats-welcome-progress{background:var(--surface2);border-radius:8px;padding:14px 16px;font-size:13px}
+.stats-welcome-progress-row{display:flex;justify-content:space-between;margin-bottom:8px;color:var(--text2)}
+.stats-welcome-progress-count{color:var(--accent);font-weight:600}
+.stats-progress-track{height:6px;background:var(--border2);border-radius:3px;overflow:hidden}
+.stats-progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .4s}
+.stats-welcome-visual{background:linear-gradient(135deg,var(--accent-l),var(--surface2));border-radius:8px;padding:28px;display:flex;flex-direction:column;gap:8px;justify-content:center;min-height:160px}
+.stats-preview-bar{height:10px;border-radius:2px;background:var(--accent)}
+.stats-preview-label{margin-top:12px;font-size:11px;color:var(--accent);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.stats-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stats-tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+.stats-tile-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);font-weight:700;margin-bottom:8px}
+.stats-tile-value{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1}
+.stats-tile-unit{font-size:14px;font-weight:500;color:var(--text2);margin-left:2px}
+.stats-tile-delta{margin-top:8px;font-size:12px;color:var(--text2)}
+.stats-coming-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px}
+.stats-coming-title{font-size:14px;font-weight:600;margin-bottom:16px}
+.stats-coming-list{display:grid;grid-template-columns:1fr 1fr;gap:0 32px}
+.stats-coming-item{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.stats-coming-item:last-child,.stats-coming-item:nth-last-child(2):nth-child(odd){border-bottom:none}
+.stats-coming-when{font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.stats-coming-what{color:var(--text2)}
+/* Daily layout */
+.stats-strip-track{position:relative;height:50px;background:var(--surface2);border-radius:6px;overflow:hidden;margin-bottom:4px}
+.stats-strip-session{position:absolute;top:8px;height:14px;background:var(--accent);border-radius:3px;opacity:.75}
+.stats-strip-dot{position:absolute;top:32px;width:8px;height:8px;background:var(--accent);border:2px solid var(--surface);border-radius:50%;transform:translateX(-50%)}
+.stats-strip-now{position:absolute;top:0;bottom:0;width:2px;background:var(--amber);z-index:2}
+.stats-strip-hours{display:grid;grid-template-columns:repeat(24,1fr);font-size:9px;color:var(--text3);margin-bottom:4px;text-align:center}
+.stats-strip-legend{display:flex;gap:16px;margin-top:14px;font-size:11px;color:var(--text2);align-items:center}
+.stats-strip-legend-swatch{width:14px;height:8px;border-radius:2px;background:var(--accent);opacity:.75}
+.stats-strip-legend-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.stats-strip-legend-item{display:flex;align-items:center;gap:6px}
+.stats-focus-big{font-size:36px;font-weight:700;letter-spacing:-1px;color:var(--accent);line-height:1;text-align:center}
+.stats-focus-big-label{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px;text-align:center;margin-bottom:16px}
+.stats-stat-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+.stats-stat-row:last-child{border-bottom:none}
+.stats-stat-label{color:var(--text2)}
+.stats-stat-value{font-weight:600;font-variant-numeric:tabular-nums}
+.stats-task-list{display:flex;flex-direction:column}
+.stats-task-item{display:grid;grid-template-columns:18px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center;font-size:13px}
+.stats-task-item:last-child{border-bottom:none}
+.stats-task-check{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--accent);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0}
+.stats-task-check.open{background:transparent;border-color:var(--border2)}
+.stats-task-check.running{background:#fff;border-color:var(--amber);position:relative}
+.stats-task-check.running::after{content:'';width:6px;height:6px;background:var(--amber);border-radius:50%;animation:stats-pulse 1.5s ease-in-out infinite;position:absolute}
+@keyframes stats-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.stats-task-title{line-height:1.4}
+.stats-task-title.done{color:var(--text2);text-decoration:line-through;text-decoration-color:var(--text3)}
+.stats-task-tag{font-size:10px;color:var(--text2);background:var(--surface2);padding:1px 6px;border-radius:3px;font-weight:500;margin-left:4px;display:inline-block}
+.stats-task-time{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats-hour-chart{display:flex;align-items:flex-end;gap:2px;height:130px;border-bottom:1px solid var(--border);padding-bottom:2px}
+.stats-hour-bar{flex:1;background:var(--accent);border-radius:2px 2px 0 0;min-height:2px;opacity:.8}
+.stats-hour-bar.now{background:var(--amber);opacity:1}
+.stats-hour-bar.empty{background:var(--surface2);opacity:1;min-height:3px}
+.stats-hour-labels{display:grid;grid-template-columns:repeat(24,1fr);margin-top:6px;font-size:9px;color:var(--text3);text-align:center}
+/* Streak panel */
+.stats-streak-big{font-size:48px;font-weight:700;letter-spacing:-1.5px;color:var(--accent);line-height:1;text-align:center}
+.stats-streak-label{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px;text-align:center;margin-bottom:16px}
+/* DOW bars */
+.stats-dow-bars{display:flex;flex-direction:column;gap:10px}
+.stats-dow-row{display:grid;grid-template-columns:40px 1fr 36px;align-items:center;gap:10px;font-size:12px}
+.stats-dow-label{color:var(--text2);font-weight:500}
+.stats-dow-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.stats-dow-fill{height:100%;background:var(--accent);border-radius:4px}
+.stats-dow-val{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+/* Tag rows */
+.stats-tag-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:10px 0;font-size:13px;border-bottom:1px solid var(--border)}
+.stats-tag-row:last-child{border-bottom:none}
+.stats-tag-name{font-weight:500}
+.stats-tag-name.untagged{color:var(--text3);font-style:italic}
+.stats-tag-time{color:var(--text2);font-variant-numeric:tabular-nums;font-weight:600}
+/* Heatmap */
+.stats-heatmap{display:grid;grid-template-columns:32px repeat(24,1fr);gap:2px;font-size:10px;color:var(--text3)}
+.stats-hm-label{display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-weight:500}
+.stats-hm-cell{aspect-ratio:1;border-radius:2px;background:var(--surface2)}
+.stats-hm-cell[data-v="1"]{background:color-mix(in srgb,var(--accent) 25%,var(--surface2))}
+.stats-hm-cell[data-v="2"]{background:color-mix(in srgb,var(--accent) 50%,var(--surface2))}
+.stats-hm-cell[data-v="3"]{background:color-mix(in srgb,var(--accent) 75%,var(--surface2))}
+.stats-hm-cell[data-v="4"]{background:var(--accent)}
+/* Estimate breakdown */
+.stats-estimate-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:6px;background:var(--surface2)}
+.stats-estimate-bar-early{background:var(--amber);opacity:.5}
+.stats-estimate-bar-on{background:var(--accent)}
+.stats-estimate-bar-over{background:var(--amber)}
+
 /* ── Calendar View ───────────────────────────────────────────────────────── */
 #calendar-view-container{display:none;flex:1;flex-direction:column;overflow:hidden}
 #calendar-view-container.active{display:flex}
@@ -1130,7 +1251,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
       <div id="sidebar-tools-section">
       <div class="sidebar-divider"></div>
-      <div class="sidebar-section-label">TOOLS</div>
+      <div class="sidebar-section-label" id="sidebar-tools-section-label">TOOLS</div>
+      <div class="sidebar-item" data-view="stats" id="sidebar-stats" onclick="setView('stats',this)"><span class="si-icon">▲</span>Stats</div>
       <div class="sidebar-item" data-view="ideas" onclick="setView('ideas',this)"><span class="si-icon">❋</span>Ideas<span class="si-count" id="cnt-ideas">0</span></div>
       <div class="sidebar-item" onclick="showHabitsView()" id="sidebar-habits-main"><span class="si-icon">⊕</span>Habit Tracker</div>
       <div class="sidebar-item" data-view="wins" onclick="setView('wins',this)"><span class="si-icon">✪</span>Wins Board<span class="si-count" id="cnt-wins">0</span></div>
@@ -1208,6 +1330,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div id="habits-container"></div>
     <div id="wins-container"></div>
     <div id="budget-view-container"></div>
+    <div id="stats-container"></div>
     <div id="calendar-view-container"></div>
     <div id="task-list-container">
       <div id="archive-bulk-bar" style="display:none;padding:8px 0 12px;display:flex;align-items:center;justify-content:space-between">
@@ -1651,6 +1774,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
           </div>
           <div class="settings-section">
             <div class="settings-section-title">Tools</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Stats</div><div class="setting-desc">View completion and time tracking stats across all your tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-stats-enabled"><span class="toggle-slider"></span></label>
+            </div>
             <div class="setting-row">
               <div><div class="setting-label">Ideas</div><div class="setting-desc">Capture thoughts and turn them into tasks</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-ideas-enabled"><span class="toggle-slider"></span></label>

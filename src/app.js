@@ -17,6 +17,11 @@ let kanbanMode = false;
 let ideasMode  = false;
 let budgetViewMode = false;
 let calendarViewMode = false;
+let statsMode  = false;
+
+// Stats state (not persisted — resets each visit)
+let statsCurrentRange = '30d';
+let _statsCache = {};
 
 // Calendar
 let calEvents = [];
@@ -130,6 +135,7 @@ const DEFAULT_SETTINGS = {
   budgetGroupByTags: false,
   attachmentsEnabled: true,
   calendarEnabled: true,
+  statsEnabled:    true,
 };
 let settings = { ...DEFAULT_SETTINGS };
 
@@ -1143,7 +1149,7 @@ function setView(view, el) {
   const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
     'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
     'status-not-started':'Not Started', 'status-in-progress':'In Progress',
-    'status-blocked':'Blocked', 'status-on-hold':'On Hold', 'budget-view':'Budget View', 'calendar-view':'Calendar' };
+    'status-blocked':'Blocked', 'status-on-hold':'On Hold', 'budget-view':'Budget View', 'calendar-view':'Calendar', 'stats':'Stats' };
   document.getElementById('view-title').textContent =
     view.startsWith('tag:') ? '#' + view.slice(4) : (titles[view] || view);
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
@@ -1187,7 +1193,7 @@ function setView(view, el) {
     document.getElementById('wins-container').classList.add('active');
     renderWins();
   } else if (view === 'budget-view') {
-    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false;
+    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false; statsMode = false;
     const calVCb = document.getElementById('calendar-view-container');
     if (calVCb) { calVCb.classList.remove('active'); }
     switchViewMode('list');
@@ -1195,25 +1201,46 @@ function setView(view, el) {
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    const statsCVb = document.getElementById('stats-container');
+    if (statsCVb) statsCVb.classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.add('active');
     renderBudgetView();
-  } else if (view === 'calendar-view') {
-    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false;
+  } else if (view === 'stats') {
+    statsMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false;
+    const calVCs = document.getElementById('calendar-view-container');
+    if (calVCs) calVCs.classList.remove('active');
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
+    const statsC = document.getElementById('stats-container');
+    if (statsC) statsC.classList.add('active');
+    statsCurrentRange = '30d';
+    _statsCache = {};
+    renderStatsView();
+  } else if (view === 'calendar-view') {
+    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; statsMode = false;
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    if (budgetViewContainer) budgetViewContainer.classList.remove('active');
+    const statsCVc = document.getElementById('stats-container');
+    if (statsCVc) statsCVc.classList.remove('active');
     const calVC = document.getElementById('calendar-view-container');
     if (calVC) calVC.classList.add('active');
     loadCalEvents().then(() => renderCalendarView());
   } else {
-    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false; statsMode = false;
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
+    const statsCe = document.getElementById('stats-container');
+    if (statsCe) statsCe.classList.remove('active');
     const calVCe = document.getElementById('calendar-view-container');
     if (calVCe) { calVCe.classList.remove('active'); }
     const mainElE = document.getElementById('main');
@@ -2020,6 +2047,461 @@ function renderBudgetView() {
   } else {
     container.innerHTML = makeSummaryBar(budgetTasks) + makeColumns(budgetTasks);
   }
+}
+
+// ── Stats View ─────────────────────────────────────────────────────────────
+
+function statsFmtTime(secs) {
+  secs = Math.max(0, Math.floor(secs));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function statsDateRange(range) {
+  const now = new Date();
+  if (range === 'today') {
+    const s = dateToLocalStr(now);
+    return { start: new Date(s + 'T00:00:00'), end: new Date(s + 'T23:59:59.999'), totalDays: 1 };
+  }
+  const days = { '7d': 7, '30d': 30, '90d': 90, 'year': 365 }[range] || 30;
+  const end = new Date(now); end.setHours(23, 59, 59, 999);
+  const start = new Date(end); start.setDate(start.getDate() - days + 1); start.setHours(0, 0, 0, 0);
+  return { start, end, totalDays: days };
+}
+
+function statsPrevRange(range) {
+  const { start, end } = statsDateRange(range);
+  const dur = end.getTime() - start.getTime();
+  const prevEnd = new Date(start.getTime() - 1);
+  const prevStart = new Date(prevEnd.getTime() - dur + 1);
+  return { start: prevStart, end: prevEnd };
+}
+
+function statsSessionsInRange(task, start, end) {
+  return (task.timeSessions || []).filter(s => {
+    const d = new Date(s.start);
+    return d >= start && d <= end;
+  });
+}
+
+function statsRunningSecsForTask(task, start, end) {
+  if (activeTimerId !== task.id || !timerStart) return 0;
+  const runStart = new Date(timerStart * 1000);
+  if (runStart < start || runStart > end) return 0;
+  return Math.floor(Date.now() / 1000 - timerStart) + timerPausedElapsed;
+}
+
+function statsTaskTimeInRange(task, start, end) {
+  const fromSessions = statsSessionsInRange(task, start, end).reduce((s, sess) => s + (sess.elapsed || 0), 0);
+  return fromSessions + statsRunningSecsForTask(task, start, end);
+}
+
+function statsCompletedInRange(start, end) {
+  return tasks.filter(t => t.completed && t.completedAt &&
+    new Date(t.completedAt) >= start && new Date(t.completedAt) <= end);
+}
+
+function statsCreatedInRange(start, end) {
+  return tasks.filter(t => t.createdAt &&
+    new Date(t.createdAt) >= start && new Date(t.createdAt) <= end);
+}
+
+function statsDetectProfile(start, end) {
+  const hasSessions = tasks.some(t =>
+    statsSessionsInRange(t, start, end).length > 0 ||
+    statsRunningSecsForTask(t, start, end) > 0
+  );
+  if (!hasSessions) return 'PROFILE_BASIC';
+  const eligibleCount = statsCompletedInRange(start, end).filter(t =>
+    t.estimate > 0 && statsSessionsInRange(t, start, end).length > 0
+  ).length;
+  return eligibleCount >= 3 ? 'PROFILE_FULL' : 'PROFILE_TIMER';
+}
+
+function statsIsNewUser() {
+  const withDates = tasks.filter(t => t.createdAt);
+  if (!withDates.length) return true;
+  const first = Math.min(...withDates.map(t => new Date(t.createdAt).getTime()));
+  return (Date.now() - first) / 86400000 < 7;
+}
+
+function statsNewUserDay() {
+  const withDates = tasks.filter(t => t.createdAt);
+  if (!withDates.length) return 1;
+  const first = Math.min(...withDates.map(t => new Date(t.createdAt).getTime()));
+  return Math.min(7, Math.floor((Date.now() - first) / 86400000) + 1);
+}
+
+function statsCalcCompleted(start, end) {
+  const { start: ps, end: pe } = statsPrevRange(statsCurrentRange);
+  const count = statsCompletedInRange(start, end).length;
+  const prev  = statsCompletedInRange(ps, pe).length;
+  return { count, delta: count - prev };
+}
+
+function statsCalcActiveDays(start, end, totalDays) {
+  const done = statsCompletedInRange(start, end);
+  const daySet = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
+  const activeDays = daySet.size;
+  const avg = activeDays > 0 ? (done.length / activeDays) : 0;
+  return { activeDays, totalDays, avg };
+}
+
+function statsCalcTimeTracked(start, end) {
+  let totalSecs = 0, sessionCount = 0;
+  tasks.forEach(t => {
+    statsSessionsInRange(t, start, end).forEach(s => { totalSecs += s.elapsed || 0; sessionCount++; });
+    const run = statsRunningSecsForTask(t, start, end);
+    if (run > 0) { totalSecs += run; sessionCount++; }
+  });
+  return { totalSecs, sessionCount };
+}
+
+function statsCalcAvgTime(start, end) {
+  const times = statsCompletedInRange(start, end)
+    .map(t => statsTaskTimeInRange(t, start, end))
+    .filter(s => s > 0);
+  if (!times.length) return { mean: 0, median: 0 };
+  const mean = times.reduce((a, b) => a + b, 0) / times.length;
+  const sorted = [...times].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return { mean, median };
+}
+
+function statsCalcOnEstimate(start, end) {
+  const eligible = statsCompletedInRange(start, end).filter(t =>
+    t.estimate > 0 && statsSessionsInRange(t, start, end).length > 0
+  );
+  if (!eligible.length) return { rate: 0, onCount: 0, eligibleCount: 0 };
+  const onCount = eligible.filter(t => {
+    const actualMins = statsTaskTimeInRange(t, start, end) / 60;
+    return Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
+  }).length;
+  return { rate: Math.round(onCount / eligible.length * 100), onCount, eligibleCount: eligible.length };
+}
+
+function statsCalcThroughput(start, end, range) {
+  const done = statsCompletedInRange(start, end);
+  const useWeekly = (range === '90d' || range === 'year');
+  const useMonthly = (range === 'year');
+  const buckets = {};
+  done.forEach(t => {
+    const d = new Date(t.completedAt);
+    let key;
+    if (useMonthly) {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    } else if (useWeekly) {
+      const day = new Date(d); day.setDate(day.getDate() - day.getDay());
+      key = dateToLocalStr(day);
+    } else {
+      key = dateToLocalStr(d);
+    }
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  return buckets;
+}
+
+function statsCalcDayOfWeek(start, end) {
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const counts = { Mon:0, Tue:0, Wed:0, Thu:0, Fri:0, Sat:0, Sun:0 };
+  statsCompletedInRange(start, end).forEach(t => {
+    const d = new Date(t.completedAt);
+    const dow = d.getDay(); // 0=Sun
+    const key = days[dow === 0 ? 6 : dow - 1];
+    counts[key]++;
+  });
+  return counts;
+}
+
+function statsCalcCreatedVsCompleted(start, end) {
+  const completedBuckets = {}, createdBuckets = {};
+  const bucket = d => { const w = new Date(d); w.setDate(w.getDate() - w.getDay()); return dateToLocalStr(w); };
+  statsCompletedInRange(start, end).forEach(t => { const k = bucket(new Date(t.completedAt)); completedBuckets[k] = (completedBuckets[k]||0)+1; });
+  statsCreatedInRange(start, end).forEach(t => { const k = bucket(new Date(t.createdAt)); createdBuckets[k] = (createdBuckets[k]||0)+1; });
+  return { completedBuckets, createdBuckets };
+}
+
+function statsCalcHeatmap(start, end) {
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const grid = {}; // grid[dow][hour] = minutes
+  days.forEach(d => { grid[d] = new Array(24).fill(0); });
+  tasks.forEach(t => {
+    statsSessionsInRange(t, start, end).forEach(s => {
+      const d = new Date(s.start);
+      const dow = days[d.getDay() === 0 ? 6 : d.getDay() - 1];
+      grid[dow][d.getHours()] += Math.round((s.elapsed || 0) / 60);
+    });
+  });
+  const allVals = days.flatMap(d => grid[d]);
+  const maxVal = Math.max(...allVals, 1);
+  const intensity = v => v === 0 ? 0 : v <= maxVal * 0.25 ? 1 : v <= maxVal * 0.5 ? 2 : v <= maxVal * 0.75 ? 3 : 4;
+  return { grid, intensity };
+}
+
+function statsCalcTimeByTag(start, end) {
+  const tagTotals = {};
+  let untaggedSecs = 0;
+  statsCompletedInRange(start, end).forEach(t => {
+    const secs = statsTaskTimeInRange(t, start, end);
+    if (!secs) return;
+    const tags = t.tags || [];
+    if (!tags.length) { untaggedSecs += secs; return; }
+    tags.forEach(tag => { tagTotals[tag] = (tagTotals[tag] || 0) + secs; });
+  });
+  const sorted = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
+  return { sorted, untaggedSecs };
+}
+
+function statsCalcEstimateScatter(start, end) {
+  return statsCompletedInRange(start, end)
+    .filter(t => t.estimate > 0 && statsSessionsInRange(t, start, end).length > 0)
+    .map(t => {
+      const actualMins = statsTaskTimeInRange(t, start, end) / 60;
+      const onBand = Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
+      return { estimate: t.estimate, actual: actualMins, onBand };
+    });
+}
+
+function statsCalcEstimateBreakdown(start, end) {
+  const scatter = statsCalcEstimateScatter(start, end);
+  let onCount = 0, earlyCount = 0, overCount = 0;
+  scatter.forEach(p => {
+    const ratio = (p.actual - p.estimate) / p.estimate;
+    if (Math.abs(ratio) <= 0.20) onCount++;
+    else if (ratio < -0.20) earlyCount++;
+    else overCount++;
+  });
+  return { onCount, earlyCount, overCount, total: scatter.length };
+}
+
+function statsCalcStreakPanel(start, end, totalDays) {
+  const done = statsCompletedInRange(start, end);
+  const daySet = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
+  const activeDays = daySet.size;
+  return {
+    current: calcStreak(),
+    longest: calcLongestStreak(),
+    activeDays,
+    totalDays,
+    avgPerActiveDay: activeDays > 0 ? (done.length / activeDays) : 0
+  };
+}
+
+function statsCalcTodayKPIs() {
+  const today = dateToLocalStr(new Date());
+  const { start, end } = statsDateRange('today');
+  const doneToday = statsCompletedInRange(start, end);
+  const plannedToday = tasks.filter(t => !t.completed && !t.archived && t.due === today).length;
+  const { totalSecs, sessionCount } = statsCalcTimeTracked(start, end);
+  const running = activeTimerId ? tasks.find(t => t.id === activeTimerId) : null;
+  const runningMins = running && timerStart ? Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed) / 60) : 0;
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today && t.id !== activeTimerId).length;
+  return { doneCount: doneToday.length, plannedToday, totalSecs, sessionCount, running, runningMins, openToday };
+}
+
+function renderStatsWelcome() {
+  const day = statsNewUserDay();
+  const remaining = 7 - day;
+  const pct = Math.round((day / 7) * 100);
+  const totalCompleted = tasks.filter(t => t.completed).length;
+  const streak = calcStreak();
+  const totalSecs = tasks.reduce((s, t) => s + (t.timeLogged || 0), 0);
+  return `<div class="stats-page">
+    <div class="stats-header">
+      <div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div>
+    </div>
+    <div class="stats-welcome-card">
+      <div>
+        <div class="stats-welcome-title">Stats get more interesting after about a week.</div>
+        <div class="stats-welcome-body">Right now there's not quite enough history to show meaningful trends. As you keep using TaskSpark, more of this page will fill in.</div>
+        <div class="stats-welcome-progress">
+          <div class="stats-welcome-progress-row">
+            <span>Day ${day} of 7</span>
+            <span class="stats-welcome-progress-count">${remaining > 0 ? remaining + ' more day' + (remaining > 1 ? 's' : '') : 'Almost there!'}</span>
+          </div>
+          <div class="stats-progress-track"><div class="stats-progress-fill" style="width:${pct}%"></div></div>
+        </div>
+      </div>
+      <div class="stats-welcome-visual">
+        <div class="stats-preview-bar" style="width:30%;opacity:.35"></div>
+        <div class="stats-preview-bar" style="width:55%;opacity:.5"></div>
+        <div class="stats-preview-bar" style="width:75%;opacity:.7"></div>
+        <div class="stats-preview-bar" style="width:90%;opacity:.9"></div>
+        <div class="stats-preview-bar" style="width:60%;opacity:.5"></div>
+        <div class="stats-preview-label">A preview of what's coming</div>
+      </div>
+    </div>
+    <div class="stats-section-label">What we can show you so far</div>
+    <div class="stats-tiles">
+      <div class="stats-tile">
+        <div class="stats-tile-label">Tasks completed</div>
+        <div class="stats-tile-value">${totalCompleted}</div>
+        <div class="stats-tile-delta">since you started</div>
+      </div>
+      <div class="stats-tile">
+        <div class="stats-tile-label">Current streak</div>
+        <div class="stats-tile-value">${streak}<span class="stats-tile-unit">day${streak !== 1 ? 's' : ''}</span></div>
+        <div class="stats-tile-delta">${streak > 0 ? 'nice — keep it going' : 'complete a task to start one'}</div>
+      </div>
+      <div class="stats-tile">
+        <div class="stats-tile-label">Time tracked</div>
+        <div class="stats-tile-value">${statsFmtTime(totalSecs)}</div>
+        <div class="stats-tile-delta">${tasks.reduce((n, t) => n + (t.timeSessions||[]).length, 0)} sessions</div>
+      </div>
+    </div>
+    <div class="stats-coming-card">
+      <div class="stats-coming-title">What unlocks as you keep going</div>
+      <div class="stats-coming-list">
+        <div class="stats-coming-item"><div class="stats-coming-when">7 days</div><div class="stats-coming-what">Throughput trends and day-of-week patterns</div></div>
+        <div class="stats-coming-item"><div class="stats-coming-when">10 sessions</div><div class="stats-coming-what">Productivity heatmap showing when you work best</div></div>
+        <div class="stats-coming-item"><div class="stats-coming-when">2 weeks</div><div class="stats-coming-what">Created vs completed comparison</div></div>
+        <div class="stats-coming-item"><div class="stats-coming-when">3 estimates</div><div class="stats-coming-what">Estimate accuracy — how well you're calibrating</div></div>
+        <div class="stats-coming-item"><div class="stats-coming-when">30 days</div><div class="stats-coming-what">Monthly trends and long-term patterns</div></div>
+        <div class="stats-coming-item"><div class="stats-coming-when">anytime</div><div class="stats-coming-what">Time by tag — once you've tagged some tasks</div></div>
+      </div>
+    </div>
+    <div class="stats-footnote">No pressure — just a heads up about what's ahead.</div>
+  </div>`;
+}
+
+function statsRangeLabel(range) {
+  return { 'today':'Today', '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
+}
+
+function statsRangePicker(active) {
+  return ['today','7d','30d','90d','year'].map(r =>
+    `<button class="stats-range-btn${r === active ? ' active' : ''}" onclick="statsSetRange('${r}')">${statsRangeLabel(r)}</button>`
+  ).join('');
+}
+
+function statsKpiRow(profile, start, end, range) {
+  const comp   = statsCalcCompleted(start, end);
+  const active = statsCalcActiveDays(start, end, statsDateRange(range).totalDays);
+  const dl     = range === 'today' ? '' : (comp.delta > 0 ? `<div class="stats-kpi-delta up">+${comp.delta} vs previous ${range}</div>` : comp.delta < 0 ? `<div class="stats-kpi-delta down">${comp.delta} vs previous ${range}</div>` : `<div class="stats-kpi-delta">no change vs previous ${range}</div>`);
+  const cols   = profile === 'PROFILE_BASIC' ? 2 : 4;
+  let html = `
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed</div><div class="stats-kpi-value">${comp.count}</div>${dl}</div>
+    <div class="stats-kpi"><div class="stats-kpi-label">Active days</div><div class="stats-kpi-value">${active.activeDays}<span class="stats-kpi-unit">/ ${active.totalDays}</span></div><div class="stats-kpi-delta">${active.avg.toFixed(1)} tasks per active day</div></div>`;
+  if (profile !== 'PROFILE_BASIC') {
+    const tt = statsCalcTimeTracked(start, end);
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(tt.totalSecs)}</div><div class="stats-kpi-delta">across ${tt.sessionCount} session${tt.sessionCount !== 1 ? 's' : ''}</div></div>`;
+  }
+  if (profile === 'PROFILE_TIMER') {
+    const avg = statsCalcAvgTime(start, end);
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">Avg time per task</div><div class="stats-kpi-value">${Math.round(avg.mean / 60)}<span class="stats-kpi-unit">min</span></div><div class="stats-kpi-delta">median ${Math.round(avg.median / 60)} min</div></div>`;
+  }
+  if (profile === 'PROFILE_FULL') {
+    const est = statsCalcOnEstimate(start, end);
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">On-estimate rate</div><div class="stats-kpi-value">${est.rate}<span class="stats-kpi-unit">%</span></div><div class="stats-kpi-delta">within ±20% · ${est.onCount} of ${est.eligibleCount} eligible</div></div>`;
+  }
+  return `<div class="stats-kpi-row stats-kpi-cols-${cols}">${html}</div>`;
+}
+
+function statsSetRange(range) {
+  statsCurrentRange = range;
+  renderStatsView();
+}
+
+function renderStatsView() {
+  const container = document.getElementById('stats-container');
+  if (!container) return;
+
+  if (statsIsNewUser()) {
+    container.innerHTML = renderStatsWelcome();
+    return;
+  }
+
+  const range = statsCurrentRange;
+  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div class="stats-range-picker">${statsRangePicker(range)}</div></div>`;
+
+  if (range === 'today') {
+    container.innerHTML = `<div class="stats-page">${header}${renderStatsDailyLayout()}</div>`;
+    statsStartDailyTick();
+    return;
+  }
+
+  const { start, end, totalDays } = statsDateRange(range);
+  const profile = statsDetectProfile(start, end);
+  const placeholder = (title, hint) => `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">${title}</div>${hint ? `<div class="stats-card-hint">${hint}</div>` : ''}</div><div class="stats-chart-placeholder"></div></div>`;
+  const daysInRange = Math.round((end - start) / 86400000);
+  const enough14 = daysInRange >= 14;
+
+  let rows = '';
+  rows += `<div class="stats-grid" style="margin-bottom:16px">${placeholder('Tasks completed over time','')}<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Streak</div></div>${renderStatsStreakPanel(start, end, totalDays)}</div></div>`;
+  rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${placeholder('Created vs completed', enough14 ? '' : '')}${placeholder('By day of week','Tasks completed')}</div>`;
+  if (profile !== 'PROFILE_BASIC') {
+    rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${placeholder("When you're most productive",'Time tracked by hour')}${placeholder('Time by tag','Tasks can have multiple tags')}</div>`;
+  }
+  if (profile === 'PROFILE_FULL') {
+    rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${placeholder('Estimate accuracy breakdown','')}${placeholder('Estimated vs actual','Each dot is a completed task')}</div>`;
+  }
+
+  container.innerHTML = `<div class="stats-page">${header}${statsKpiRow(profile, start, end, range)}${rows}<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div></div>`;
+}
+
+function renderStatsStreakPanel(start, end, totalDays) {
+  const s = statsCalcStreakPanel(start, end, totalDays);
+  return `<div class="stats-streak-big">${s.current}</div><div class="stats-streak-label">day current streak</div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Longest streak</div><div class="stats-stat-value">${s.longest} days</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">This period</div><div class="stats-stat-value">${s.activeDays} / ${s.totalDays} days</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Avg per active day</div><div class="stats-stat-value">${s.avgPerActiveDay.toFixed(1)} tasks</div></div>`;
+}
+
+function renderStatsDailyLayout() {
+  const { start, end } = statsDateRange('today');
+  const kpis = statsCalcTodayKPIs();
+  const hasActivity = kpis.doneCount > 0 || kpis.sessionCount > 0;
+  const now = new Date();
+  const banner = `<div class="stats-date-banner" id="stats-date-banner">${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
+  const kpiRow = `<div class="stats-kpi-row stats-kpi-cols-4">
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed today</div><div class="stats-kpi-value">${kpis.doneCount}</div><div class="stats-kpi-delta">of ${kpis.plannedToday} planned</div></div>
+    <div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(kpis.totalSecs)}</div><div class="stats-kpi-delta">across ${kpis.sessionCount} session${kpis.sessionCount !== 1 ? 's' : ''}</div></div>
+    <div class="stats-kpi"><div class="stats-kpi-label">In progress</div><div class="stats-kpi-value">${kpis.running ? 1 : 0}</div><div class="stats-kpi-delta">${kpis.running ? `running for ${kpis.runningMins}m` : 'no active timer'}</div></div>
+    <div class="stats-kpi"><div class="stats-kpi-label">Still open today</div><div class="stats-kpi-value">${kpis.openToday}</div><div class="stats-kpi-delta">due before end of day</div></div>
+  </div>`;
+  if (!hasActivity) {
+    return banner + kpiRow + `<div class="stats-card"><div class="stats-empty-msg">Nothing to reflect on yet. Come back once you've got the day going.</div></div>`;
+  }
+  return banner + kpiRow + renderStatsDailyTaskLists(start, end) + `<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>`;
+}
+
+function renderStatsDailyTaskLists(start, end) {
+  const today = dateToLocalStr(new Date());
+  const doneToday = statsCompletedInRange(start, end);
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today);
+
+  const doneItems = doneToday.map(t => {
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const secs = statsTaskTimeInRange(t, start, end);
+    return `<div class="stats-task-item"><div class="stats-task-check">✓</div><div class="stats-task-title done">${esc(t.title)}${tags}</div><div class="stats-task-time">${secs ? statsFmtTime(secs) : ''}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">No tasks completed yet today.</div>`;
+
+  const openItems = openToday.map(t => {
+    const isRunning = activeTimerId === t.id;
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const timeStr = isRunning ? `running · ${Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed)/60)}m` : (t.dueTime ? `due ${fmtTime(t.dueTime)}` : 'due today');
+    return `<div class="stats-task-item"><div class="stats-task-check ${isRunning ? 'running' : 'open'}"></div><div class="stats-task-title">${esc(t.title)}${tags}</div><div class="stats-task-time">${timeStr}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">Nothing else due today.</div>`;
+
+  return `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Completed today</div><div class="stats-card-hint">${doneToday.length} tasks</div></div><div class="stats-task-list">${doneItems}</div></div>
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Still on today's plate</div><div class="stats-card-hint">${openToday.length} open</div></div><div class="stats-task-list">${openItems}</div></div>
+  </div>`;
+}
+
+let _statsDailyTick = null;
+function statsStartDailyTick() {
+  clearInterval(_statsDailyTick);
+  _statsDailyTick = setInterval(() => {
+    if (!statsMode || statsCurrentRange !== 'today') { clearInterval(_statsDailyTick); return; }
+    const el = document.getElementById('stats-date-banner');
+    if (!el) { clearInterval(_statsDailyTick); return; }
+    const now = new Date();
+    el.textContent = `${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}`;
+  }, 30000);
 }
 
 function toggleKanbanGroup(tag) {
@@ -3209,6 +3691,12 @@ function applySettings() {
     renderTasks();
   }
   // Ideas and Habits toggles
+  const statsItem = document.getElementById('sidebar-stats');
+  if (statsItem) statsItem.style.display = s.statsEnabled !== false ? '' : 'none';
+  if (s.statsEnabled === false && statsMode) {
+    statsMode = false;
+    setView('all', document.querySelector('[data-view="all"]'));
+  }
   const ideasItem = document.querySelector('[data-view="ideas"]');
   if (ideasItem) ideasItem.style.display = s.ideasEnabled !== false ? '' : 'none';
   const habitsItem = document.getElementById('sidebar-habits-main');
@@ -3227,9 +3715,9 @@ function applySettings() {
     budgetViewMode = false;
     setView('all', document.querySelector('[data-view="all"]'));
   }
-  // Hide the entire TOOLS section if all four are disabled
+  // Hide the entire TOOLS section if all tools are disabled
   const toolsSection = document.getElementById('sidebar-tools-section');
-  if (toolsSection) toolsSection.style.display = (s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false) ? '' : 'none';
+  if (toolsSection) toolsSection.style.display = (s.statsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false) ? '' : 'none';
   const wsDropdown = document.getElementById('workspace-dropdown');
   const wsTitle = document.getElementById('workspace-title');
   if (wsDropdown) wsDropdown.style.display = s.workspacesEnabled !== false ? '' : 'none';
@@ -3294,6 +3782,7 @@ async function openSettings() {
   if (document.getElementById('set-kanban-enabled'))    document.getElementById('set-kanban-enabled').checked    = s.kanbanEnabled !== false;
   if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
   if (document.getElementById('set-kanban-show-completed')) document.getElementById('set-kanban-show-completed').checked = s.kanbanShowCompleted === true;
+  if (document.getElementById('set-stats-enabled'))     document.getElementById('set-stats-enabled').checked     = s.statsEnabled !== false;
   if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
   if (document.getElementById('set-wins-enabled'))      document.getElementById('set-wins-enabled').checked      = s.winsEnabled !== false;
@@ -3650,6 +4139,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-kanban-enabled'))    settings.kanbanEnabled    = document.getElementById('set-kanban-enabled').checked;
   if (document.getElementById('set-kanban-group-tags')) settings.kanbanGroupByTags = document.getElementById('set-kanban-group-tags').checked;
   if (document.getElementById('set-kanban-show-completed')) settings.kanbanShowCompleted = document.getElementById('set-kanban-show-completed').checked;
+  if (document.getElementById('set-stats-enabled'))     settings.statsEnabled     = document.getElementById('set-stats-enabled').checked;
   if (document.getElementById('set-ideas-enabled'))     settings.ideasEnabled     = document.getElementById('set-ideas-enabled').checked;
   if (document.getElementById('set-habits-enabled'))    settings.habitsEnabled    = document.getElementById('set-habits-enabled').checked;
   if (document.getElementById('set-wins-enabled'))      settings.winsEnabled      = document.getElementById('set-wins-enabled').checked;
