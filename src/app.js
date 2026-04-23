@@ -2405,13 +2405,22 @@ async function statsExportToGoogleDoc() {
     const profile = statsDetectProfile(start, end);
     const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const title   = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
+    const daysInRange = Math.round((end - start) / 86400000);
 
+    function docBar(val, max, color) {
+      const pct = max > 0 ? Math.round((val / max) * 200) : 0;
+      return `<td><div style="background:${color};height:12px;width:${pct}px;border-radius:2px;display:inline-block"></div></td>`;
+    }
+
+    // ── Summary ───────────────────────────────────────────────────────────────
     const comp   = statsCalcCompleted(start, end);
     const active = statsCalcActiveDays(start, end, totalDays);
-
+    const streak = statsCalcStreakPanel(start, end, totalDays);
     let summaryRows = `
       <tr><td><b>Completed</b></td><td>${comp.count} task${comp.count !== 1 ? 's' : ''}</td></tr>
-      <tr><td><b>Active days</b></td><td>${active.activeDays} / ${active.totalDays} &nbsp;(${active.avg.toFixed(1)} tasks per active day)</td></tr>`;
+      <tr><td><b>Active days</b></td><td>${active.activeDays} / ${active.totalDays} &nbsp;(${active.avg.toFixed(1)} tasks per active day)</td></tr>
+      <tr><td><b>Current streak</b></td><td>${streak.current} day${streak.current !== 1 ? 's' : ''}</td></tr>
+      <tr><td><b>Longest streak</b></td><td>${streak.longest} day${streak.longest !== 1 ? 's' : ''}</td></tr>`;
     if (profile !== 'PROFILE_BASIC') {
       const tt  = statsCalcTimeTracked(start, end);
       const avg = statsCalcAvgTime(start, end);
@@ -2419,6 +2428,78 @@ async function statsExportToGoogleDoc() {
       if (avg.mean > 0) summaryRows += `<tr><td><b>Avg time per task</b></td><td>${Math.round(avg.mean / 60)} min</td></tr>`;
     }
 
+    // ── Throughput table ──────────────────────────────────────────────────────
+    const buckets    = statsChartBuckets(start, end, range);
+    const maxBucket  = Math.max(...buckets.map(b => b.count), 1);
+    const throughputRows = buckets.map(b =>
+      `<tr><td style="color:#555;white-space:nowrap">${b.label}</td>${docBar(b.count, maxBucket, '#6b5ce7')}<td style="padding-left:8px">${b.count}</td></tr>`
+    ).join('');
+
+    // ── Day of week ───────────────────────────────────────────────────────────
+    const dowCounts = statsCalcDayOfWeek(start, end);
+    const dowDays   = settings.streakWeekends ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] : ['Mon','Tue','Wed','Thu','Fri'];
+    const maxDow    = Math.max(...dowDays.map(d => dowCounts[d] || 0), 1);
+    const dowRows   = dowDays.map(d =>
+      `<tr><td style="color:#555;width:36px">${d}</td>${docBar(dowCounts[d]||0, maxDow, '#6b5ce7')}<td style="padding-left:8px">${dowCounts[d]||0}</td></tr>`
+    ).join('');
+
+    // ── Created vs completed (≥14 day ranges only) ────────────────────────────
+    let createdVsHtml = '';
+    if (daysInRange >= 14) {
+      const { completedBuckets, createdBuckets } = statsCalcCreatedVsCompleted(start, end);
+      const wCur = new Date(start); wCur.setDate(wCur.getDate() - wCur.getDay());
+      const wEnd = new Date(end);
+      const weeks = [];
+      while (wCur <= wEnd) { weeks.push(dateToLocalStr(wCur)); wCur.setDate(wCur.getDate() + 7); }
+      const cvMax = Math.max(...weeks.flatMap(k => [completedBuckets[k]||0, createdBuckets[k]||0]), 1);
+      const cvRows = weeks.map(k => {
+        const d = new Date(k + 'T00:00:00');
+        const label = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        const comp  = completedBuckets[k] || 0;
+        const crea  = createdBuckets[k]  || 0;
+        return `<tr>
+          <td style="color:#555;white-space:nowrap;width:60px">${label}</td>
+          <td><div style="background:#6b5ce7;height:10px;width:${Math.round((comp/cvMax)*160)}px;border-radius:2px;display:inline-block"></div></td>
+          <td style="padding-left:6px;width:30px">${comp}</td>
+          <td><div style="background:#f59e0b;height:10px;width:${Math.round((crea/cvMax)*160)}px;border-radius:2px;display:inline-block"></div></td>
+          <td style="padding-left:6px">${crea}</td>
+        </tr>`;
+      }).join('');
+      createdVsHtml = `<h2>Created vs Completed (weekly)</h2>
+        <table><thead><tr><th></th><th style="color:#6b5ce7;font-weight:bold;padding-right:40px">Completed</th><th></th><th style="color:#f59e0b;font-weight:bold">Created</th></tr></thead><tbody>${cvRows}</tbody></table>`;
+    }
+
+    // ── Time by tag ───────────────────────────────────────────────────────────
+    let tagHtml = '';
+    if (profile !== 'PROFILE_BASIC') {
+      const { sorted, untaggedSecs } = statsCalcTimeByTag(start, end);
+      if (sorted.length || untaggedSecs) {
+        const maxTag = Math.max(...sorted.map(([,s]) => s), untaggedSecs || 0, 1);
+        const tagRows = sorted.map(([tag, secs]) =>
+          `<tr><td style="color:#555;white-space:nowrap">#${tag}</td>${docBar(secs, maxTag, '#6b5ce7')}<td style="padding-left:8px">${statsFmtTime(secs)}</td></tr>`
+        ).join('');
+        const untagRow = untaggedSecs
+          ? `<tr><td style="color:#999">Untagged</td>${docBar(untaggedSecs, maxTag, '#ccc')}<td style="padding-left:8px">${statsFmtTime(untaggedSecs)}</td></tr>`
+          : '';
+        tagHtml = `<h2>Time by Tag</h2><table>${tagRows}${untagRow}</table>`;
+      }
+    }
+
+    // ── Estimate breakdown ────────────────────────────────────────────────────
+    let estimateHtml = '';
+    if (profile === 'PROFILE_FULL') {
+      const bd = statsCalcEstimateBreakdown(start, end);
+      if (bd.total) {
+        estimateHtml = `<h2>Estimate Accuracy</h2>
+          <table>
+            <tr><td><b>On estimate</b> <span style="color:#888">(within ±20%)</span></td><td style="padding-left:12px;color:#6b5ce7">${bd.onCount} tasks &nbsp;(${Math.round(bd.onCount/bd.total*100)}%)</td></tr>
+            <tr><td><b>Finished early</b> <span style="color:#888">(20%+ under)</span></td><td style="padding-left:12px">${bd.earlyCount} tasks &nbsp;(${Math.round(bd.earlyCount/bd.total*100)}%)</td></tr>
+            <tr><td><b>Ran over</b> <span style="color:#888">(20%+ over)</span></td><td style="padding-left:12px;color:#f59e0b">${bd.overCount} tasks &nbsp;(${Math.round(bd.overCount/bd.total*100)}%)</td></tr>
+          </table>`;
+      }
+    }
+
+    // ── Completed tasks list ──────────────────────────────────────────────────
     const completed = statsCompletedInRange(start, end)
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
     let tasksHtml = '';
@@ -2447,20 +2528,28 @@ async function statsExportToGoogleDoc() {
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-  body { font-family: Arial, sans-serif; font-size: 11pt; color: #111; max-width: 700px; margin: 40px auto; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; color: #111; max-width: 750px; margin: 40px auto; }
   h1 { font-size: 18pt; margin-bottom: 4px; }
-  h2 { font-size: 13pt; margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-  h3 { font-size: 11pt; font-weight: bold; margin: 16px 0 4px; }
-  table { border-collapse: collapse; margin: 12px 0; }
-  td { padding: 4px 20px 4px 0; vertical-align: top; }
-  ul { margin: 4px 0 0 0; padding-left: 20px; }
+  h2 { font-size: 13pt; margin-top: 32px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  h3 { font-size: 11pt; font-weight: bold; margin: 18px 0 4px; }
+  table { border-collapse: collapse; margin: 10px 0; }
+  td, th { padding: 3px 12px 3px 0; vertical-align: middle; font-size: 10.5pt; }
+  th { text-align: left; }
+  ul { margin: 4px 0; padding-left: 20px; }
   li { margin-bottom: 3px; }
-  .footer { margin-top: 40px; color: #888; font-size: 9pt; }
+  .footer { margin-top: 48px; color: #aaa; font-size: 9pt; }
 </style>
 </head><body>
 <h1>${title}</h1>
 <h2>Summary</h2>
 <table>${summaryRows}</table>
+<h2>Tasks Completed Over Time</h2>
+<table>${throughputRows}</table>
+<h2>By Day of Week</h2>
+<table>${dowRows}</table>
+${createdVsHtml}
+${tagHtml}
+${estimateHtml}
 ${tasksHtml}
 <p class="footer">Exported from TaskSpark on ${dateStr}</p>
 </body></html>`;
