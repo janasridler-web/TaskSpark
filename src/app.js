@@ -2115,7 +2115,7 @@ function statsDetectProfile(start, end) {
   );
   if (!hasSessions) return 'PROFILE_BASIC';
   const eligibleCount = statsCompletedInRange(start, end).filter(t =>
-    t.estimate > 0 && statsSessionsInRange(t, start, end).length > 0
+    t.estimate > 0 && (t.timeSessions || []).length > 0
   ).length;
   return eligibleCount >= 3 ? 'PROFILE_FULL' : 'PROFILE_TIMER';
 }
@@ -2173,11 +2173,11 @@ function statsCalcAvgTime(start, end) {
 
 function statsCalcOnEstimate(start, end) {
   const eligible = statsCompletedInRange(start, end).filter(t =>
-    t.estimate > 0 && statsSessionsInRange(t, start, end).length > 0
+    t.estimate > 0 && (t.timeSessions || []).length > 0
   );
   if (!eligible.length) return { rate: 0, onCount: 0, eligibleCount: 0 };
   const onCount = eligible.filter(t => {
-    const actualMins = statsTaskTimeInRange(t, start, end) / 60;
+    const actualMins = (t.timeLogged || 0) / 60;
     return Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
   }).length;
   return { rate: Math.round(onCount / eligible.length * 100), onCount, eligibleCount: eligible.length };
@@ -2257,9 +2257,9 @@ function statsCalcTimeByTag(start, end) {
 
 function statsCalcEstimateScatter(start, end) {
   return statsCompletedInRange(start, end)
-    .filter(t => t.estimate > 0 && statsSessionsInRange(t, start, end).length > 0)
+    .filter(t => t.estimate > 0 && (t.timeSessions || []).length > 0)
     .map(t => {
-      const actualMins = statsTaskTimeInRange(t, start, end) / 60;
+      const actualMins = (t.timeLogged || 0) / 60;
       const onBand = Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
       return { estimate: t.estimate, actual: actualMins, onBand };
     });
