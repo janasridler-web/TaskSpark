@@ -878,16 +878,31 @@ ipcMain.handle('drive-create-sheet-named', async (_, { accessToken, name }) => {
   });
 });
 
-// Creates a Google Doc by uploading HTML via Drive multipart upload (drive.file scope only).
-ipcMain.handle('drive-create-doc', async (_, { accessToken, title, html }) => {
+// Renders HTML to PDF via a hidden Electron window, then uploads to Google Drive.
+ipcMain.handle('drive-upload-pdf', async (_, { accessToken, title, html }) => {
+  const os = require('os');
+  const tmpPath = path.join(os.tmpdir(), `ts_stats_${Date.now()}.html`);
+  fs.writeFileSync(tmpPath, html, 'utf8');
+
+  let win;
+  let pdfBuffer;
+  try {
+    win = new BrowserWindow({ show: false, width: 1024, height: 1400, webPreferences: { nodeIntegration: false, contextIsolation: true } });
+    await win.loadFile(tmpPath);
+    pdfBuffer = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+  } finally {
+    if (win) { try { win.close(); } catch {} }
+    try { fs.unlinkSync(tmpPath); } catch {}
+  }
+
   return new Promise((resolve, reject) => {
-    const boundary = 'ts_doc_boundary_' + Date.now();
-    const metadata = JSON.stringify({ name: title, mimeType: 'application/vnd.google-apps.document' });
+    const boundary = 'ts_pdf_' + Date.now();
+    const metadata = JSON.stringify({ name: title + '.pdf', mimeType: 'application/pdf' });
     const body = Buffer.concat([
       Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`),
       Buffer.from(metadata, 'utf8'),
-      Buffer.from(`\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n`),
-      Buffer.from(html, 'utf8'),
+      Buffer.from(`\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`),
+      pdfBuffer,
       Buffer.from(`\r\n--${boundary}--`),
     ]);
     const req = https.request({

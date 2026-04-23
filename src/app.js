@@ -2400,39 +2400,49 @@ async function statsExportToGoogleDoc() {
     await ensureToken();
     if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
 
-    const range   = statsCurrentRange;
+    const range      = statsCurrentRange;
     const { start, end, totalDays } = statsDateRange(range);
-    const profile = statsDetectProfile(start, end);
-    const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    const title   = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
+    const profile    = statsDetectProfile(start, end);
+    const dateStr    = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const title      = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
     const daysInRange = Math.round((end - start) / 86400000);
+    const PURPLE = '#6b5ce7', AMBER = '#f59e0b';
 
-    function docBar(val, max, color) {
-      const pct = max > 0 ? Math.round((val / max) * 200) : 0;
-      return `<td><div style="background:${color};height:12px;width:${pct}px;border-radius:2px;display:inline-block"></div></td>`;
+    function bar(val, max, color) {
+      const w = max > 0 ? Math.round((val / max) * 220) : 0;
+      return `<div style="display:inline-block;background:${color};height:10px;width:${w}px;border-radius:3px;vertical-align:middle"></div>`;
     }
 
-    // ── Summary ───────────────────────────────────────────────────────────────
+    // ── Summary KPI cards ─────────────────────────────────────────────────────
     const comp   = statsCalcCompleted(start, end);
     const active = statsCalcActiveDays(start, end, totalDays);
     const streak = statsCalcStreakPanel(start, end, totalDays);
-    let summaryRows = `
-      <tr><td><b>Completed</b></td><td>${comp.count} task${comp.count !== 1 ? 's' : ''}</td></tr>
-      <tr><td><b>Active days</b></td><td>${active.activeDays} / ${active.totalDays} &nbsp;(${active.avg.toFixed(1)} tasks per active day)</td></tr>
-      <tr><td><b>Current streak</b></td><td>${streak.current} day${streak.current !== 1 ? 's' : ''}</td></tr>
-      <tr><td><b>Longest streak</b></td><td>${streak.longest} day${streak.longest !== 1 ? 's' : ''}</td></tr>`;
+    function kpi(label, value, sub) {
+      return `<div style="background:#f5f5f5;border-radius:8px;padding:14px 16px;flex:1;min-width:120px">
+        <div style="font-size:8.5pt;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${label}</div>
+        <div style="font-size:20pt;font-weight:700;color:#111;line-height:1">${value}</div>
+        <div style="font-size:8.5pt;color:#999;margin-top:4px">${sub}</div>
+      </div>`;
+    }
+    let kpiCards = kpi('Completed', comp.count, `${active.avg.toFixed(1)} per active day`)
+                 + kpi('Active Days', `${active.activeDays}<span style="font-size:13pt;font-weight:400;color:#aaa"> / ${active.totalDays}</span>`, 'days with completions')
+                 + kpi('Streak', streak.current, `longest ${streak.longest} days`);
     if (profile !== 'PROFILE_BASIC') {
       const tt  = statsCalcTimeTracked(start, end);
       const avg = statsCalcAvgTime(start, end);
-      summaryRows += `<tr><td><b>Time tracked</b></td><td>${statsFmtTime(tt.totalSecs)} &nbsp;(${tt.sessionCount} session${tt.sessionCount !== 1 ? 's' : ''})</td></tr>`;
-      if (avg.mean > 0) summaryRows += `<tr><td><b>Avg time per task</b></td><td>${Math.round(avg.mean / 60)} min</td></tr>`;
+      kpiCards += kpi('Time Tracked', statsFmtTime(tt.totalSecs), `${tt.sessionCount} sessions`);
+      if (avg.mean > 0) kpiCards += kpi('Avg per Task', `${Math.round(avg.mean / 60)}<span style="font-size:13pt;font-weight:400;color:#aaa">m</span>`, `median ${Math.round(avg.median/60)} min`);
     }
 
-    // ── Throughput table ──────────────────────────────────────────────────────
-    const buckets    = statsChartBuckets(start, end, range);
-    const maxBucket  = Math.max(...buckets.map(b => b.count), 1);
+    // ── Throughput ────────────────────────────────────────────────────────────
+    const buckets   = statsChartBuckets(start, end, range);
+    const maxBucket = Math.max(...buckets.map(b => b.count), 1);
     const throughputRows = buckets.map(b =>
-      `<tr><td style="color:#555;white-space:nowrap">${b.label}</td>${docBar(b.count, maxBucket, '#6b5ce7')}<td style="padding-left:8px">${b.count}</td></tr>`
+      `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
+        <div style="width:52px;font-size:9pt;color:#666;flex-shrink:0">${b.label}</div>
+        <div>${bar(b.count, maxBucket, PURPLE)}</div>
+        <div style="font-size:9pt;color:#333;width:20px">${b.count}</div>
+      </div>`
     ).join('');
 
     // ── Day of week ───────────────────────────────────────────────────────────
@@ -2440,10 +2450,14 @@ async function statsExportToGoogleDoc() {
     const dowDays   = settings.streakWeekends ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] : ['Mon','Tue','Wed','Thu','Fri'];
     const maxDow    = Math.max(...dowDays.map(d => dowCounts[d] || 0), 1);
     const dowRows   = dowDays.map(d =>
-      `<tr><td style="color:#555;width:36px">${d}</td>${docBar(dowCounts[d]||0, maxDow, '#6b5ce7')}<td style="padding-left:8px">${dowCounts[d]||0}</td></tr>`
+      `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
+        <div style="width:30px;font-size:9pt;color:#666;flex-shrink:0">${d}</div>
+        <div>${bar(dowCounts[d]||0, maxDow, PURPLE)}</div>
+        <div style="font-size:9pt;color:#333;width:20px">${dowCounts[d]||0}</div>
+      </div>`
     ).join('');
 
-    // ── Created vs completed (≥14 day ranges only) ────────────────────────────
+    // ── Created vs completed ──────────────────────────────────────────────────
     let createdVsHtml = '';
     if (daysInRange >= 14) {
       const { completedBuckets, createdBuckets } = statsCalcCreatedVsCompleted(start, end);
@@ -2453,20 +2467,25 @@ async function statsExportToGoogleDoc() {
       while (wCur <= wEnd) { weeks.push(dateToLocalStr(wCur)); wCur.setDate(wCur.getDate() + 7); }
       const cvMax = Math.max(...weeks.flatMap(k => [completedBuckets[k]||0, createdBuckets[k]||0]), 1);
       const cvRows = weeks.map(k => {
-        const d = new Date(k + 'T00:00:00');
+        const d     = new Date(k + 'T00:00:00');
         const label = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-        const comp  = completedBuckets[k] || 0;
-        const crea  = createdBuckets[k]  || 0;
-        return `<tr>
-          <td style="color:#555;white-space:nowrap;width:60px">${label}</td>
-          <td><div style="background:#6b5ce7;height:10px;width:${Math.round((comp/cvMax)*160)}px;border-radius:2px;display:inline-block"></div></td>
-          <td style="padding-left:6px;width:30px">${comp}</td>
-          <td><div style="background:#f59e0b;height:10px;width:${Math.round((crea/cvMax)*160)}px;border-radius:2px;display:inline-block"></div></td>
-          <td style="padding-left:6px">${crea}</td>
-        </tr>`;
+        const c     = completedBuckets[k] || 0;
+        const cr    = createdBuckets[k]   || 0;
+        return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
+          <div style="width:44px;font-size:9pt;color:#666;flex-shrink:0">${label}</div>
+          <div style="width:110px">${bar(c, cvMax, PURPLE)}</div>
+          <div style="font-size:9pt;color:#6b5ce7;width:20px">${c}</div>
+          <div style="width:110px">${bar(cr, cvMax, AMBER)}</div>
+          <div style="font-size:9pt;color:#f59e0b;width:20px">${cr}</div>
+        </div>`;
       }).join('');
-      createdVsHtml = `<h2>Created vs Completed (weekly)</h2>
-        <table><thead><tr><th></th><th style="color:#6b5ce7;font-weight:bold;padding-right:40px">Completed</th><th></th><th style="color:#f59e0b;font-weight:bold">Created</th></tr></thead><tbody>${cvRows}</tbody></table>`;
+      createdVsHtml = `
+        <div class="section"><div class="section-title">Created vs Completed <span style="font-size:9pt;font-weight:400;color:#aaa">weekly</span></div>
+        <div style="display:flex;gap:16px;margin-bottom:6px;font-size:9pt">
+          <span style="color:${PURPLE}">&#9632; Completed</span>
+          <span style="color:${AMBER}">&#9632; Created</span>
+        </div>
+        ${cvRows}</div>`;
     }
 
     // ── Time by tag ───────────────────────────────────────────────────────────
@@ -2474,14 +2493,21 @@ async function statsExportToGoogleDoc() {
     if (profile !== 'PROFILE_BASIC') {
       const { sorted, untaggedSecs } = statsCalcTimeByTag(start, end);
       if (sorted.length || untaggedSecs) {
-        const maxTag = Math.max(...sorted.map(([,s]) => s), untaggedSecs || 0, 1);
+        const maxTag  = Math.max(...sorted.map(([,s]) => s), untaggedSecs || 0, 1);
         const tagRows = sorted.map(([tag, secs]) =>
-          `<tr><td style="color:#555;white-space:nowrap">#${tag}</td>${docBar(secs, maxTag, '#6b5ce7')}<td style="padding-left:8px">${statsFmtTime(secs)}</td></tr>`
+          `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
+            <div style="width:100px;font-size:9pt;color:${PURPLE};flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${tag}</div>
+            <div>${bar(secs, maxTag, PURPLE)}</div>
+            <div style="font-size:9pt;color:#333;width:48px">${statsFmtTime(secs)}</div>
+          </div>`
         ).join('');
         const untagRow = untaggedSecs
-          ? `<tr><td style="color:#999">Untagged</td>${docBar(untaggedSecs, maxTag, '#ccc')}<td style="padding-left:8px">${statsFmtTime(untaggedSecs)}</td></tr>`
-          : '';
-        tagHtml = `<h2>Time by Tag</h2><table>${tagRows}${untagRow}</table>`;
+          ? `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
+              <div style="width:100px;font-size:9pt;color:#aaa;flex-shrink:0">Untagged</div>
+              <div>${bar(untaggedSecs, maxTag, '#ccc')}</div>
+              <div style="font-size:9pt;color:#999;width:48px">${statsFmtTime(untaggedSecs)}</div>
+            </div>` : '';
+        tagHtml = `<div class="section"><div class="section-title">Time by Tag</div>${tagRows}${untagRow}</div>`;
       }
     }
 
@@ -2490,18 +2516,28 @@ async function statsExportToGoogleDoc() {
     if (profile === 'PROFILE_FULL') {
       const bd = statsCalcEstimateBreakdown(start, end);
       if (bd.total) {
-        estimateHtml = `<h2>Estimate Accuracy</h2>
-          <table>
-            <tr><td><b>On estimate</b> <span style="color:#888">(within ±20%)</span></td><td style="padding-left:12px;color:#6b5ce7">${bd.onCount} tasks &nbsp;(${Math.round(bd.onCount/bd.total*100)}%)</td></tr>
-            <tr><td><b>Finished early</b> <span style="color:#888">(20%+ under)</span></td><td style="padding-left:12px">${bd.earlyCount} tasks &nbsp;(${Math.round(bd.earlyCount/bd.total*100)}%)</td></tr>
-            <tr><td><b>Ran over</b> <span style="color:#888">(20%+ over)</span></td><td style="padding-left:12px;color:#f59e0b">${bd.overCount} tasks &nbsp;(${Math.round(bd.overCount/bd.total*100)}%)</td></tr>
-          </table>`;
+        const onPct    = Math.round(bd.onCount    / bd.total * 100);
+        const earlyPct = Math.round(bd.earlyCount / bd.total * 100);
+        const overPct  = 100 - onPct - earlyPct;
+        estimateHtml = `<div class="section"><div class="section-title">Estimate Accuracy</div>
+          <div style="display:flex;gap:16px;margin:8px 0 4px;font-size:9.5pt">
+            <span style="color:${PURPLE}"><b>${bd.onCount}</b> on estimate (${onPct}%)</span>
+            <span style="color:#555"><b>${bd.earlyCount}</b> early (${earlyPct}%)</span>
+            <span style="color:${AMBER}"><b>${bd.overCount}</b> over (${overPct}%)</span>
+          </div>
+          <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:8px">
+            <div style="width:${earlyPct}%;background:#d1d5db"></div>
+            <div style="width:${onPct}%;background:${PURPLE}"></div>
+            <div style="width:${overPct}%;background:${AMBER}"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8pt;color:#aaa;margin-top:3px"><span>Early</span><span>On estimate</span><span>Over</span></div>
+        </div>`;
       }
     }
 
-    // ── Completed tasks list ──────────────────────────────────────────────────
+    // ── Completed tasks (oldest first) ────────────────────────────────────────
     const completed = statsCompletedInRange(start, end)
-      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+      .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
     let tasksHtml = '';
     if (completed.length) {
       const groups = {};
@@ -2510,59 +2546,65 @@ async function statsExportToGoogleDoc() {
         if (!groups[k]) groups[k] = [];
         groups[k].push(t);
       });
-      tasksHtml = '<h2>Completed Tasks</h2>';
-      Object.entries(groups).sort(([a], [b]) => b.localeCompare(a)).forEach(([k, ts]) => {
+      let taskRows = '';
+      Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).forEach(([k, ts]) => {
         const label = new Date(k + 'T00:00:00').toLocaleDateString('en-GB', {
           weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
         });
-        tasksHtml += `<h3>${label}</h3><ul>`;
+        taskRows += `<div style="font-size:10pt;font-weight:600;color:#333;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid #eee">${label}</div>`;
         ts.forEach(t => {
           const secs = statsTaskTimeInRange(t, start, end);
-          const time = secs ? ` <span style="color:#666">[${statsFmtTime(secs)}]</span>` : '';
-          const tags = (t.tags || []).map(g => `<span style="color:#888">#${g}</span>`).join(' ');
-          tasksHtml += `<li>${t.title}${tags ? ' ' + tags : ''}${time}</li>`;
+          const time = secs ? `<span style="color:#aaa;font-size:9pt"> [${statsFmtTime(secs)}]</span>` : '';
+          const tags = (t.tags || []).map(g => `<span style="color:${PURPLE};font-size:9pt"> #${g}</span>`).join('');
+          taskRows += `<div style="display:flex;align-items:baseline;gap:4px;padding:3px 0;border-bottom:1px solid #f5f5f5">
+            <span style="color:#aaa;font-size:9pt;flex-shrink:0">&#10003;</span>
+            <span style="font-size:10pt;flex:1">${t.title}${tags}${time}</span>
+          </div>`;
         });
-        tasksHtml += '</ul>';
       });
+      tasksHtml = `<div class="section" style="page-break-before:always"><div class="section-title">Completed Tasks</div>${taskRows}</div>`;
     }
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-  body { font-family: Arial, sans-serif; font-size: 11pt; color: #111; max-width: 750px; margin: 40px auto; }
-  h1 { font-size: 18pt; margin-bottom: 4px; }
-  h2 { font-size: 13pt; margin-top: 32px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-  h3 { font-size: 11pt; font-weight: bold; margin: 18px 0 4px; }
-  table { border-collapse: collapse; margin: 10px 0; }
-  td, th { padding: 3px 12px 3px 0; vertical-align: middle; font-size: 10.5pt; }
-  th { text-align: left; }
-  ul { margin: 4px 0; padding-left: 20px; }
-  li { margin-bottom: 3px; }
-  .footer { margin-top: 48px; color: #aaa; font-size: 9pt; }
+  @page { margin: 1.5cm 2cm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Arial, sans-serif; font-size: 10.5pt; color: #111; margin: 0; }
+  .header { padding-bottom: 14px; border-bottom: 2.5px solid ${PURPLE}; margin-bottom: 20px; }
+  h1 { font-size: 18pt; margin: 0 0 3px; }
+  .subtitle { color: #888; font-size: 9.5pt; margin: 0; }
+  .kpi-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .section { margin-top: 22px; page-break-inside: avoid; }
+  .section-title { font-size: 11.5pt; font-weight: 700; color: #222; border-bottom: 1px solid #e5e5e5; padding-bottom: 5px; margin-bottom: 10px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #eee; color: #bbb; font-size: 8.5pt; }
 </style>
 </head><body>
-<h1>${title}</h1>
-<h2>Summary</h2>
-<table>${summaryRows}</table>
-<h2>Tasks Completed Over Time</h2>
-<table>${throughputRows}</table>
-<h2>By Day of Week</h2>
-<table>${dowRows}</table>
+<div class="header">
+  <h1>${title}</h1>
+  <p class="subtitle">Exported from TaskSpark on ${dateStr}</p>
+</div>
+<div class="kpi-row">${kpiCards}</div>
+<div class="two-col">
+  <div class="section"><div class="section-title">Tasks Completed Over Time</div>${throughputRows}</div>
+  <div class="section"><div class="section-title">By Day of Week</div>${dowRows}</div>
+</div>
 ${createdVsHtml}
 ${tagHtml}
 ${estimateHtml}
 ${tasksHtml}
-<p class="footer">Exported from TaskSpark on ${dateStr}</p>
+<div class="footer">TaskSpark &middot; ${dateStr}</div>
 </body></html>`;
 
-    const result = await api.driveCreateDoc({ accessToken, title, html });
+    const result = await api.driveUploadPdf({ accessToken, title, html });
     if (result && result.id) {
-      api.openAttachment(`https://docs.google.com/document/d/${result.id}`);
+      api.openAttachment(`https://drive.google.com/file/d/${result.id}/view`);
     }
   } catch (e) {
-    console.error('Export to Google Doc failed:', e);
+    console.error('Export PDF to Drive failed:', e);
     alert('Export failed. Please try again.');
   } finally {
-    if (btn) { btn.textContent = 'Export to Doc'; btn.disabled = false; }
+    if (btn) { btn.textContent = 'Export PDF'; btn.disabled = false; }
   }
 }
 
@@ -2807,7 +2849,7 @@ function renderStatsView() {
   }
 
   const range = statsCurrentRange;
-  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div><button class="stats-export-btn" onclick="statsExportToGoogleDoc()">Export to Doc</button></div></div>`;
+  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div><button class="stats-export-btn" onclick="statsExportToGoogleDoc()">Export PDF</button></div></div>`;
 
   if (range === 'today') {
     const { start: ts, end: te } = statsDateRange('today');
