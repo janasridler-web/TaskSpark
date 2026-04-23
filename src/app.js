@@ -2408,192 +2408,54 @@ async function statsExportToGoogleDoc() {
     const daysInRange = Math.round((end - start) / 86400000);
     const PURPLE = '#6b5ce7', AMBER = '#f59e0b';
 
-    function bar(val, max, color) {
-      const w = max > 0 ? Math.round((val / max) * 220) : 0;
-      return `<div style="display:inline-block;background:${color};height:10px;width:${w}px;border-radius:3px;vertical-align:middle"></div>`;
+async function statsExportToGoogleDoc() {
+  if (!accessToken) {
+    alert('Connect your Google account first to export stats.');
+    return;
+  }
+  const btn = document.querySelector('.stats-export-btn');
+  try {
+    await ensureToken();
+    if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
+
+    const range   = statsCurrentRange;
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const title   = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
+
+    // Collect all page CSS, promoting @media print rules to regular rules
+    // so they apply in the hidden print window
+    const cssRules = [];
+    for (const sheet of document.styleSheets) {
+      try {
+        for (const rule of sheet.cssRules) {
+          if (rule.type === CSSRule.MEDIA_RULE && rule.conditionText === 'print') {
+            for (const pr of rule.cssRules) cssRules.push(pr.cssText);
+          } else {
+            cssRules.push(rule.cssText);
+          }
+        }
+      } catch {}
     }
 
-    // ── Summary KPI cards ─────────────────────────────────────────────────────
-    const comp   = statsCalcCompleted(start, end);
-    const active = statsCalcActiveDays(start, end, totalDays);
-    const streak = statsCalcStreakPanel(start, end, totalDays);
-    function kpi(label, value, sub) {
-      return `<div style="background:#f5f5f5;border-radius:8px;padding:14px 16px;flex:1;min-width:120px">
-        <div style="font-size:8.5pt;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${label}</div>
-        <div style="font-size:20pt;font-weight:700;color:#111;line-height:1">${value}</div>
-        <div style="font-size:8.5pt;color:#999;margin-top:4px">${sub}</div>
-      </div>`;
-    }
-    let kpiCards = kpi('Completed', comp.count, `${active.avg.toFixed(1)} per active day`)
-                 + kpi('Active Days', `${active.activeDays}<span style="font-size:13pt;font-weight:400;color:#aaa"> / ${active.totalDays}</span>`, 'days with completions')
-                 + kpi('Streak', streak.current, `longest ${streak.longest} days`);
-    if (profile !== 'PROFILE_BASIC') {
-      const tt  = statsCalcTimeTracked(start, end);
-      const avg = statsCalcAvgTime(start, end);
-      kpiCards += kpi('Time Tracked', statsFmtTime(tt.totalSecs), `${tt.sessionCount} sessions`);
-      if (avg.mean > 0) kpiCards += kpi('Avg per Task', `${Math.round(avg.mean / 60)}<span style="font-size:13pt;font-weight:400;color:#aaa">m</span>`, `median ${Math.round(avg.median/60)} min`);
-    }
-
-    // ── Throughput ────────────────────────────────────────────────────────────
-    const buckets   = statsChartBuckets(start, end, range);
-    const maxBucket = Math.max(...buckets.map(b => b.count), 1);
-    const throughputRows = buckets.map(b =>
-      `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
-        <div style="width:52px;font-size:9pt;color:#666;flex-shrink:0">${b.label}</div>
-        <div>${bar(b.count, maxBucket, PURPLE)}</div>
-        <div style="font-size:9pt;color:#333;width:20px">${b.count}</div>
-      </div>`
-    ).join('');
-
-    // ── Day of week ───────────────────────────────────────────────────────────
-    const dowCounts = statsCalcDayOfWeek(start, end);
-    const dowDays   = settings.streakWeekends ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] : ['Mon','Tue','Wed','Thu','Fri'];
-    const maxDow    = Math.max(...dowDays.map(d => dowCounts[d] || 0), 1);
-    const dowRows   = dowDays.map(d =>
-      `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
-        <div style="width:30px;font-size:9pt;color:#666;flex-shrink:0">${d}</div>
-        <div>${bar(dowCounts[d]||0, maxDow, PURPLE)}</div>
-        <div style="font-size:9pt;color:#333;width:20px">${dowCounts[d]||0}</div>
-      </div>`
-    ).join('');
-
-    // ── Created vs completed ──────────────────────────────────────────────────
-    let createdVsHtml = '';
-    if (daysInRange >= 14) {
-      const { completedBuckets, createdBuckets } = statsCalcCreatedVsCompleted(start, end);
-      const wCur = new Date(start); wCur.setDate(wCur.getDate() - wCur.getDay());
-      const wEnd = new Date(end);
-      const weeks = [];
-      while (wCur <= wEnd) { weeks.push(dateToLocalStr(wCur)); wCur.setDate(wCur.getDate() + 7); }
-      const cvMax = Math.max(...weeks.flatMap(k => [completedBuckets[k]||0, createdBuckets[k]||0]), 1);
-      const cvRows = weeks.map(k => {
-        const d     = new Date(k + 'T00:00:00');
-        const label = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-        const c     = completedBuckets[k] || 0;
-        const cr    = createdBuckets[k]   || 0;
-        return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
-          <div style="width:44px;font-size:9pt;color:#666;flex-shrink:0">${label}</div>
-          <div style="width:110px">${bar(c, cvMax, PURPLE)}</div>
-          <div style="font-size:9pt;color:#6b5ce7;width:20px">${c}</div>
-          <div style="width:110px">${bar(cr, cvMax, AMBER)}</div>
-          <div style="font-size:9pt;color:#f59e0b;width:20px">${cr}</div>
-        </div>`;
-      }).join('');
-      createdVsHtml = `
-        <div class="section"><div class="section-title">Created vs Completed <span style="font-size:9pt;font-weight:400;color:#aaa">weekly</span></div>
-        <div style="display:flex;gap:16px;margin-bottom:6px;font-size:9pt">
-          <span style="color:${PURPLE}">&#9632; Completed</span>
-          <span style="color:${AMBER}">&#9632; Created</span>
-        </div>
-        ${cvRows}</div>`;
-    }
-
-    // ── Time by tag ───────────────────────────────────────────────────────────
-    let tagHtml = '';
-    if (profile !== 'PROFILE_BASIC') {
-      const { sorted, untaggedSecs } = statsCalcTimeByTag(start, end);
-      if (sorted.length || untaggedSecs) {
-        const maxTag  = Math.max(...sorted.map(([,s]) => s), untaggedSecs || 0, 1);
-        const tagRows = sorted.map(([tag, secs]) =>
-          `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
-            <div style="width:100px;font-size:9pt;color:${PURPLE};flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#${tag}</div>
-            <div>${bar(secs, maxTag, PURPLE)}</div>
-            <div style="font-size:9pt;color:#333;width:48px">${statsFmtTime(secs)}</div>
-          </div>`
-        ).join('');
-        const untagRow = untaggedSecs
-          ? `<div style="display:flex;align-items:center;gap:10px;margin:3px 0">
-              <div style="width:100px;font-size:9pt;color:#aaa;flex-shrink:0">Untagged</div>
-              <div>${bar(untaggedSecs, maxTag, '#ccc')}</div>
-              <div style="font-size:9pt;color:#999;width:48px">${statsFmtTime(untaggedSecs)}</div>
-            </div>` : '';
-        tagHtml = `<div class="section"><div class="section-title">Time by Tag</div>${tagRows}${untagRow}</div>`;
-      }
-    }
-
-    // ── Estimate breakdown ────────────────────────────────────────────────────
-    let estimateHtml = '';
-    if (profile === 'PROFILE_FULL') {
-      const bd = statsCalcEstimateBreakdown(start, end);
-      if (bd.total) {
-        const onPct    = Math.round(bd.onCount    / bd.total * 100);
-        const earlyPct = Math.round(bd.earlyCount / bd.total * 100);
-        const overPct  = 100 - onPct - earlyPct;
-        estimateHtml = `<div class="section"><div class="section-title">Estimate Accuracy</div>
-          <div style="display:flex;gap:16px;margin:8px 0 4px;font-size:9.5pt">
-            <span style="color:${PURPLE}"><b>${bd.onCount}</b> on estimate (${onPct}%)</span>
-            <span style="color:#555"><b>${bd.earlyCount}</b> early (${earlyPct}%)</span>
-            <span style="color:${AMBER}"><b>${bd.overCount}</b> over (${overPct}%)</span>
-          </div>
-          <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-top:8px">
-            <div style="width:${earlyPct}%;background:#d1d5db"></div>
-            <div style="width:${onPct}%;background:${PURPLE}"></div>
-            <div style="width:${overPct}%;background:${AMBER}"></div>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:8pt;color:#aaa;margin-top:3px"><span>Early</span><span>On estimate</span><span>Over</span></div>
-        </div>`;
-      }
-    }
-
-    // ── Completed tasks (oldest first) ────────────────────────────────────────
-    const completed = statsCompletedInRange(start, end)
-      .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
-    let tasksHtml = '';
-    if (completed.length) {
-      const groups = {};
-      completed.forEach(t => {
-        const k = dateToLocalStr(new Date(t.completedAt));
-        if (!groups[k]) groups[k] = [];
-        groups[k].push(t);
-      });
-      let taskRows = '';
-      Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).forEach(([k, ts]) => {
-        const label = new Date(k + 'T00:00:00').toLocaleDateString('en-GB', {
-          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-        });
-        taskRows += `<div style="font-size:10pt;font-weight:600;color:#333;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid #eee">${label}</div>`;
-        ts.forEach(t => {
-          const secs = statsTaskTimeInRange(t, start, end);
-          const time = secs ? `<span style="color:#aaa;font-size:9pt"> [${statsFmtTime(secs)}]</span>` : '';
-          const tags = (t.tags || []).map(g => `<span style="color:${PURPLE};font-size:9pt"> #${g}</span>`).join('');
-          taskRows += `<div style="display:flex;align-items:baseline;gap:4px;padding:3px 0;border-bottom:1px solid #f5f5f5">
-            <span style="color:#aaa;font-size:9pt;flex-shrink:0">&#10003;</span>
-            <span style="font-size:10pt;flex:1">${t.title}${tags}${time}</span>
-          </div>`;
-        });
-      });
-      tasksHtml = `<div class="section" style="page-break-before:always"><div class="section-title">Completed Tasks</div>${taskRows}</div>`;
-    }
+    // Capture the live rendered stats DOM (SVG charts and all)
+    const statsEl  = document.getElementById('stats-container');
+    const statsHtml = statsEl ? statsEl.innerHTML : '';
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-  @page { margin: 1.5cm 2cm; }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, Arial, sans-serif; font-size: 10.5pt; color: #111; margin: 0; }
-  .header { padding-bottom: 14px; border-bottom: 2.5px solid ${PURPLE}; margin-bottom: 20px; }
-  h1 { font-size: 18pt; margin: 0 0 3px; }
-  .subtitle { color: #888; font-size: 9.5pt; margin: 0; }
-  .kpi-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-  .section { margin-top: 22px; page-break-inside: avoid; }
-  .section-title { font-size: 11.5pt; font-weight: 700; color: #222; border-bottom: 1px solid #e5e5e5; padding-bottom: 5px; margin-bottom: 10px; }
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-  .footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #eee; color: #bbb; font-size: 8.5pt; }
+${cssRules.join('\n')}
+@page { margin: 1.5cm 2cm; }
+body { background: #ffffff !important; margin: 0; padding: 0; overflow: visible !important; }
+#stats-container {
+  display: block !important; overflow: visible !important;
+  height: auto !important; flex: none !important; width: 100% !important;
+}
+.stats-export-btn, .stats-range-picker { display: none !important; }
+.stats-print-tasks { display: block !important; }
+svg { overflow: visible !important; }
 </style>
 </head><body>
-<div class="header">
-  <h1>${title}</h1>
-  <p class="subtitle">Exported from TaskSpark on ${dateStr}</p>
-</div>
-<div class="kpi-row">${kpiCards}</div>
-<div class="two-col">
-  <div class="section"><div class="section-title">Tasks Completed Over Time</div>${throughputRows}</div>
-  <div class="section"><div class="section-title">By Day of Week</div>${dowRows}</div>
-</div>
-${createdVsHtml}
-${tagHtml}
-${estimateHtml}
-${tasksHtml}
-<div class="footer">TaskSpark &middot; ${dateStr}</div>
+<div id="stats-container" class="active">${statsHtml}</div>
 </body></html>`;
 
     const result = await api.driveUploadPdf({ accessToken, title, html });
@@ -2610,7 +2472,7 @@ ${tasksHtml}
 
 function renderStatsPrintTaskList(start, end, range) {
   const completed = statsCompletedInRange(start, end)
-    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
   const exportedAt = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
   const heading = `<div class="stats-print-tasks-header">Completed tasks &middot; ${statsRangeLabel(range)} <span style="font-weight:400;color:var(--text2)">· exported ${exportedAt}</span></div>`;
   if (!completed.length) return `<div class="stats-print-tasks">${heading}<div style="font-size:13px;color:var(--text3)">No completed tasks in this period.</div></div>`;
@@ -2620,7 +2482,7 @@ function renderStatsPrintTaskList(start, end, range) {
     if (!groups[k]) groups[k] = [];
     groups[k].push(t);
   });
-  const rows = Object.entries(groups).sort(([a],[b]) => b.localeCompare(a)).map(([k, ts]) => {
+  const rows = Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([k, ts]) => {
     const label = new Date(k + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
     const items = ts.map(t => {
       const tags = (t.tags||[]).map(g=>`<span class="stats-task-tag">#${esc(g)}</span>`).join('');

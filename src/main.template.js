@@ -887,7 +887,7 @@ ipcMain.handle('drive-upload-pdf', async (_, { accessToken, title, html }) => {
   let win;
   let pdfBuffer;
   try {
-    win = new BrowserWindow({ show: false, width: 1024, height: 1400, webPreferences: { nodeIntegration: false, contextIsolation: true } });
+    win = new BrowserWindow({ show: false, width: 1280, height: 1600, webPreferences: { nodeIntegration: false, contextIsolation: true } });
     await win.loadFile(tmpPath);
     pdfBuffer = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
   } finally {
