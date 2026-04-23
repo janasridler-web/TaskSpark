@@ -2635,10 +2635,12 @@ function renderStatsDailyLayout() {
     <div class="stats-kpi"><div class="stats-kpi-label">In progress</div><div class="stats-kpi-value">${kpis.running ? 1 : 0}</div><div class="stats-kpi-delta">${kpis.running ? `running for ${kpis.runningMins}m` : 'no active timer'}</div></div>
     <div class="stats-kpi"><div class="stats-kpi-label">Still open today</div><div class="stats-kpi-value">${kpis.openToday}</div><div class="stats-kpi-delta">due before end of day</div></div>
   </div>`;
+  const activityCard = `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Today's activity</div><div class="stats-card-hint">24-hour view</div></div>${renderStatsActivityStrip()}</div>`;
   if (!hasActivity) {
-    return banner + kpiRow + `<div class="stats-card"><div class="stats-empty-msg">Nothing to reflect on yet. Come back once you've got the day going.</div></div>`;
+    return banner + kpiRow + activityCard + `<div class="stats-card"><div class="stats-empty-msg">Nothing to reflect on yet. Come back once you've got the day going.</div></div>`;
   }
-  return banner + kpiRow + renderStatsDailyTaskLists(start, end) + `<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>`;
+  const hourCard = `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Time by hour</div><div class="stats-card-hint">Minutes tracked</div></div>${renderStatsHourChart()}</div>`;
+  return banner + kpiRow + activityCard + renderStatsDailyTaskLists(start, end) + hourCard + `<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>`;
 }
 
 function renderStatsDailyTaskLists(start, end) {
@@ -2663,6 +2665,75 @@ function renderStatsDailyTaskLists(start, end) {
     <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Completed today</div><div class="stats-card-hint">${doneToday.length} tasks</div></div><div class="stats-task-list">${doneItems}</div></div>
     <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Still on today's plate</div><div class="stats-card-hint">${openToday.length} open</div></div><div class="stats-task-list">${openItems}</div></div>
   </div>`;
+}
+
+function renderStatsActivityStrip() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowPct = Math.min(100, ((Date.now() - midnight) / dayMs) * 100);
+  const blocks = [], dots = [];
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs) {
+        const startPct = ((sStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((s.elapsed || 0) * 1000 / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%"></div>`);
+      }
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = Math.max(timerStart * 1000, midnight);
+      if (runStart < midnight + dayMs) {
+        const startPct = ((runStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((Date.now() - runStart) / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%;background:var(--amber)"></div>`);
+      }
+    }
+    if (t.completed && t.completedAt) {
+      const cAt = new Date(t.completedAt).getTime();
+      if (cAt >= midnight && cAt < midnight + dayMs) {
+        const pct = ((cAt - midnight) / dayMs) * 100;
+        dots.push(`<div class="stats-strip-dot" style="left:${pct.toFixed(2)}%"></div>`);
+      }
+    }
+  });
+  const hourLabels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  const legend = `<div class="stats-strip-legend">
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch"></div><span>Session</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch" style="background:var(--amber);opacity:1"></div><span>Running now</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-dot"></div><span>Task completed</span></div>
+  </div>`;
+  return `<div class="stats-strip-track">${blocks.join('')}${dots.join('')}<div class="stats-strip-now" style="left:${nowPct.toFixed(2)}%"></div></div>
+    <div class="stats-strip-hours">${hourLabels}</div>${legend}`;
+}
+
+function renderStatsHourChart() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowHour = new Date().getHours();
+  const hourMins = new Array(24).fill(0);
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs)
+        hourMins[new Date(s.start).getHours()] += Math.round((s.elapsed || 0) / 60);
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = timerStart * 1000;
+      if (runStart >= midnight && runStart < midnight + dayMs)
+        hourMins[new Date(runStart).getHours()] += Math.floor((Date.now()/1000 - timerStart) / 60);
+    }
+  });
+  const maxMins = Math.max(...hourMins, 1);
+  const bars = hourMins.map((mins, h) => {
+    const pct = (mins / maxMins) * 100;
+    const cls = h === nowHour ? 'stats-hour-bar now' : mins === 0 ? 'stats-hour-bar empty' : 'stats-hour-bar';
+    return `<div class="${cls}" style="height:${mins > 0 ? Math.max(pct, 4).toFixed(1) : '0'}%"></div>`;
+  }).join('');
+  const labels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  return `<div class="stats-hour-chart">${bars}</div><div class="stats-hour-labels">${labels}</div>`;
 }
 
 let _statsDailyTick = null;
