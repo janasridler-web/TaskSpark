@@ -1160,6 +1160,10 @@ function setView(view, el) {
   }
 
   const budgetViewContainer = document.getElementById('budget-view-container');
+  const toolbarEl = document.getElementById('toolbar');
+  const statsBarEl = document.getElementById('stats-bar');
+  if (toolbarEl) toolbarEl.style.display = '';
+  if (statsBarEl) statsBarEl.style.display = '';
 
   if (view === 'kanban') {
     ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
@@ -1217,6 +1221,8 @@ function setView(view, el) {
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
     const statsC = document.getElementById('stats-container');
     if (statsC) statsC.classList.add('active');
+    if (toolbarEl) toolbarEl.style.display = 'none';
+    if (statsBarEl) statsBarEl.style.display = 'none';
     statsCurrentRange = '30d';
     _statsCache = {};
     renderStatsView();
@@ -2466,7 +2472,10 @@ function renderStatsCreatedVsCompletedCard(start, end, daysInRange) {
     return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div><div class="stats-card-hint">Weekly</div></div><div class="stats-empty-msg">Not enough history yet — needs at least 14 days of data.</div></div>`;
   }
   const { completedBuckets, createdBuckets } = statsCalcCreatedVsCompleted(start, end);
-  const allKeys = [...new Set([...Object.keys(completedBuckets),...Object.keys(createdBuckets)])].sort();
+  const allKeys = [];
+  const wCur = new Date(start); wCur.setDate(wCur.getDate() - wCur.getDay());
+  const wEnd = new Date(end);
+  while (wCur <= wEnd) { allKeys.push(dateToLocalStr(wCur)); wCur.setDate(wCur.getDate()+7); }
   if (!allKeys.length) return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div></div><div class="stats-empty-msg">No data for this period.</div></div>`;
   const cVals = allKeys.map(k=>completedBuckets[k]||0);
   const crVals = allKeys.map(k=>createdBuckets[k]||0);
@@ -2521,7 +2530,7 @@ function renderStatsTimeByTagCard(start, end) {
   if (!sorted.length && !untaggedSecs) {
     return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div><div class="stats-empty-msg">No tagged tasks with tracked time yet.</div></div>`;
   }
-  const rows = sorted.map(([tag,secs])=>`<div class="stats-tag-row"><div class="stats-tag-name">#${esc(tag)}</div><div class="stats-tag-time">${statsFmtTime(secs)}</div></div>`).join('');
+  const rows = sorted.map(([tag,secs])=>`<div class="stats-tag-row"><div class="stats-tag-name">${esc(tag)}</div><div class="stats-tag-time">${statsFmtTime(secs)}</div></div>`).join('');
   const untagged = untaggedSecs ? `<div class="stats-tag-row"><div class="stats-tag-name untagged">Untagged</div><div class="stats-tag-time">${statsFmtTime(untaggedSecs)}</div></div>` : '';
   return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div>${rows}${untagged}</div>`;
 }
@@ -2595,7 +2604,7 @@ function renderStatsView() {
 
   let rows = '';
   rows += `<div class="stats-grid" style="margin-bottom:16px">${renderStatsThroughputCard(start, end, range)}<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Streak</div></div>${renderStatsStreakPanel(start, end, totalDays)}</div></div>`;
-  rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsCreatedVsCompletedCard(start, end, daysInRange)}${renderStatsDowCard(start, end, daysInRange)}</div>`;
+  if (range !== '7d') rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsCreatedVsCompletedCard(start, end, daysInRange)}${renderStatsDowCard(start, end, daysInRange)}</div>`;
   if (profile !== 'PROFILE_BASIC') {
     rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsHeatmapCard(start, end)}${renderStatsTimeByTagCard(start, end)}</div>`;
   }
