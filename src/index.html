@@ -856,6 +856,13 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .stats-export-btn{padding:6px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:none;color:var(--text2);font-size:12px;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;transition:border-color .15s,color .15s}
 .stats-export-btn:hover{border-color:var(--accent);color:var(--accent)}
 .stats-empty-range{padding:12px 16px;margin-bottom:16px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--text2);text-align:center}
+.stats-print-tasks{display:none}
+.stats-print-tasks-header{font-size:15px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--border)}
+.stats-print-group{margin-bottom:14px}
+.stats-print-group-date{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;padding:5px 0;border-bottom:1px solid var(--border)}
+.stats-print-task-row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border2);gap:12px}
+.stats-print-task-title{flex:1;color:var(--text)}
+.stats-print-task-time{color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:11px}
 
 @media print {
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
@@ -865,6 +872,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   #stats-container,#stats-container.active{display:block !important;overflow:visible !important;height:auto !important}
   .stats-page{padding:12px 20px !important}
   .stats-card,.stats-grid,.stats-grid-wide,.stats-kpi-row{page-break-inside:avoid;break-inside:avoid}
+  .stats-print-tasks{display:block;margin-top:32px;page-break-before:always}
+  .stats-print-group{page-break-inside:avoid;break-inside:avoid}
 }
 
 /* ── Calendar View ───────────────────────────────────────────────────────── */

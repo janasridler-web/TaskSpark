@@ -2391,6 +2391,30 @@ function statsExportPDF() {
   window.print();
 }
 
+function renderStatsPrintTaskList(start, end, range) {
+  const completed = statsCompletedInRange(start, end)
+    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+  const exportedAt = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
+  const heading = `<div class="stats-print-tasks-header">Completed tasks &middot; ${statsRangeLabel(range)} <span style="font-weight:400;color:var(--text2)">· exported ${exportedAt}</span></div>`;
+  if (!completed.length) return `<div class="stats-print-tasks">${heading}<div style="font-size:13px;color:var(--text3)">No completed tasks in this period.</div></div>`;
+  const groups = {};
+  completed.forEach(t => {
+    const k = dateToLocalStr(new Date(t.completedAt));
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(t);
+  });
+  const rows = Object.entries(groups).sort(([a],[b]) => b.localeCompare(a)).map(([k, ts]) => {
+    const label = new Date(k + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+    const items = ts.map(t => {
+      const tags = (t.tags||[]).map(g=>`<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+      const secs = statsTaskTimeInRange(t, start, end);
+      return `<div class="stats-print-task-row"><div class="stats-print-task-title">${esc(t.title)}${tags}</div><div class="stats-print-task-time">${secs ? statsFmtTime(secs) : ''}</div></div>`;
+    }).join('');
+    return `<div class="stats-print-group"><div class="stats-print-group-date">${label}</div>${items}</div>`;
+  }).join('');
+  return `<div class="stats-print-tasks">${heading}${rows}</div>`;
+}
+
 function statsRangePicker(active) {
   return ['today','7d','30d','90d','year'].map(r =>
     `<button class="stats-range-btn${r === active ? ' active' : ''}" onclick="statsSetRange('${r}')">${statsRangeLabel(r)}</button>`
@@ -2611,7 +2635,8 @@ function renderStatsView() {
   const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div><button class="stats-export-btn" onclick="statsExportPDF()">Export PDF</button></div></div>`;
 
   if (range === 'today') {
-    container.innerHTML = `<div class="stats-page">${header}${renderStatsDailyLayout()}</div>`;
+    const { start: ts, end: te } = statsDateRange('today');
+    container.innerHTML = `<div class="stats-page">${header}${renderStatsDailyLayout()}${renderStatsPrintTaskList(ts, te, 'today')}</div>`;
     statsStartDailyTick();
     return;
   }
@@ -2632,7 +2657,7 @@ function renderStatsView() {
     rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsEstimateBreakdownCard(start, end)}${renderStatsScatterCard(start, end)}</div>`;
   }
 
-  container.innerHTML = `<div class="stats-page">${header}${statsKpiRow(profile, start, end, range)}${rows}<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div></div>`;
+  container.innerHTML = `<div class="stats-page">${header}${statsKpiRow(profile, start, end, range)}${rows}<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>${renderStatsPrintTaskList(start, end, range)}</div>`;
 }
 
 function renderStatsStreakPanel(start, end, totalDays) {
