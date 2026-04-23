@@ -2378,6 +2378,10 @@ function statsRangeLabel(range) {
   return { 'today':'Today', '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
 }
 
+function statsExportPDF() {
+  window.print();
+}
+
 function statsRangePicker(active) {
   return ['today','7d','30d','90d','year'].map(r =>
     `<button class="stats-range-btn${r === active ? ' active' : ''}" onclick="statsSetRange('${r}')">${statsRangeLabel(r)}</button>`
@@ -2398,11 +2402,15 @@ function statsKpiRow(profile, start, end, range) {
   }
   if (profile === 'PROFILE_TIMER') {
     const avg = statsCalcAvgTime(start, end);
-    html += `<div class="stats-kpi"><div class="stats-kpi-label">Avg time per task</div><div class="stats-kpi-value">${Math.round(avg.mean / 60)}<span class="stats-kpi-unit">min</span></div><div class="stats-kpi-delta">median ${Math.round(avg.median / 60)} min</div></div>`;
+    const avgVal = avg.mean > 0 ? `${Math.round(avg.mean/60)}<span class="stats-kpi-unit">min</span>` : `<span style="color:var(--text3)">—</span>`;
+    const avgDelta = avg.mean > 0 ? `median ${Math.round(avg.median/60)} min` : 'no timed tasks yet';
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">Avg time per task</div><div class="stats-kpi-value">${avgVal}</div><div class="stats-kpi-delta">${avgDelta}</div></div>`;
   }
   if (profile === 'PROFILE_FULL') {
     const est = statsCalcOnEstimate(start, end);
-    html += `<div class="stats-kpi"><div class="stats-kpi-label">On-estimate rate</div><div class="stats-kpi-value">${est.rate}<span class="stats-kpi-unit">%</span></div><div class="stats-kpi-delta">within ±20% · ${est.onCount} of ${est.eligibleCount} eligible</div></div>`;
+    const estVal = est.eligibleCount > 0 ? `${est.rate}<span class="stats-kpi-unit">%</span>` : `<span style="color:var(--text3)">—</span>`;
+    const estDelta = est.eligibleCount > 0 ? `within ±20% · ${est.onCount} of ${est.eligibleCount} eligible` : 'no tasks with estimates yet';
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">On-estimate rate</div><div class="stats-kpi-value">${estVal}</div><div class="stats-kpi-delta">${estDelta}</div></div>`;
   }
   return `<div class="stats-kpi-row stats-kpi-cols-${cols}">${html}</div>`;
 }
@@ -2591,7 +2599,7 @@ function renderStatsView() {
   }
 
   const range = statsCurrentRange;
-  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div class="stats-range-picker">${statsRangePicker(range)}</div></div>`;
+  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div><button class="stats-export-btn" onclick="statsExportPDF()">Export PDF</button></div></div>`;
 
   if (range === 'today') {
     container.innerHTML = `<div class="stats-page">${header}${renderStatsDailyLayout()}</div>`;
@@ -2602,8 +2610,10 @@ function renderStatsView() {
   const { start, end, totalDays } = statsDateRange(range);
   const profile = statsDetectProfile(start, end);
   const daysInRange = Math.round((end - start) / 86400000);
+  const noData = statsCompletedInRange(start, end).length === 0;
 
   let rows = '';
+  if (noData) rows += `<div class="stats-empty-range">No completed tasks in this period — numbers will fill in once you start wrapping things up.</div>`;
   rows += `<div class="stats-grid" style="margin-bottom:16px">${renderStatsThroughputCard(start, end, range)}<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Streak</div></div>${renderStatsStreakPanel(start, end, totalDays)}</div></div>`;
   if (range !== '7d') rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsCreatedVsCompletedCard(start, end, daysInRange)}${renderStatsDowCard(start, end, daysInRange)}</div>`;
   if (profile !== 'PROFILE_BASIC') {

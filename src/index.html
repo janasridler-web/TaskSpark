@@ -853,6 +853,19 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .stats-estimate-bar-early{background:var(--amber);opacity:.5}
 .stats-estimate-bar-on{background:var(--accent)}
 .stats-estimate-bar-over{background:var(--amber)}
+.stats-export-btn{padding:6px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:none;color:var(--text2);font-size:12px;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;transition:border-color .15s,color .15s}
+.stats-export-btn:hover{border-color:var(--accent);color:var(--accent)}
+.stats-empty-range{padding:12px 16px;margin-bottom:16px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--text2);text-align:center}
+
+@media print {
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
+  body,html{background:white !important;height:auto !important;overflow:visible !important}
+  #sidebar,#sync-bar,#toolbar,#stats-bar,.stats-export-btn,.stats-range-picker{display:none !important}
+  #main{padding:0 !important;overflow:visible !important;display:block !important}
+  #stats-container,#stats-container.active{display:block !important;overflow:visible !important;height:auto !important}
+  .stats-page{padding:12px 20px !important}
+  .stats-card,.stats-grid,.stats-grid-wide,.stats-kpi-row{page-break-inside:avoid;break-inside:avoid}
+}
 
 /* ── Calendar View ───────────────────────────────────────────────────────── */
 #calendar-view-container{display:none;flex:1;flex-direction:column;overflow:hidden}
