@@ -2390,23 +2390,83 @@ function statsRangeLabel(range) {
   return { 'today':'Today', '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
 }
 
-function statsExportPDF() {
-  const main      = document.getElementById('main');
-  const container = document.getElementById('stats-container');
-  const saved = {
-    mainOverflow:      main?.style.overflow,
-    mainHeight:        main?.style.height,
-    containerOverflow: container?.style.overflow,
-    containerHeight:   container?.style.height,
-  };
-  if (main)      { main.style.overflow = 'visible'; main.style.height = 'auto'; }
-  if (container) { container.style.overflow = 'visible'; container.style.height = 'auto'; }
-  window.addEventListener('afterprint', function restore() {
-    if (main)      { main.style.overflow = saved.mainOverflow;           main.style.height = saved.mainHeight; }
-    if (container) { container.style.overflow = saved.containerOverflow; container.style.height = saved.containerHeight; }
-    window.removeEventListener('afterprint', restore);
-  });
-  window.print();
+async function statsExportToGoogleDoc() {
+  if (!accessToken) {
+    alert('Connect your Google account first to export stats.');
+    return;
+  }
+  const btn = document.querySelector('.stats-export-btn');
+  try {
+    await ensureToken();
+    if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
+
+    const range   = statsCurrentRange;
+    const { start, end, totalDays } = statsDateRange(range);
+    const profile = statsDetectProfile(start, end);
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const title   = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
+
+    const lines = [];
+    lines.push(title);
+    lines.push('');
+
+    const comp   = statsCalcCompleted(start, end);
+    const active = statsCalcActiveDays(start, end, totalDays);
+    lines.push('Summary');
+    lines.push('─'.repeat(40));
+    lines.push(`Completed:    ${comp.count} task${comp.count !== 1 ? 's' : ''}`);
+    lines.push(`Active days:  ${active.activeDays} / ${active.totalDays} (${active.avg.toFixed(1)} tasks per active day)`);
+    if (profile !== 'PROFILE_BASIC') {
+      const tt  = statsCalcTimeTracked(start, end);
+      const avg = statsCalcAvgTime(start, end);
+      lines.push(`Time tracked: ${statsFmtTime(tt.totalSecs)} (across ${tt.sessionCount} session${tt.sessionCount !== 1 ? 's' : ''})`);
+      if (avg.mean > 0) lines.push(`Avg time:     ${Math.round(avg.mean / 60)} min per task`);
+    }
+    lines.push('');
+
+    const completed = statsCompletedInRange(start, end)
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    if (completed.length) {
+      lines.push('Completed Tasks');
+      lines.push('─'.repeat(40));
+      const groups = {};
+      completed.forEach(t => {
+        const k = dateToLocalStr(new Date(t.completedAt));
+        if (!groups[k]) groups[k] = [];
+        groups[k].push(t);
+      });
+      Object.entries(groups).sort(([a], [b]) => b.localeCompare(a)).forEach(([k, ts]) => {
+        const label = new Date(k + 'T00:00:00').toLocaleDateString('en-GB', {
+          weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+        });
+        lines.push('');
+        lines.push(label);
+        ts.forEach(t => {
+          const secs = statsTaskTimeInRange(t, start, end);
+          const time = secs ? `  [${statsFmtTime(secs)}]` : '';
+          const tags = (t.tags || []).map(g => `#${g}`).join(' ');
+          lines.push(`  • ${t.title}${tags ? '  ' + tags : ''}${time}`);
+        });
+      });
+    }
+    lines.push('');
+    lines.push(`Exported from TaskSpark on ${dateStr}`);
+
+    const result = await api.driveCreateDoc({ accessToken, title, content: lines.join('\n') });
+    if (result && result.documentId) {
+      api.openAttachment(`https://docs.google.com/document/d/${result.documentId}`);
+    }
+  } catch (e) {
+    console.error('Export to Google Doc failed:', e);
+    const msg = e.message || '';
+    if (msg.includes('403') || msg.includes('permission') || msg.includes('scope')) {
+      alert('Permission denied. Please disconnect and reconnect your Google account to enable Google Docs export, then try again.');
+    } else {
+      alert('Export failed. Please try again.');
+    }
+  } finally {
+    if (btn) { btn.textContent = 'Export to Doc'; btn.disabled = false; }
+  }
 }
 
 function renderStatsPrintTaskList(start, end, range) {
@@ -2650,7 +2710,7 @@ function renderStatsView() {
   }
 
   const range = statsCurrentRange;
-  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div><button class="stats-export-btn" onclick="statsExportPDF()">Export PDF</button></div></div>`;
+  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div><button class="stats-export-btn" onclick="statsExportToGoogleDoc()">Export to Doc</button></div></div>`;
 
   if (range === 'today') {
     const { start: ts, end: te } = statsDateRange('today');

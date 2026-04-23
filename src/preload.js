@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('api', {
   workspacesLoad: ()       => ipcRenderer.invoke('workspaces-load'),
   workspacesSave: (data)   => ipcRenderer.invoke('workspaces-save', data),
   driveCreateSheetNamed: (data) => ipcRenderer.invoke('drive-create-sheet-named', data),
+  driveCreateDoc:        (data) => ipcRenderer.invoke('drive-create-doc', data),
   driveFindSheetById: (data)    => ipcRenderer.invoke('drive-find-sheet-by-id', data),
   driveWorkspacesLoad: (data)   => ipcRenderer.invoke('drive-workspaces-load', data),
   driveWorkspacesSave: (data)   => ipcRenderer.invoke('drive-workspaces-save', data), // data includes spreadsheetId

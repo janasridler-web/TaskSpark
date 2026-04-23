@@ -290,6 +290,7 @@ const APP_CLIENT_SECRET = '__APP_CLIENT_SECRET__';
 const OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/documents',
   'openid', 'email', 'profile',
 ].join(' ');
 
@@ -876,6 +877,39 @@ ipcMain.handle('drive-create-sheet-named', async (_, { accessToken, name }) => {
     });
     req.on('error', reject); req.write(body); req.end();
   });
+});
+
+ipcMain.handle('drive-create-doc', async (_, { accessToken, title, content }) => {
+  function httpsPost(hostname, path, token, body) {
+    return new Promise((resolve, reject) => {
+      const buf = Buffer.from(body, 'utf8');
+      const req = https.request({
+        hostname, path, method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Content-Length': buf.length,
+        },
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => { try { resolve(JSON.parse(data)); } catch { reject(new Error('Parse error')); } });
+      });
+      req.on('error', reject); req.write(buf); req.end();
+    });
+  }
+
+  const doc = await httpsPost('docs.googleapis.com', '/v1/documents', accessToken, JSON.stringify({ title }));
+  if (!doc.documentId) throw new Error(doc.error ? JSON.stringify(doc.error) : 'Failed to create document');
+
+  await httpsPost(
+    'docs.googleapis.com',
+    `/v1/documents/${doc.documentId}:batchUpdate`,
+    accessToken,
+    JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text: content } }] })
+  );
+
+  return { documentId: doc.documentId };
 });
 
 ipcMain.handle('drive-find-sheet-by-id', async (_, { accessToken, spreadsheetId }) => {
