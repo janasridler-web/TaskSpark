@@ -2400,34 +2400,18 @@ async function statsExportToGoogleDoc() {
     await ensureToken();
     if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
 
-    const range      = statsCurrentRange;
-    const { start, end, totalDays } = statsDateRange(range);
-    const profile    = statsDetectProfile(start, end);
-    const dateStr    = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    const title      = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
-    const daysInRange = Math.round((end - start) / 86400000);
-    const PURPLE = '#6b5ce7', AMBER = '#f59e0b';
-
-async function statsExportToGoogleDoc() {
-  if (!accessToken) {
-    alert('Connect your Google account first to export stats.');
-    return;
-  }
-  const btn = document.querySelector('.stats-export-btn');
-  try {
-    await ensureToken();
-    if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
-
     const range   = statsCurrentRange;
     const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     const title   = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
 
-    // Collect all page CSS, promoting @media print rules to regular rules
-    // so they apply in the hidden print window
+    // Collect all page CSS, promoting @media print rules to regular rules.
+    // Skip @font-face and strip external url() refs so the hidden window
+    // doesn't block on network requests (e.g. Google Fonts).
     const cssRules = [];
     for (const sheet of document.styleSheets) {
       try {
         for (const rule of sheet.cssRules) {
+          if (rule.type === CSSRule.FONT_FACE_RULE) continue;
           if (rule.type === CSSRule.MEDIA_RULE && rule.conditionText === 'print') {
             for (const pr of rule.cssRules) cssRules.push(pr.cssText);
           } else {
@@ -2436,6 +2420,7 @@ async function statsExportToGoogleDoc() {
         }
       } catch {}
     }
+    const css = cssRules.join('\n').replace(/url\(['"]?https?:\/\/[^'")\s]+['"]?\)/g, 'none');
 
     // Capture the live rendered stats DOM (SVG charts and all)
     const statsEl  = document.getElementById('stats-container');
@@ -2443,7 +2428,7 @@ async function statsExportToGoogleDoc() {
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-${cssRules.join('\n')}
+${css}
 @page { margin: 1.5cm 2cm; }
 body { background: #ffffff !important; margin: 0; padding: 0; overflow: visible !important; }
 #stats-container {

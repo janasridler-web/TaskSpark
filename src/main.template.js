@@ -888,7 +888,11 @@ ipcMain.handle('drive-upload-pdf', async (_, { accessToken, title, html }) => {
   let pdfBuffer;
   try {
     win = new BrowserWindow({ show: false, width: 1280, height: 1600, webPreferences: { nodeIntegration: false, contextIsolation: true } });
-    await win.loadFile(tmpPath);
+    // Race against a timeout so pending external resources don't hang forever
+    await Promise.race([
+      win.loadFile(tmpPath),
+      new Promise(resolve => setTimeout(resolve, 12000)),
+    ]);
     pdfBuffer = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
   } finally {
     if (win) { try { win.close(); } catch {} }
