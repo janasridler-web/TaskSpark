@@ -2074,7 +2074,13 @@ function statsDateRange(range) {
   const days = { '7d': 7, '30d': 30, '90d': 90, 'year': 365 }[range] || 30;
   const end = new Date(now); end.setHours(23, 59, 59, 999);
   const start = new Date(end); start.setDate(start.getDate() - days + 1); start.setHours(0, 0, 0, 0);
-  return { start, end, totalDays: days };
+  let totalDays = days;
+  if (!settings.streakWeekends) {
+    let wd = 0; const c = new Date(start);
+    while (c <= end) { const d = c.getDay(); if (d !== 0 && d !== 6) wd++; c.setDate(c.getDate()+1); }
+    totalDays = wd;
+  }
+  return { start, end, totalDays };
 }
 
 function statsPrevRange(range) {
@@ -2151,8 +2157,11 @@ function statsCalcCompleted(start, end) {
 
 function statsCalcActiveDays(start, end, totalDays) {
   const done = statsCompletedInRange(start, end);
-  const daySet = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
-  const activeDays = daySet.size;
+  let days = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
+  if (!settings.streakWeekends) {
+    days = new Set([...days].filter(d => { const wd = new Date(d + 'T00:00:00').getDay(); return wd !== 0 && wd !== 6; }));
+  }
+  const activeDays = days.size;
   const avg = activeDays > 0 ? (done.length / activeDays) : 0;
   return { activeDays, totalDays, avg };
 }
@@ -2509,8 +2518,8 @@ function renderStatsDowCard(start, end, daysInRange) {
     return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">By day of week</div><div class="stats-card-hint">Tasks completed</div></div><div class="stats-empty-msg">Not enough history yet — needs at least 14 days of data.</div></div>`;
   }
   const counts = statsCalcDayOfWeek(start, end);
-  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const maxVal = Math.max(...Object.values(counts), 1);
+  const days = settings.streakWeekends ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] : ['Mon','Tue','Wed','Thu','Fri'];
+  const maxVal = Math.max(...days.map(d => counts[d]||0), 1);
   const bars = days.map(d=>`<div class="stats-dow-row"><div class="stats-dow-label">${d}</div><div class="stats-dow-track"><div class="stats-dow-fill" style="width:${Math.round((counts[d]||0)/maxVal*100)}%"></div></div><div class="stats-dow-val">${counts[d]||0}</div></div>`).join('');
   return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">By day of week</div><div class="stats-card-hint">Tasks completed</div></div><div class="stats-dow-bars">${bars}</div></div>`;
 }
