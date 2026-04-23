@@ -2314,62 +2314,61 @@ function renderStatsWelcome() {
   const day = statsNewUserDay();
   const remaining = 7 - day;
   const pct = Math.round((day / 7) * 100);
+  const timerOn = settings.timerEnabled !== false;
+  const estimatesOn = settings.estimatesEnabled !== false;
   const totalCompleted = tasks.filter(t => t.completed).length;
   const streak = calcStreak();
   const totalSecs = tasks.reduce((s, t) => s + (t.timeLogged || 0), 0);
+  const sessionCount = tasks.reduce((n, t) => n + (t.timeSessions || []).length, 0);
+
+  const titleCopy = day <= 1 ? 'Off to a great start.'
+    : day <= 3 ? 'Building momentum.'
+    : day <= 5 ? 'Stats are filling in.'
+    : 'Almost a full week of data.';
+  const bodyCopy = day <= 1
+    ? 'Stats get more interesting after a few days. Keep completing tasks and come back to watch this page fill in.'
+    : day <= 5
+    ? `You're on day ${day}. Each completed task adds a data point — a few more days and the trends will start to emerge.`
+    : "You're nearly at a full week. The main trends will unlock soon — hang tight.";
+
+  const tiles = [
+    `<div class="stats-tile"><div class="stats-tile-label">Tasks completed</div><div class="stats-tile-value">${totalCompleted}</div><div class="stats-tile-delta">since you started</div></div>`,
+    `<div class="stats-tile"><div class="stats-tile-label">Current streak</div><div class="stats-tile-value">${streak}<span class="stats-tile-unit">day${streak !== 1 ? 's' : ''}</span></div><div class="stats-tile-delta">${streak > 0 ? 'nice — keep it going' : 'complete a task to start one'}</div></div>`,
+  ];
+  if (timerOn) tiles.push(`<div class="stats-tile"><div class="stats-tile-label">Time tracked</div><div class="stats-tile-value">${statsFmtTime(totalSecs)}</div><div class="stats-tile-delta">${sessionCount} session${sessionCount !== 1 ? 's' : ''}</div></div>`);
+
+  const coming = [
+    { when: '7 days', what: 'Throughput trends and day-of-week patterns' },
+    { when: '2 weeks', what: 'Created vs completed comparison' },
+    { when: '30 days', what: 'Monthly trends and long-term patterns' },
+  ];
+  if (timerOn) {
+    coming.splice(1, 0, { when: '10 sessions', what: 'Productivity heatmap — when you work best' });
+    coming.push({ when: 'anytime', what: "Time by tag — once you've tagged some tasks" });
+  }
+  if (timerOn && estimatesOn) coming.push({ when: '3 estimates', what: "Estimate accuracy — how well you're calibrating" });
+
+  const bars = [[30,.35],[55,.5],[75,.7],[90,.85],[60,.55],[45,.4],[80,.7]];
+  const preview = bars.map(([w, op]) => `<div class="stats-preview-bar" style="width:${w}%;opacity:${op}"></div>`).join('');
+
   return `<div class="stats-page">
-    <div class="stats-header">
-      <div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div>
-    </div>
+    <div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div></div>
     <div class="stats-welcome-card">
       <div>
-        <div class="stats-welcome-title">Stats get more interesting after about a week.</div>
-        <div class="stats-welcome-body">Right now there's not quite enough history to show meaningful trends. As you keep using TaskSpark, more of this page will fill in.</div>
+        <div class="stats-welcome-title">${titleCopy}</div>
+        <div class="stats-welcome-body">${bodyCopy}</div>
         <div class="stats-welcome-progress">
-          <div class="stats-welcome-progress-row">
-            <span>Day ${day} of 7</span>
-            <span class="stats-welcome-progress-count">${remaining > 0 ? remaining + ' more day' + (remaining > 1 ? 's' : '') : 'Almost there!'}</span>
-          </div>
+          <div class="stats-welcome-progress-row"><span>Day ${day} of 7</span><span class="stats-welcome-progress-count">${remaining > 0 ? remaining + ' more day' + (remaining > 1 ? 's' : '') : 'Almost there!'}</span></div>
           <div class="stats-progress-track"><div class="stats-progress-fill" style="width:${pct}%"></div></div>
         </div>
       </div>
-      <div class="stats-welcome-visual">
-        <div class="stats-preview-bar" style="width:30%;opacity:.35"></div>
-        <div class="stats-preview-bar" style="width:55%;opacity:.5"></div>
-        <div class="stats-preview-bar" style="width:75%;opacity:.7"></div>
-        <div class="stats-preview-bar" style="width:90%;opacity:.9"></div>
-        <div class="stats-preview-bar" style="width:60%;opacity:.5"></div>
-        <div class="stats-preview-label">A preview of what's coming</div>
-      </div>
+      <div class="stats-welcome-visual">${preview}<div class="stats-preview-label">A preview of what's coming</div></div>
     </div>
     <div class="stats-section-label">What we can show you so far</div>
-    <div class="stats-tiles">
-      <div class="stats-tile">
-        <div class="stats-tile-label">Tasks completed</div>
-        <div class="stats-tile-value">${totalCompleted}</div>
-        <div class="stats-tile-delta">since you started</div>
-      </div>
-      <div class="stats-tile">
-        <div class="stats-tile-label">Current streak</div>
-        <div class="stats-tile-value">${streak}<span class="stats-tile-unit">day${streak !== 1 ? 's' : ''}</span></div>
-        <div class="stats-tile-delta">${streak > 0 ? 'nice — keep it going' : 'complete a task to start one'}</div>
-      </div>
-      <div class="stats-tile">
-        <div class="stats-tile-label">Time tracked</div>
-        <div class="stats-tile-value">${statsFmtTime(totalSecs)}</div>
-        <div class="stats-tile-delta">${tasks.reduce((n, t) => n + (t.timeSessions||[]).length, 0)} sessions</div>
-      </div>
-    </div>
+    <div class="stats-tiles" style="grid-template-columns:repeat(${tiles.length},1fr)">${tiles.join('')}</div>
     <div class="stats-coming-card">
       <div class="stats-coming-title">What unlocks as you keep going</div>
-      <div class="stats-coming-list">
-        <div class="stats-coming-item"><div class="stats-coming-when">7 days</div><div class="stats-coming-what">Throughput trends and day-of-week patterns</div></div>
-        <div class="stats-coming-item"><div class="stats-coming-when">10 sessions</div><div class="stats-coming-what">Productivity heatmap showing when you work best</div></div>
-        <div class="stats-coming-item"><div class="stats-coming-when">2 weeks</div><div class="stats-coming-what">Created vs completed comparison</div></div>
-        <div class="stats-coming-item"><div class="stats-coming-when">3 estimates</div><div class="stats-coming-what">Estimate accuracy — how well you're calibrating</div></div>
-        <div class="stats-coming-item"><div class="stats-coming-when">30 days</div><div class="stats-coming-what">Monthly trends and long-term patterns</div></div>
-        <div class="stats-coming-item"><div class="stats-coming-when">anytime</div><div class="stats-coming-what">Time by tag — once you've tagged some tasks</div></div>
-      </div>
+      <div class="stats-coming-list">${coming.map(i=>`<div class="stats-coming-item"><div class="stats-coming-when">${i.when}</div><div class="stats-coming-what">${i.what}</div></div>`).join('')}</div>
     </div>
     <div class="stats-footnote">No pressure — just a heads up about what's ahead.</div>
   </div>`;
