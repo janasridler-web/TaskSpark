@@ -2115,11 +2115,13 @@ function statsCreatedInRange(start, end) {
 }
 
 function statsDetectProfile(start, end) {
+  if (settings.timerEnabled === false) return 'PROFILE_BASIC';
   const hasSessions = tasks.some(t =>
     statsSessionsInRange(t, start, end).length > 0 ||
     statsRunningSecsForTask(t, start, end) > 0
   );
   if (!hasSessions) return 'PROFILE_BASIC';
+  if (settings.estimatesEnabled === false) return 'PROFILE_TIMER';
   const eligibleCount = statsCompletedInRange(start, end).filter(t =>
     t.estimate > 0 && (t.timeSessions || []).length > 0
   ).length;
@@ -2626,20 +2628,24 @@ function renderStatsStreakPanel(start, end, totalDays) {
 function renderStatsDailyLayout() {
   const { start, end } = statsDateRange('today');
   const kpis = statsCalcTodayKPIs();
-  const hasActivity = kpis.doneCount > 0 || kpis.sessionCount > 0;
+  const timerOn = settings.timerEnabled !== false;
+  const hasActivity = kpis.doneCount > 0 || (timerOn && kpis.sessionCount > 0);
   const now = new Date();
   const banner = `<div class="stats-date-banner" id="stats-date-banner">${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
-  const kpiRow = `<div class="stats-kpi-row stats-kpi-cols-4">
-    <div class="stats-kpi"><div class="stats-kpi-label">Completed today</div><div class="stats-kpi-value">${kpis.doneCount}</div><div class="stats-kpi-delta">of ${kpis.plannedToday} planned</div></div>
-    <div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(kpis.totalSecs)}</div><div class="stats-kpi-delta">across ${kpis.sessionCount} session${kpis.sessionCount !== 1 ? 's' : ''}</div></div>
-    <div class="stats-kpi"><div class="stats-kpi-label">In progress</div><div class="stats-kpi-value">${kpis.running ? 1 : 0}</div><div class="stats-kpi-delta">${kpis.running ? `running for ${kpis.runningMins}m` : 'no active timer'}</div></div>
-    <div class="stats-kpi"><div class="stats-kpi-label">Still open today</div><div class="stats-kpi-value">${kpis.openToday}</div><div class="stats-kpi-delta">due before end of day</div></div>
-  </div>`;
-  const activityCard = `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Today's activity</div><div class="stats-card-hint">24-hour view</div></div>${renderStatsActivityStrip()}</div>`;
+  let kpiHtml = `
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed today</div><div class="stats-kpi-value">${kpis.doneCount}</div><div class="stats-kpi-delta">of ${kpis.plannedToday} planned</div></div>`;
+  if (timerOn) {
+    kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(kpis.totalSecs)}</div><div class="stats-kpi-delta">across ${kpis.sessionCount} session${kpis.sessionCount !== 1 ? 's' : ''}</div></div>
+    <div class="stats-kpi"><div class="stats-kpi-label">In progress</div><div class="stats-kpi-value">${kpis.running ? 1 : 0}</div><div class="stats-kpi-delta">${kpis.running ? `running for ${kpis.runningMins}m` : 'no active timer'}</div></div>`;
+  }
+  kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Still open today</div><div class="stats-kpi-value">${kpis.openToday}</div><div class="stats-kpi-delta">due before end of day</div></div>`;
+  const kpiCols = timerOn ? 4 : 2;
+  const kpiRow = `<div class="stats-kpi-row stats-kpi-cols-${kpiCols}">${kpiHtml}</div>`;
+  const activityCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Today's activity</div><div class="stats-card-hint">24-hour view</div></div>${renderStatsActivityStrip()}</div>` : '';
   if (!hasActivity) {
     return banner + kpiRow + activityCard + `<div class="stats-card"><div class="stats-empty-msg">Nothing to reflect on yet. Come back once you've got the day going.</div></div>`;
   }
-  const hourCard = `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Time by hour</div><div class="stats-card-hint">Minutes tracked</div></div>${renderStatsHourChart()}</div>`;
+  const hourCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Time by hour</div><div class="stats-card-hint">Minutes tracked</div></div>${renderStatsHourChart()}</div>` : '';
   return banner + kpiRow + activityCard + renderStatsDailyTaskLists(start, end) + hourCard + `<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>`;
 }
 
