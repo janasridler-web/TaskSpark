@@ -1164,6 +1164,9 @@ function setView(view, el) {
   const statsBarEl = document.getElementById('stats-bar');
   if (toolbarEl) toolbarEl.style.display = '';
   if (statsBarEl) statsBarEl.style.display = '';
+  statsMode = false;
+  const statsContainerEl = document.getElementById('stats-container');
+  if (statsContainerEl) statsContainerEl.classList.remove('active');
 
   if (view === 'kanban') {
     ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
