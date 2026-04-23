@@ -2391,6 +2391,21 @@ function statsRangeLabel(range) {
 }
 
 function statsExportPDF() {
+  const main      = document.getElementById('main');
+  const container = document.getElementById('stats-container');
+  const saved = {
+    mainOverflow:      main?.style.overflow,
+    mainHeight:        main?.style.height,
+    containerOverflow: container?.style.overflow,
+    containerHeight:   container?.style.height,
+  };
+  if (main)      { main.style.overflow = 'visible'; main.style.height = 'auto'; }
+  if (container) { container.style.overflow = 'visible'; container.style.height = 'auto'; }
+  window.addEventListener('afterprint', function restore() {
+    if (main)      { main.style.overflow = saved.mainOverflow;           main.style.height = saved.mainHeight; }
+    if (container) { container.style.overflow = saved.containerOverflow; container.style.height = saved.containerHeight; }
+    window.removeEventListener('afterprint', restore);
+  });
   window.print();
 }
 
