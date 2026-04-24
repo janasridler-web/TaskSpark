@@ -11,6 +11,7 @@ let calMonth     = null;
 let completionTaskId = null;
 let selectedImpact   = 'medium';
 let undoStack    = [];
+let onboardingChecklist = { addTask: false, completeTask: false, whatNow: false, mood: false, dismissed: false };
 
 // View mode
 let kanbanMode = false;
@@ -292,6 +293,7 @@ async function init() {
     if (cfg.sortMode) document.getElementById('sort-select').value = cfg.sortMode;
     if (cfg.settings) settings = { ...DEFAULT_SETTINGS, ...cfg.settings };
     if (cfg.configSheetId) configSheetId = cfg.configSheetId;
+    if (cfg.onboardingChecklist) onboardingChecklist = { ...onboardingChecklist, ...cfg.onboardingChecklist };
     updateChangelogSidebarBtn();
   }
   applySettings();
@@ -342,7 +344,7 @@ async function init() {
         await loadIdeas();
         await loadHabits();
         await loadWins();
-        if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+        if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
         setTimeout(showWorkspaceSetupModal, 800);
       } else {
         // Got workspaces from Drive — proceed normally
@@ -356,7 +358,7 @@ async function init() {
         updateWorkspaceTitle();
         await connectToSheets();
         await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
-        if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+        if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
     } else {
@@ -370,7 +372,7 @@ async function init() {
       updateWorkspaceTitle();
       await connectToSheets();
       await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
-      if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+      if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
   } else if (cfg && cfg.offlineMode) {
@@ -597,7 +599,9 @@ async function connectToSheets() {
     }
     await api.saveCache(tasks);
     setSyncStatus('ok');
+    if (tasks.length > 0) checkOnboardingItem('addTask');
     renderAll();
+    renderGettingStartedCard();
   } catch (e) {
     console.error('[connectToSheets] error:', e.message);
     setSyncStatus('error', e.message.slice(0, 50));
@@ -3003,6 +3007,7 @@ function saveTask() {
       ...data
     };
     tasks.push(newTask);
+    checkOnboardingItem('addTask');
   }
 
   closeModal('task-modal-overlay');
@@ -3405,6 +3410,7 @@ function toggleComplete(id) {
   if (completing) {
     if (activeTimerId === id) stopTimerSave();
     task.completed  = true;
+    checkOnboardingItem('completeTask');
     task.completedAt = new Date().toISOString();
     task.status = 'done';
     if (!settings.completionDialog) {
@@ -3951,6 +3957,7 @@ function endBreak() {
 let whatNowTaskId = null;
 
 function whatNow() {
+  checkOnboardingItem('whatNow');
   const active = tasks.filter(t => !t.completed && t.status !== 'blocked' && t.status !== 'on-hold');
   if (!active.length) { showToast('No active tasks — add one to get started!'); return; }
   const t = todayStr();
@@ -5656,6 +5663,7 @@ function openMoodModal() {
 function closeMoodBanner() {}
 
 function selectMood(mood) {
+  checkOnboardingItem('mood');
   highlightMoodBtn(mood);
   saveTodayMood(mood);
   const savedText = document.getElementById('mood-saved-text');
@@ -5911,7 +5919,93 @@ function updateChangelogSidebarBtn() {
   if (btn) btn.style.display = settings.changelogEnabled !== false ? '' : 'none';
 }
 
-// ── Tutorial ─────────────────────────────────────────────────────────────────
+// ── Onboarding ───────────────────────────────────────────────────────────────
+function startOnboarding() {
+  const modal = document.getElementById('onboarding-modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeOnboardingModal() {
+  const modal = document.getElementById('onboarding-modal');
+  if (modal) modal.classList.remove('open');
+  api.saveConfig({ onboardingComplete: true, onboardingChecklist });
+  renderGettingStartedCard();
+}
+
+function applyOnboardingPreset(preset) {
+  if (preset === 'custom') { applyCustomPreset(); } else { applyPreset(preset); }
+  closeOnboardingModal();
+}
+
+function checkOnboardingItem(key) {
+  if (!onboardingChecklist.hasOwnProperty(key)) return;
+  if (onboardingChecklist.dismissed || onboardingChecklist[key]) return;
+  onboardingChecklist[key] = true;
+  api.saveConfig({ onboardingChecklist });
+  renderGettingStartedCard();
+}
+
+function dismissGettingStarted() {
+  onboardingChecklist.dismissed = true;
+  api.saveConfig({ onboardingChecklist });
+  const card = document.getElementById('getting-started-card');
+  if (card) card.remove();
+}
+
+function renderGettingStartedCard() {
+  if (onboardingChecklist.dismissed) return;
+  const container = document.getElementById('task-list-container');
+  const taskList  = document.getElementById('task-list');
+  if (!container || !taskList) return;
+
+  const items = [
+    { key: 'addTask',      label: 'Add your first task',  hint: '',                               action: 'openTaskModal()' },
+    { key: 'completeTask', label: 'Complete a task',       hint: 'Check off any task on your list', action: null },
+    { key: 'whatNow',      label: 'Try "What Now?"',       hint: '',                               action: 'whatNow()' },
+    { key: 'mood',         label: "Set today's mood",      hint: '',                               action: 'openMoodModal()' },
+  ];
+
+  const doneCount = items.filter(i => onboardingChecklist[i.key]).length;
+  if (doneCount === items.length) {
+    const card = document.getElementById('getting-started-card');
+    if (card) card.remove();
+    return;
+  }
+
+  const pct = Math.round(doneCount / items.length * 100);
+  const itemsHtml = items.map(i => {
+    const done = onboardingChecklist[i.key];
+    const hint = (!done && i.hint) ? `<span style="font-size:11px;color:var(--text3);margin-left:4px">${i.hint}</span>` : '';
+    const clickAttr = (!done && i.action) ? `onclick="${i.action}"` : '';
+    return `<div class="gs-item${done ? ' done' : ''}" ${clickAttr}>
+      <div class="gs-check">${done ? '✓' : ''}</div>
+      <span>${i.label}</span>${hint}
+    </div>`;
+  }).join('');
+
+  const html = `
+    <div class="gs-header">
+      <div>
+        <div class="gs-title">Get started</div>
+        <div class="gs-sub">${doneCount} of ${items.length} complete</div>
+      </div>
+      <button class="gs-dismiss" onclick="dismissGettingStarted()" title="Dismiss">✕</button>
+    </div>
+    <div class="gs-progress"><div class="gs-progress-fill" style="width:${pct}%"></div></div>
+    <div class="gs-items">${itemsHtml}</div>`;
+
+  let card = document.getElementById('getting-started-card');
+  if (card) {
+    card.innerHTML = html;
+  } else {
+    card = document.createElement('div');
+    card.id = 'getting-started-card';
+    card.innerHTML = html;
+    container.insertBefore(card, taskList);
+  }
+}
+
+// ── Tutorial (legacy — kept for reference) ────────────────────────────────────
 const TUTORIAL_STEPS = [
   {
     target: null,
@@ -6777,7 +6871,7 @@ async function startOfflineMode() {
   document.getElementById('offline-confirm-screen').classList.remove('active');
   showApp();
   loadOfflineTasks();
-  setTimeout(startTutorial, 1000);
+  setTimeout(startOnboarding, 800);
 }
 
 async function loadOfflineTasks() {
@@ -6787,7 +6881,9 @@ async function loadOfflineTasks() {
   setSyncStatus('offline');
   const btn = document.getElementById('connect-google-btn');
   if (btn) btn.style.display = '';
+  if (tasks.length > 0) checkOnboardingItem('addTask');
   renderAll();
+  renderGettingStartedCard();
 }
 
 async function connectGoogle() {

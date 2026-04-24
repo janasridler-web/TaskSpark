@@ -518,6 +518,30 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .tutorial-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .tutorial-progress{font-size:12px;color:var(--text3)}
 
+/* ── Onboarding welcome modal ── */
+#onboarding-modal .modal { max-width: 460px; }
+/* ── Getting started card ── */
+#getting-started-card{background:var(--surface);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:16px 18px 14px;margin-bottom:16px}
+.gs-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.gs-title{font-size:14px;font-weight:700;color:var(--text)}
+.gs-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.gs-dismiss{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;
+  padding:0;line-height:1;opacity:.6;transition:opacity .15s}
+.gs-dismiss:hover{opacity:1}
+.gs-progress{height:3px;background:var(--border);border-radius:2px;margin-bottom:12px}
+.gs-progress-fill{height:3px;background:var(--accent);border-radius:2px;transition:width .4s}
+.gs-items{display:flex;flex-direction:column;gap:2px}
+.gs-item{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);
+  padding:7px 8px;border-radius:6px;transition:background .1s;cursor:pointer}
+.gs-item:hover:not(.done){background:var(--surface2)}
+.gs-item.done{color:var(--text3);cursor:default}
+.gs-item.done span{text-decoration:line-through}
+.gs-check{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;
+  color:transparent;transition:all .2s}
+.gs-item.done .gs-check{background:var(--accent);border-color:var(--accent);color:#fff}
+
 /* -- Offline mode -- */
 #offline-confirm-screen{position:fixed;inset:0;z-index:1100;background:var(--bg);
   display:none;align-items:center;justify-content:center;padding:40px}
@@ -1992,7 +2016,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="settings-section-title">Onboarding</div>
             <div class="setting-row">
               <div><div class="setting-label">Replay tutorial</div><div class="setting-desc">Walk through the feature tour again</div></div>
-              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startTutorial,150)" style="font-size:12px;padding:6px 14px">Replay</button>
+              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startOnboarding,150)" style="font-size:12px;padding:6px 14px">Replay</button>
             </div>
           </div>
         </div>
@@ -2463,6 +2487,35 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
         <div style="font-weight:700;color:var(--text);margin-bottom:3px">Custom</div>
         <div style="font-size:12px;color:var(--text3)">Decide what matters to you. Opens Settings so you can choose.</div>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Onboarding welcome modal -->
+<div class="modal-overlay" id="onboarding-modal">
+  <div class="modal" style="max-width:460px">
+    <div style="text-align:center;padding:4px 0 22px">
+      <div style="font-size:32px;margin-bottom:12px">⚡</div>
+      <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px">Welcome to TaskSpark</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.6">Designed to reduce decision fatigue and help you start, focus, and finish.</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px">How much do you want to start with?</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%" onclick="applyOnboardingPreset('basic')">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">Keep it simple</div>
+        <div style="font-size:12px;color:var(--text3)">Just tasks, streak and smart suggestions. Add features as you go.</div>
+      </button>
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%;border-color:var(--accent);background:var(--accent-l)" onclick="applyOnboardingPreset('full')">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:3px">Full setup</div>
+        <div style="font-size:12px;color:var(--text3)">Timer, estimates, habits, ideas board and more — everything on.</div>
+      </button>
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%" onclick="applyOnboardingPreset('custom')">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">I'll choose</div>
+        <div style="font-size:12px;color:var(--text3)">Opens Settings so you can pick exactly what you want.</div>
+      </button>
+    </div>
+    <div style="text-align:center;margin-top:14px">
+      <button style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:'Outfit',sans-serif;padding:4px 8px" onclick="closeOnboardingModal()">Skip for now</button>
     </div>
   </div>
 </div>
