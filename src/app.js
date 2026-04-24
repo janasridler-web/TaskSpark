@@ -4094,45 +4094,9 @@ function applySettings() {
   // Recurrence form section
   const recurrenceSection = document.getElementById('recurrence-form-group');
   if (recurrenceSection) recurrenceSection.style.display = s.recurrenceEnabled !== false ? '' : 'none';
-  // Kanban sidebar item + feature settings sub-btn
+  // Kanban sidebar item
   const kanbanItem = document.querySelector('[data-view="kanban"]');
   if (kanbanItem) kanbanItem.style.display = s.kanbanEnabled !== false ? '' : 'none';
-  const kanbanSubBtn = document.querySelector('.feature-sub-btn[onclick*="kanban"]');
-  if (kanbanSubBtn) kanbanSubBtn.style.display = s.kanbanEnabled !== false ? '' : 'none';
-  const timerSubBtn2 = document.querySelector('.feature-sub-btn[onclick*="timer"]');
-  if (timerSubBtn2) timerSubBtn2.style.display = s.breakEnabled ? '' : 'none';
-  // Budget and Daily Summaries sub-tabs
-  const budgetSubBtn = document.querySelector('.feature-sub-btn[onclick*="budget"]');
-  if (budgetSubBtn) budgetSubBtn.style.display = s.budgetEnabled !== false ? '' : 'none';
-  const summariesSubBtn = document.querySelector('.feature-sub-btn[onclick*="summaries"]');
-  if (summariesSubBtn) summariesSubBtn.style.display = (s.sodEnabled !== false || s.eodEnabled !== false) ? '' : 'none';
-  if (!s.breakEnabled) {
-    const timerTab = document.getElementById('feature-tab-timer');
-    if (timerTab && timerTab.classList.contains('active')) {
-      switchFeatureTab('streak', document.querySelectorAll('.feature-sub-btn')[1]);
-    }
-  }
-  // If kanban sub-tab is active and kanban is disabled, switch to timer tab
-  if (s.kanbanEnabled === false) {
-    const kanbanTab = document.getElementById('feature-tab-kanban');
-    if (kanbanTab && kanbanTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
-    }
-  }
-  // If budget sub-tab is active and budget is disabled, switch to timer tab
-  if (s.budgetEnabled === false) {
-    const budgetTab = document.getElementById('feature-tab-budget');
-    if (budgetTab && budgetTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn:not([style*="none"])'));
-    }
-  }
-  // If summaries sub-tab is active and both are disabled, switch to timer tab
-  if (s.sodEnabled === false && s.eodEnabled === false) {
-    const summariesTab = document.getElementById('feature-tab-summaries');
-    if (summariesTab && summariesTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn:not([style*="none"])'));
-    }
-  }
   // If kanban is disabled and currently active, switch to list view
   if (s.kanbanEnabled === false && kanbanMode) {
     kanbanMode = false;
@@ -4392,14 +4356,6 @@ function switchSettingsTab(tab, el) {
   document.querySelectorAll('.settings-panel-section').forEach(s => s.classList.remove('active'));
   if (el) el.classList.add('active');
   const panel = document.getElementById('settings-tab-' + tab);
-  if (panel) panel.classList.add('active');
-}
-
-function switchFeatureTab(tab, el) {
-  document.querySelectorAll('.feature-sub-btn').forEach(i => i.classList.remove('active'));
-  document.querySelectorAll('.feature-sub-section').forEach(s => s.classList.remove('active'));
-  if (el) el.classList.add('active');
-  const panel = document.getElementById('feature-tab-' + tab);
   if (panel) panel.classList.add('active');
 }
 
