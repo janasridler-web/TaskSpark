@@ -88,6 +88,7 @@ let timerInterval      = null;
 let timerPaused        = false;
 let timerPausedAt      = null;
 let timerPausedElapsed = 0;
+let timerDidMinimize   = false;
 let breakSnoozed    = false;
 let breakAfterTimer = null;
 let breakInterval   = null;
@@ -3802,6 +3803,7 @@ function toggleTimer(id) {
   }
 
   if (settings.focusModeEnabled) {
+    timerDidMinimize = false;
     api.focusShow({
       taskId:     task.id,
       taskName:   task.title,
@@ -3810,6 +3812,7 @@ function toggleTimer(id) {
       baseLogged: task.timeLogged || 0,
     });
   } else {
+    timerDidMinimize = true;
     api.timerShow({
       taskName:   task.title,
       baseLogged: task.timeLogged || 0,
@@ -6897,9 +6900,10 @@ api.onTimerStopped((elapsed) => {
   // Restore main window
   if (wasSnoozed) {
     setTimeout(showBreakPanel, 200);
-  } else {
+  } else if (timerDidMinimize) {
     api.restore();
   }
+  timerDidMinimize = false;
 });
 
 init();
