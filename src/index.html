@@ -216,9 +216,9 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-checkbox:hover{border-color:var(--accent);background:var(--accent-l)}
 .task-checkbox.checked{background:var(--accent);border-color:var(--accent);color:#fff}
 
-@keyframes card-pop{0%{transform:scale(1);box-shadow:none}40%{transform:scale(1.04);box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 28%,transparent)}100%{transform:scale(1);box-shadow:none}}
+@keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
 @keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
-.task-card.celebrating{animation:card-pop .45s ease-out;overflow:visible}
+.task-card.celebrating{animation:card-pop .45s ease-out}
 .task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out}
 
 .task-body{flex:1;padding:14px 10px 14px 10px;min-width:0}

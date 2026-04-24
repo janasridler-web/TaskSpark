@@ -3537,8 +3537,8 @@ function triggerCelebration(id, callback) {
   }
   card.classList.add('celebrating');
   setTimeout(() => {
-    card.classList.remove('celebrating');
     if (callback) callback();
+    else card.classList.remove('celebrating');
   }, 450);
 }
 
