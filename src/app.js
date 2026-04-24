@@ -3647,8 +3647,101 @@ function pickDate(dateStr) {
   document.removeEventListener('click', closeCalendarOutside);
 }
 
+// ── Wins date picker ─────────────────────────────────────────────────────────
+let winCalYear = new Date().getFullYear();
+let winCalMonth = new Date().getMonth();
+let winSelectedDate = '';
+
+function refreshWinDateBtn() {
+  const btn = document.getElementById('win-date-btn');
+  const lbl = document.getElementById('win-date-label');
+  if (!btn || !lbl) return;
+  if (winSelectedDate) {
+    lbl.textContent = fmtDate(winSelectedDate);
+    btn.classList.add('has-date');
+  } else {
+    lbl.textContent = 'Pick a date';
+    btn.classList.remove('has-date');
+  }
+}
+
+function toggleWinCalendar() {
+  const popup = document.getElementById('win-calendar-popup');
+  if (popup.style.display === 'none') {
+    const d = winSelectedDate ? new Date(winSelectedDate + 'T00:00:00') : new Date();
+    winCalYear = d.getFullYear(); winCalMonth = d.getMonth();
+    renderWinCalendar();
+    const btn  = document.getElementById('win-date-btn');
+    const rect = btn.getBoundingClientRect();
+    popup.style.display = 'block';
+    popup.style.left  = rect.left + 'px';
+    popup.style.width = rect.width + 'px';
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 320 && rect.top > 320) {
+      popup.style.top    = (rect.top - popup.offsetHeight - 4) + 'px';
+    } else {
+      popup.style.top    = (rect.bottom + 4) + 'px';
+    }
+    setTimeout(() => document.addEventListener('click', closeWinCalendarOutside), 0);
+  } else {
+    popup.style.display = 'none';
+  }
+}
+
+function closeWinCalendarOutside(e) {
+  const popup = document.getElementById('win-calendar-popup');
+  const btn   = document.getElementById('win-date-btn');
+  if (popup && btn && !popup.contains(e.target) && !btn.contains(e.target)) {
+    popup.style.display = 'none';
+    document.removeEventListener('click', closeWinCalendarOutside);
+  }
+}
+
+function renderWinCalendar() {
+  const popup = document.getElementById('win-calendar-popup');
+  const monthNames = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const today = todayStr();
+  const firstDay   = new Date(winCalYear, winCalMonth, 1).getDay();
+  const daysInMonth = new Date(winCalYear, winCalMonth + 1, 0).getDate();
+  const startOffset = (firstDay + 6) % 7;
+  let cells = '';
+  for (let i = 0; i < startOffset; i++) cells += `<div class="cal-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${winCalYear}-${String(winCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cls = ['cal-cell', ds === today ? 'today' : '', ds === winSelectedDate ? 'selected' : ''].filter(Boolean).join(' ');
+    cells += `<div class="${cls}" onclick="pickWinDate('${ds}')">${d}</div>`;
+  }
+  popup.innerHTML = `
+    <div class="cal-header">
+      <button class="cal-nav" onclick="winCalNav(-1,event)">‹</button>
+      <span class="cal-month">${monthNames[winCalMonth]} ${winCalYear}</span>
+      <button class="cal-nav" onclick="winCalNav(1,event)">›</button>
+    </div>
+    <div class="cal-days-hdr">
+      ${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => `<div class="cal-day-hdr">${d}</div>`).join('')}
+    </div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-clear"><button class="cal-clear-btn" onclick="pickWinDate('')">Clear date</button></div>`;
+}
+
+function winCalNav(dir, e) {
+  if (e) e.stopPropagation();
+  winCalMonth += dir;
+  if (winCalMonth < 0)  { winCalMonth = 11; winCalYear--; }
+  if (winCalMonth > 11) { winCalMonth = 0;  winCalYear++; }
+  renderWinCalendar();
+}
+
+function pickWinDate(dateStr) {
+  winSelectedDate = dateStr;
+  refreshWinDateBtn();
+  const popup = document.getElementById('win-calendar-popup');
+  if (popup) popup.style.display = 'none';
+  document.removeEventListener('click', closeWinCalendarOutside);
+}
+
 function refreshDueBtn() {
-  const btn = document.getElementById('tm-due-btn');
   const lbl = document.getElementById('tm-due-label');
   if (modalDue) {
     const timePart = modalDueTime ? ` ${fmtTime(modalDueTime)}` : '';
@@ -5124,7 +5217,7 @@ function openWinModal(id = null) {
     document.getElementById('win-quote').value    = win.quote || '';
     document.getElementById('win-source').value   = win.source || '';
     document.getElementById('win-category').value = win.category || '';
-    document.getElementById('win-date').value     = win.date || '';
+    winSelectedDate = win.date || '';
     // Set mood
     document.querySelectorAll('.win-mood-btn').forEach(b => {
       b.classList.toggle('selected', b.dataset.mood === win.mood);
@@ -5133,13 +5226,14 @@ function openWinModal(id = null) {
     document.getElementById('win-quote').value    = '';
     document.getElementById('win-source').value   = '';
     document.getElementById('win-category').value = '';
-    document.getElementById('win-date').value     = todayStr();
+    winSelectedDate = todayStr();
     document.querySelectorAll('.win-mood-btn').forEach(b => b.classList.remove('selected'));
     // Default to 'proud'
     const defaultBtn = document.querySelector('.win-mood-btn[data-mood="proud"]');
     if (defaultBtn) defaultBtn.classList.add('selected');
   }
   document.getElementById('win-modal-overlay').classList.add('open');
+  refreshWinDateBtn();
   setTimeout(() => document.getElementById('win-quote').focus(), 50);
 }
 
@@ -5153,7 +5247,7 @@ function saveWin() {
   if (!quote) { showToast('Please enter the win or feedback'); return; }
   const source   = document.getElementById('win-source').value.trim();
   const category = document.getElementById('win-category').value;
-  const date     = document.getElementById('win-date').value || todayStr();
+  const date     = winSelectedDate || todayStr();
   const moodBtn  = document.querySelector('.win-mood-btn.selected');
   const mood     = moodBtn ? moodBtn.dataset.mood : 'proud';
 
@@ -5193,6 +5287,7 @@ function addWinFromTask(taskTitle) {
   editingWinId = null;
   document.getElementById('win-modal-title').textContent = '⭐ Add a Win';
   document.getElementById('win-modal-overlay').classList.add('open');
+  refreshWinDateBtn();
   setTimeout(() => document.getElementById('win-quote').focus(), 50);
 }
 

@@ -2306,7 +2306,12 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       </div>
       <div class="form-group">
         <label class="form-label">Date</label>
-        <input type="date" class="form-input" id="win-date">
+        <div style="position:relative">
+          <button class="date-picker-btn" id="win-date-btn" onclick="toggleWinCalendar()">
+            <span>📅</span><span id="win-date-label">Pick a date</span>
+          </button>
+          <div class="calendar-popup" id="win-calendar-popup" style="display:none"></div>
+        </div>
       </div>
     </div>
     <div class="form-group">
