@@ -3428,7 +3428,6 @@ function toggleComplete(id) {
     checkOnboardingItem('completeTask');
     task.completedAt = new Date().toISOString();
     task.status = 'done';
-    triggerCelebration(id);
     const showDialog = settings.completionDialog && (
       (task.priority === 'high'   && settings.completionDialogHigh !== false) ||
       (task.priority === 'medium' && settings.completionDialogMed  !== false) ||
@@ -3436,6 +3435,7 @@ function toggleComplete(id) {
     );
     if (!showDialog) {
       saveTasks(); renderAll();
+      triggerCelebration(id);
       if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
       return;
     }
@@ -3489,6 +3489,7 @@ function saveCompletion(skip) {
   }
 
   saveTasks(); renderAll();
+  triggerCelebration(completionTaskId);
   // Prompt recurring after completion dialog
   const completedTask = tasks.find(t => t.id === completionTaskId);
   if (completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none') {
