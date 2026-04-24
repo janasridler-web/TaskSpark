@@ -1954,30 +1954,34 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="settings-section-title">Kanban</div>
             <div class="setting-row">
               <div><div class="setting-label">Kanban view</div><div class="setting-desc">View tasks as a Kanban board grouped by tag and status</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled" onchange="toggleKanbanSub()"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-group-tags"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Keep completed tasks visible</div><div class="setting-desc">Show completed tasks in the Completed column instead of hiding them</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-show-completed"><span class="toggle-slider"></span></label>
+            <div id="kanban-sub-settings">
+              <div class="setting-row">
+                <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-kanban-group-tags"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Keep completed tasks visible</div><div class="setting-desc">Show completed tasks in the Completed column instead of hiding them</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-kanban-show-completed"><span class="toggle-slider"></span></label>
+              </div>
             </div>
           </div>
           <div class="settings-section">
             <div class="settings-section-title">Budget Tracking</div>
             <div class="setting-row">
               <div><div class="setting-label">Budget tracking</div><div class="setting-desc">Set a budget on tasks and track how much was spent</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled" onchange="toggleBudgetSub()"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Currency symbol</div><div class="setting-desc">Shown next to budget and spent amounts</div></div>
-              <input type="text" id="set-currency-symbol" maxlength="3" style="width:56px;border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;text-align:center">
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Group by tags</div><div class="setting-desc">Split the Budget View into sections by tag, each with its own summary</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-budget-group-tags"><span class="toggle-slider"></span></label>
+            <div id="budget-sub-settings">
+              <div class="setting-row">
+                <div><div class="setting-label">Currency symbol</div><div class="setting-desc">Shown next to budget and spent amounts</div></div>
+                <input type="text" id="set-currency-symbol" maxlength="3" style="width:56px;border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;text-align:center">
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Group by tags</div><div class="setting-desc">Split the Budget View into sections by tag, each with its own summary</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-budget-group-tags"><span class="toggle-slider"></span></label>
+              </div>
             </div>
           </div>
           <div class="settings-section">

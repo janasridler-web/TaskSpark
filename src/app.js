@@ -4295,6 +4295,7 @@ async function openSettings() {
   if (document.getElementById('set-kanban-enabled'))    document.getElementById('set-kanban-enabled').checked    = s.kanbanEnabled !== false;
   if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
   if (document.getElementById('set-kanban-show-completed')) document.getElementById('set-kanban-show-completed').checked = s.kanbanShowCompleted === true;
+  toggleKanbanSub();
   if (document.getElementById('set-stats-enabled'))     document.getElementById('set-stats-enabled').checked     = s.statsEnabled !== false;
   if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
@@ -4307,6 +4308,7 @@ async function openSettings() {
   if (document.getElementById('set-budget-enabled'))  document.getElementById('set-budget-enabled').checked  = s.budgetEnabled !== false;
   if (document.getElementById('set-currency-symbol')) document.getElementById('set-currency-symbol').value   = s.currencySymbol || '£';
   if (document.getElementById('set-budget-group-tags')) document.getElementById('set-budget-group-tags').checked = s.budgetGroupByTags === true;
+  toggleBudgetSub();
   if (document.getElementById('set-sod-enabled'))         document.getElementById('set-sod-enabled').checked         = s.sodEnabled !== false;
   if (document.getElementById('set-sod-due-today'))       document.getElementById('set-sod-due-today').checked       = s.sodShowDueToday !== false;
   if (document.getElementById('set-sod-overdue'))         document.getElementById('set-sod-overdue').checked         = s.sodShowOverdue !== false;
@@ -4658,6 +4660,18 @@ function toggleOverdueAlertSub() {
 function toggleDeferSidebarItem() {
   const el = document.getElementById('sidebar-deferred');
   if (el) el.style.display = settings.deferEnabled ? '' : 'none';
+}
+
+function toggleKanbanSub() {
+  const enabled = document.getElementById('set-kanban-enabled')?.checked;
+  const sub = document.getElementById('kanban-sub-settings');
+  if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
+function toggleBudgetSub() {
+  const enabled = document.getElementById('set-budget-enabled')?.checked;
+  const sub = document.getElementById('budget-sub-settings');
+  if (sub) sub.style.display = enabled ? '' : 'none';
 }
 
 function toggleBreakInputs() {
