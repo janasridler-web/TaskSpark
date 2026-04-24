@@ -3749,13 +3749,14 @@ function pickWinDate(dateStr) {
 
 function refreshDueBtn() {
   const lbl = document.getElementById('tm-due-label');
+  const btn = document.getElementById('tm-due-btn');
   if (modalDue) {
     const timePart = modalDueTime ? ` ${fmtTime(modalDueTime)}` : '';
-    lbl.textContent = fmtDate(modalDue) + timePart;
-    btn.classList.add('has-date');
+    if (lbl) lbl.textContent = fmtDate(modalDue) + timePart;
+    if (btn) btn.classList.add('has-date');
   } else {
-    lbl.textContent = 'Pick a date';
-    btn.classList.remove('has-date');
+    if (lbl) lbl.textContent = 'Pick a date';
+    if (btn) btn.classList.remove('has-date');
   }
 }
 
