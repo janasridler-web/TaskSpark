@@ -527,7 +527,7 @@ ipcMain.handle('drive-create-sheet', async (_, { accessToken }) => {
 });
 
 // ── Google Sheets API ─────────────────────────────────────────────────────────
-function sheetsRequest(method, path, accessToken, body) {
+function sheetsRequest(method, path, accessToken, body, _attempt = 0) {
   return new Promise((resolve, reject) => {
     const bodyStr = body ? JSON.stringify(body) : null;
     const req = https.request({
@@ -544,6 +544,12 @@ function sheetsRequest(method, path, accessToken, body) {
         try {
           const parsed = JSON.parse(data);
           if (parsed.error) {
+            const status = parsed.error.code;
+            if (_attempt < 3 && (status === 429 || status >= 500)) {
+              setTimeout(() => sheetsRequest(method, path, accessToken, body, _attempt + 1).then(resolve, reject),
+                Math.pow(2, _attempt) * 1000);
+              return;
+            }
             console.error(`Sheets API error [${method} ${path}]:`, JSON.stringify(parsed.error));
             reject(new Error(parsed.error.message || 'Sheets API error'));
           } else {
@@ -552,7 +558,14 @@ function sheetsRequest(method, path, accessToken, body) {
         } catch { reject(new Error(`Parse error: ${data}`)); }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      if (_attempt < 3) {
+        setTimeout(() => sheetsRequest(method, path, accessToken, body, _attempt + 1).then(resolve, reject),
+          Math.pow(2, _attempt) * 1000);
+      } else {
+        reject(err);
+      }
+    });
     if (bodyStr) req.write(bodyStr);
     req.end();
   });
@@ -627,18 +640,19 @@ ipcMain.handle('sheets-ensure', async (_, { accessToken, spreadsheetId }) => {
 // ── Habits ────────────────────────────────────────────────────────────────────
 ipcMain.handle('habits-save', async (_, { accessToken, spreadsheetId, habits }) => {
   await sheetsEnsure(accessToken, spreadsheetId);
-  // Clear existing data first
+  if (habits.length) {
+    const rows = habits.map(h => [
+      String(h.id), h.name, h.icon||'', JSON.stringify(h.days||[]),
+      JSON.stringify(h.completions||{}), h.createdAt||''
+    ]);
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Habits!A2')}?valueInputOption=RAW`,
+      accessToken, { range: 'Habits!A2', values: rows, majorDimension: 'ROWS' });
+  }
+  const clearFrom = habits.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Habits!A2:F10000')}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Habits!A${clearFrom}:F10000`)}:clear`,
     accessToken, {});
-  if (!habits.length) return true;
-  const rows = habits.map(h => [
-    String(h.id), h.name, h.icon||'', JSON.stringify(h.days||[]),
-    JSON.stringify(h.completions||{}), h.createdAt||''
-  ]);
-  await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Habits!A2')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    accessToken, { values: rows, majorDimension: 'ROWS' });
   return true;
 });
 
@@ -657,17 +671,18 @@ ipcMain.handle('habits-load', async (_, { accessToken, spreadsheetId }) => {
 // ── Ideas ─────────────────────────────────────────────────────────────────────
 ipcMain.handle('ideas-save', async (_, { accessToken, spreadsheetId, ideas }) => {
   await sheetsEnsure(accessToken, spreadsheetId);
-  // Clear existing data first
+  if (ideas.length) {
+    const rows = ideas.map(i => [
+      String(i.id), i.title, i.desc||'', JSON.stringify(i.tags||[]), i.createdAt||''
+    ]);
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Ideas!A2')}?valueInputOption=RAW`,
+      accessToken, { range: 'Ideas!A2', values: rows, majorDimension: 'ROWS' });
+  }
+  const clearFrom = ideas.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Ideas!A2:E10000')}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Ideas!A${clearFrom}:E10000`)}:clear`,
     accessToken, {});
-  if (!ideas.length) return true;
-  const rows = ideas.map(i => [
-    String(i.id), i.title, i.desc||'', JSON.stringify(i.tags||[]), i.createdAt||''
-  ]);
-  await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Ideas!A2')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    accessToken, { values: rows, majorDimension: 'ROWS' });
   return true;
 });
 
@@ -686,17 +701,19 @@ ipcMain.handle('ideas-load', async (_, { accessToken, spreadsheetId }) => {
 // ── Wins Board ────────────────────────────────────────────────────────────────
 ipcMain.handle('wins-save', async (_, { accessToken, spreadsheetId, wins }) => {
   await sheetsEnsure(accessToken, spreadsheetId);
+  if (wins.length) {
+    const rows = wins.map(w => [
+      String(w.id), w.quote||'', w.source||'', w.category||'',
+      w.date||'', w.mood||'', w.createdAt||''
+    ]);
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Wins!A2')}?valueInputOption=RAW`,
+      accessToken, { range: 'Wins!A2', values: rows, majorDimension: 'ROWS' });
+  }
+  const clearFrom = wins.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Wins!A2:G10000')}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Wins!A${clearFrom}:G10000`)}:clear`,
     accessToken, {});
-  if (!wins.length) return true;
-  const rows = wins.map(w => [
-    String(w.id), w.quote||'', w.source||'', w.category||'',
-    w.date||'', w.mood||'', w.createdAt||''
-  ]);
-  await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Wins!A2')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    accessToken, { values: rows, majorDimension: 'ROWS' });
   return true;
 });
 
@@ -715,16 +732,18 @@ ipcMain.handle('wins-load', async (_, { accessToken, spreadsheetId }) => {
 // ── Calendar Events ────────────────────────────────────────────────────────────
 ipcMain.handle('events-save', async (_, { accessToken, spreadsheetId, events }) => {
   await sheetsEnsure(accessToken, spreadsheetId);
+  if (events.length) {
+    const rows = events.map(e => [
+      String(e.id), e.title||'', e.allDay?'1':'0', e.start||'', e.end||'', e.date||'', e.desc||'', JSON.stringify(e.tags||[]), e.dateEnd||''
+    ]);
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A2')}?valueInputOption=RAW`,
+      accessToken, { range: 'Events!A2', values: rows, majorDimension: 'ROWS' });
+  }
+  const clearFrom = events.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A2:I10000')}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Events!A${clearFrom}:I10000`)}:clear`,
     accessToken, {});
-  if (!events.length) return true;
-  const rows = events.map(e => [
-    String(e.id), e.title||'', e.allDay?'1':'0', e.start||'', e.end||'', e.date||'', e.desc||'', JSON.stringify(e.tags||[]), e.dateEnd||''
-  ]);
-  await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A2')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    accessToken, { values: rows, majorDimension: 'ROWS' });
   return true;
 });
 
@@ -807,8 +826,6 @@ ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
 });
 
 ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) => {
-  await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:Y10000')}:clear`, accessToken);
   if (tasks.length) {
     const rows = tasks.map(t => [
       String(t.id), t.title, t.desc||'', t.priority||'medium', t.due||'',
@@ -830,6 +847,11 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
       `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2')}?valueInputOption=RAW`,
       accessToken, { range: 'Tasks!A2', values: rows, majorDimension: 'ROWS' });
   }
+  // Clear only rows beyond the written data — safe even if this fails (stale rows, not blank sheet)
+  const clearFrom = tasks.length + 2;
+  await sheetsRequest('POST',
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:Y10000`)}:clear`,
+    accessToken, {});
   return true;
 });
 

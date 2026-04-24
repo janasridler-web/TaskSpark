@@ -48,6 +48,8 @@ let winsMode = false;
 
 
 
+const FORMSPREE_URL = 'https://formspree.io/f/xwvrjnkd';
+
 // Workspaces
 const MAX_WORKSPACES = 3;
 const WORKSPACE_COLOURS = [
@@ -4335,7 +4337,7 @@ async function submitContactForm() {
   if (feedback) feedback.textContent = '';
 
   try {
-    const res = await fetch('https://formspree.io/f/xwvrjnkd', {
+    const res = await fetch(FORMSPREE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ name, email, message })
@@ -6157,11 +6159,11 @@ async function resolveWorkspaceConflict(driveData) {
 }
 
 async function prefetchAllWorkspaces() {
-  // Silently fetch all non-active workspaces in the background after startup
   const others = workspaces.filter(w => w.id !== activeWorkspaceId);
-  for (const ws of others) {
+  if (!others.length) return;
+  await ensureToken();
+  await Promise.all(others.map(async ws => {
     try {
-      await ensureToken();
       const [wsTasks, wsHabits, wsIdeas, wsWins] = await Promise.all([
         api.sheetsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.habitsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
@@ -6177,7 +6179,7 @@ async function prefetchAllWorkspaces() {
     } catch (e) {
       console.warn(`[prefetch] Failed for workspace ${ws.name}:`, e.message);
     }
-  }
+  }));
 }
 
 
