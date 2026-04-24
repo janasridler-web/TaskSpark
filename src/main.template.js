@@ -35,25 +35,15 @@ let timerWindow      = null;
 let breakPromptWindow = null;
 
 function getWindowState() {
-  try {
-    const cfgPath = path.join(app.getPath('userData'), 'config.json');
-    if (fs.existsSync(cfgPath)) {
-      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-      return cfg.windowState || null;
-    }
-  } catch {}
-  return null;
+  return loadConfig()?.windowState || null;
 }
 
 function saveWindowState() {
   try {
-    const cfgPath = path.join(app.getPath('userData'), 'config.json');
-    let cfg = {};
-    if (fs.existsSync(cfgPath)) cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     const isMaximized = mainWindow.isMaximized();
-    const bounds = isMaximized ? (cfg.windowState?.bounds || { width: 1080, height: 720 }) : mainWindow.getBounds();
-    cfg.windowState = { isMaximized, bounds };
-    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    const existing = loadConfig() || {};
+    const bounds = isMaximized ? (existing.windowState?.bounds || { width: 1080, height: 720 }) : mainWindow.getBounds();
+    saveConfig({ windowState: { isMaximized, bounds } });
   } catch {}
 }
 
@@ -402,7 +392,7 @@ ipcMain.handle('outlook-start', async () => {
       const port = server.address() ? server.address().port : 0;
       server.close(); outlookOauthServer = null;
       if (error) { reject(new Error('Outlook auth error: ' + error)); return; }
-      resolve({ code, redirectUri: `http://localhost:${port}/`, codeVerifier });
+      resolve({ code, redirectUri: `http://127.0.0.1:${port}/`, codeVerifier });
     });
     server.listen(0, '127.0.0.1', () => {
       const port = server.address().port;
@@ -410,7 +400,7 @@ ipcMain.handle('outlook-start', async () => {
       const authUrl = new URL('https://login.microsoftonline.com/common/oauth2/v2.0/authorize');
       authUrl.searchParams.set('client_id',             OUTLOOK_CLIENT_ID);
       authUrl.searchParams.set('response_type',         'code');
-      authUrl.searchParams.set('redirect_uri',          `http://localhost:${port}/`);
+      authUrl.searchParams.set('redirect_uri',          `http://127.0.0.1:${port}/`);
       authUrl.searchParams.set('scope',                 OUTLOOK_SCOPES);
       authUrl.searchParams.set('response_mode',         'query');
       authUrl.searchParams.set('prompt',                'select_account');

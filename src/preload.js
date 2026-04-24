@@ -55,8 +55,6 @@ contextBridge.exposeInMainWorld('api', {
   winsLoad:      (data) => ipcRenderer.invoke('wins-load', data),
   eventsSave:    (data) => ipcRenderer.invoke('events-save', data),
   eventsLoad:    (data) => ipcRenderer.invoke('events-load', data),
-  eventsSave:    (data) => ipcRenderer.invoke('events-save', data),
-  eventsLoad:    (data) => ipcRenderer.invoke('events-load', data),
   sheetsLoad:   (data) => ipcRenderer.invoke('sheets-load', data),
   sheetsSave:   (data) => ipcRenderer.invoke('sheets-save', data),
 
