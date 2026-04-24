@@ -899,7 +899,7 @@ function taskCardHTML(task) {
   return `
   <div class="${cardClass}" id="task-card-${task.id}">
     <div class="task-check-wrap">
-      <button class="done-btn${task.completed?' done':''}" ${ro ? 'disabled style="opacity:0.4"' : `onclick="toggleComplete(${task.id})"`}>✓ Done</button>
+      <div class="task-checkbox ${task.completed?'checked':''}" ${ro ? '' : `onclick="toggleComplete(${task.id})"`} style="${ro ? 'pointer-events:none;opacity:0.4' : ''}">${task.completed?'✓':''}</div>
     </div>
     <div class="task-body">
       <div class="task-title" id="task-title-${task.id}" ${ro ? '' : `ondblclick="startInlineEdit(${task.id})"`}>${esc(task.title)}</div>
@@ -3530,12 +3530,12 @@ function cancelCompletion() {
 
 function triggerCelebration(id) {
   if (!settings.celebrationEnabled) return;
-  const card = document.getElementById(`task-card-${id}`);
-  if (!card) return;
-  card.classList.remove('celebrating');
-  void card.offsetWidth; // reflow to restart animation
-  card.classList.add('celebrating');
-  setTimeout(() => card.classList.remove('celebrating'), 600);
+  setTimeout(() => {
+    const card = document.getElementById(`task-card-${id}`);
+    if (!card) return;
+    card.classList.add('celebrating');
+    setTimeout(() => card.classList.remove('celebrating'), 600);
+  }, 0);
 }
 
 // ── Tags ───────────────────────────────────────────────────────────────────
