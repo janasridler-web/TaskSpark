@@ -4174,7 +4174,7 @@ function applySettings() {
   }
   // Hide the entire TOOLS section if all tools are disabled
   const toolsSection = document.getElementById('sidebar-tools-section');
-  if (toolsSection) toolsSection.style.display = (s.statsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false) ? '' : 'none';
+  if (toolsSection) toolsSection.style.display = (s.statsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false || s.kanbanEnabled !== false) ? '' : 'none';
   const wsDropdown = document.getElementById('workspace-dropdown');
   const wsTitle = document.getElementById('workspace-title');
   if (wsDropdown) wsDropdown.style.display = s.workspacesEnabled !== false ? '' : 'none';
@@ -4191,16 +4191,6 @@ function applySettings() {
     setView('all', document.querySelector('[data-view="all"]'));
   }
   // Show empty state in Feature Settings if no features with settings are enabled
-  const hasFeatureSettings = s.breakEnabled || s.streakEnabled !== false || s.kanbanEnabled !== false || s.budgetEnabled !== false || s.sodEnabled !== false || s.eodEnabled !== false;
-  const emptyState = document.getElementById('feature-settings-empty');
-  const featureSubNav = document.getElementById('settings-tab-feature-settings')?.querySelector('div[style*="flex"]');
-  if (emptyState) emptyState.style.display = hasFeatureSettings ? 'none' : 'block';
-  document.querySelectorAll('.feature-sub-btn').forEach(b => {
-    if (!hasFeatureSettings) b.closest('div') && (b.closest('div[style]').style.display = 'none');
-  });
-  document.querySelectorAll('.feature-sub-section').forEach(el => {
-    if (!hasFeatureSettings) el.style.display = 'none';
-  });
 }
 
 async function openSettings() {
@@ -4261,9 +4251,7 @@ async function openSettings() {
   if (document.getElementById('set-eod-tomorrow'))        document.getElementById('set-eod-tomorrow').checked        = s.eodShowTomorrow !== false;
   if (document.getElementById('set-eod-streak'))          document.getElementById('set-eod-streak').checked          = s.eodShowStreak !== false;
   toggleSodEodSettings();
-  // Show/hide timer feature settings based on break enabled
-  const timerSubBtn = document.querySelector('.feature-sub-btn[onclick*="timer"]');
-  if (timerSubBtn) timerSubBtn.style.display = s.breakEnabled ? '' : 'none';
+  toggleBreakFeatureTab();
   updateVacationUI();
   toggleStreakSettings();
   // Populate account info
@@ -4284,12 +4272,7 @@ async function openSettings() {
     if (connectRow)  connectRow.style.display   = 'none';
   }
   // Reset to first tab
-  switchSettingsTab('general', document.querySelector('.settings-nav-item'));
-  // Only switch to timer tab if break is enabled, otherwise go to streak
-  const firstFeatureBtn = s.breakEnabled
-    ? document.querySelector('.feature-sub-btn')
-    : document.querySelectorAll('.feature-sub-btn')[1];
-  if (firstFeatureBtn) switchFeatureTab(firstFeatureBtn.getAttribute('onclick').match(/'([^']+)'/)[1], firstFeatureBtn);
+  switchSettingsTab('task-org', document.querySelector('.settings-nav-item'));
   const soundPath = document.getElementById('sound-file-path');
   soundPath.textContent = s.soundFile ? s.soundFile.split(/[\\/]/).pop() : 'Default (chime)';
   soundPath.style.color = s.soundFile ? 'var(--text)' : 'var(--text3)';
@@ -4360,20 +4343,9 @@ function cancelVacationMode() {
 }
 
 function toggleStreakSettings() {
-  const enabled = document.getElementById('set-streak') && document.getElementById('set-streak').checked;
+  const enabled = document.getElementById('set-streak')?.checked;
   const section = document.getElementById('streak-extra-settings');
   if (section) section.style.display = enabled ? '' : 'none';
-  // Also hide the Streak sub-nav button in Feature Settings
-  document.querySelectorAll('.feature-sub-btn').forEach(btn => {
-    if (btn.textContent.trim() === 'Streak') btn.style.display = enabled ? '' : 'none';
-  });
-  // If streak is being hidden and is currently active, switch to Timer tab
-  if (!enabled) {
-    const streakTab = document.getElementById('feature-tab-streak');
-    if (streakTab && streakTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
-    }
-  }
 }
 
 
@@ -4421,8 +4393,6 @@ function switchSettingsTab(tab, el) {
   if (el) el.classList.add('active');
   const panel = document.getElementById('settings-tab-' + tab);
   if (panel) panel.classList.add('active');
-  // Reset feature sub-nav when switching to feature settings
-  if (tab === 'feature-settings') switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
 }
 
 function switchFeatureTab(tab, el) {
@@ -4548,15 +4518,8 @@ function toggleSodEodSettings() {
 
 function toggleBreakFeatureTab() {
   const enabled = document.getElementById('set-break-enabled-general')?.checked;
-  const timerSubBtn = document.querySelector('.feature-sub-btn[onclick*="timer"]');
-  if (timerSubBtn) timerSubBtn.style.display = enabled ? '' : 'none';
-  if (!enabled) {
-    const timerTab = document.getElementById('feature-tab-timer');
-    if (timerTab && timerTab.classList.contains('active')) {
-      const nextBtn = document.querySelector('.feature-sub-btn:not([style*="none"])');
-      if (nextBtn) switchFeatureTab(nextBtn.getAttribute('onclick').match(/'([^']+)'/)[1], nextBtn);
-    }
-  }
+  const section = document.getElementById('break-sub-settings');
+  if (section) section.style.display = enabled ? '' : 'none';
 }
 
 function toggleBreakInputs() {
