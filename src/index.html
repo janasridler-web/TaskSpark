@@ -838,6 +838,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .stats-task-check{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--accent);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0}
 .stats-task-check.open{background:transparent;border-color:var(--border2)}
 .stats-task-check.running{background:#fff;border-color:var(--amber);position:relative}
+[data-theme="dark"] .stats-task-check.running{background:var(--surface2)}
 .stats-task-check.running::after{content:'';width:6px;height:6px;background:var(--amber);border-radius:50%;animation:stats-pulse 1.5s ease-in-out infinite;position:absolute}
 @keyframes stats-pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .stats-task-title{line-height:1.4}

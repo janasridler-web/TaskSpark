@@ -65,6 +65,11 @@ let configSheetId = null;  // ID of the TaskSpark-Config spreadsheet
 let rootSpreadsheetId = null;      // The original spreadsheet — used for cross-app workspace config
 // Pre-fetched workspace data cache: { [wsId]: { tasks, habits, ideas, wins } }
 const _wsCache = {};
+function _wsCacheSet(id, data) {
+  _wsCache[id] = data;
+  const activeIds = new Set(workspaces.map(w => String(w.id)));
+  Object.keys(_wsCache).forEach(k => { if (!activeIds.has(k) && k !== String(id)) delete _wsCache[k]; });
+}
 
 // Auth state
 let offlineMode   = false;
@@ -3388,7 +3393,7 @@ function deleteTask(id) {
   if (!task) return;
   showConfirmModal(
     'Delete Task',
-    `Delete "<strong>${esc(task.title)}</strong>"? This cannot be undone.`,
+    `Delete "<strong>${task.title}</strong>"? This cannot be undone.`,
     'Delete',
     () => {
       if (activeTimerId === id) cancelTimer();
@@ -3478,7 +3483,7 @@ function saveCompletion(skip) {
     setTimeout(() => {
       showConfirmModal(
         'Add to Wins Board',
-        `Capture <strong>${esc(completedTask.title)}</strong> as a win?`,
+        `Capture <strong>${completedTask.title}</strong> as a win?`,
         'Add Win',
         () => addWinFromTask(completedTask.title)
       );
@@ -4838,7 +4843,7 @@ function saveHabit() {
 function deleteHabit(id) {
   const habit = habits.find(h => h.id === id);
   if (!habit) return;
-  showConfirmModal('Delete Habit', `Delete <strong>${esc(habit.name)}</strong>? This cannot be undone.`, 'Delete', () => {
+  showConfirmModal('Delete Habit', `Delete <strong>${habit.name}</strong>? This cannot be undone.`, 'Delete', () => {
     habits = habits.filter(h => h.id !== id);
     saveHabits();
     renderHabits();
@@ -4980,7 +4985,7 @@ function saveIdea() {
 
 function deleteIdea(id) {
   const idea = ideas.find(i => i.id === id);
-  showConfirmModal('Delete Idea', idea ? `Delete <strong>${esc(idea.title)}</strong>? This cannot be undone.` : 'Delete this idea?', 'Delete', () => {
+  showConfirmModal('Delete Idea', idea ? `Delete <strong>${idea.title}</strong>? This cannot be undone.` : 'Delete this idea?', 'Delete', () => {
     ideas = ideas.filter(i => i.id !== id);
     saveIdeas();
     renderIdeas();
@@ -6085,11 +6090,17 @@ function endTutorial() {
 let _confirmCallback = null;
 let _cancelCallback = null;
 
+function sanitizeConfirmBody(str) {
+  const el = document.createElement('div');
+  el.textContent = str;
+  return el.innerHTML.replace(/&lt;(\/?(strong|em|br))\s*&gt;/gi, '<$1>');
+}
+
 function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false, cancelCallback = null) {
   _confirmCallback = callback;
   _cancelCallback = cancelCallback;
   document.getElementById('confirm-modal-title').textContent = title;
-  document.getElementById('confirm-modal-body').innerHTML = bodyHtml;
+  document.getElementById('confirm-modal-body').innerHTML = sanitizeConfirmBody(bodyHtml);
   const okBtn = document.getElementById('confirm-modal-ok');
   okBtn.textContent = okLabel || 'Confirm';
   okBtn.style.background = danger ? 'var(--red)' : '';
@@ -6157,12 +6168,12 @@ async function prefetchAllWorkspaces() {
         api.ideasLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.winsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
       ]);
-      _wsCache[ws.id] = {
+      _wsCacheSet(ws.id, {
         tasks: wsTasks || [],
         habits: wsHabits || [],
         ideas: wsIdeas || [],
         wins: wsWins || [],
-      };
+      });
     } catch (e) {
       console.warn(`[prefetch] Failed for workspace ${ws.name}:`, e.message);
     }
@@ -6289,12 +6300,12 @@ async function switchWorkspace(id) {
 
   try {
     // Snapshot current data into cache before leaving
-    _wsCache[activeWorkspaceId] = {
+    _wsCacheSet(activeWorkspaceId, {
       tasks: [...tasks],
       habits: [...habits],
       ideas: [...ideas],
       wins: [...wins],
-    };
+    });
 
     activeWorkspaceId = id;
     spreadsheetId = target.spreadsheetId;
@@ -6328,7 +6339,7 @@ async function switchWorkspace(id) {
         await api.saveCache([]);
         await connectToSheets();
         await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-        _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+        _wsCacheSet(id, { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] });
       }, 500);
     } else {
       // No cache yet — load fresh
