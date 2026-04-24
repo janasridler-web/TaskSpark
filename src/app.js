@@ -145,6 +145,11 @@ const DEFAULT_SETTINGS = {
   eodShowStreak:     true,
   timerEnabled:      true,
   focusModeEnabled:  false,
+  tagCustomColorsEnabled: false,
+  tagColors: {},
+  deferEnabled:      false,
+  overdueAlertEnabled: false,
+  overdueAlertMode:  'all',
   budgetEnabled:     true,
   currencySymbol:    '£',
   budgetGroupByTags: false,
@@ -221,8 +226,18 @@ function dueStatus(due) {
 }
 
 function getTagColor(tag) {
+  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) return settings.tagColors[tag];
   if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
   return tagColorMap[tag];
+}
+
+function isDeferred(task) {
+  if (!settings.deferEnabled || !task.hideUntilDays || !task.due) return false;
+  const t = todayStr();
+  if (task.due <= t) return false;
+  const show = new Date(task.due + 'T00:00:00');
+  show.setDate(show.getDate() - task.hideUntilDays);
+  return show.toISOString().slice(0, 10) > t;
 }
 
 function esc(s) {
@@ -424,6 +439,12 @@ async function init() {
   checkStartOfDay();
   // Schedule end of day notification
   scheduleEod();
+  // Midnight: refresh views and fire overdue alerts when date rolls over
+  let _lastDateStr = todayStr();
+  setInterval(() => {
+    const d = todayStr();
+    if (d !== _lastDateStr) { _lastDateStr = d; renderAll(); checkOverdueAlerts(); }
+  }, 60000);
 }
 
 
@@ -616,6 +637,7 @@ async function connectToSheets() {
     if (tasks.length > 0) checkOnboardingItem('addTask');
     renderAll();
     renderGettingStartedCard();
+    setTimeout(checkOverdueAlerts, 500);
   } catch (e) {
     console.error('[connectToSheets] error:', e.message);
     setSyncStatus('error', e.message.slice(0, 50));
@@ -753,19 +775,20 @@ function filterTasks() {
         !(task.desc||'').toLowerCase().includes(q) &&
         !(task.tags||[]).some(tg => tg.toLowerCase().includes(q))) return false;
     const v = currentView;
-    if (v === 'all')             return !task.completed && !task.archived;
-    if (v === 'today')           return !task.completed && !task.archived && task.due === t;
+    if (v === 'all')             return !task.completed && !task.archived && !isDeferred(task);
+    if (v === 'today')           return !task.completed && !task.archived && task.due === t && !isDeferred(task);
     if (v === 'overdue')         return !task.completed && !task.archived && task.due && task.due < t;
+    if (v === 'deferred')        return !task.completed && !task.archived && isDeferred(task);
     if (v === 'completed')       return task.completed && !task.archived;
-    if (v === 'priority-high')        return !task.completed && !task.archived && task.priority === 'high';
-    if (v === 'priority-medium')      return !task.completed && !task.archived && task.priority === 'medium';
-    if (v === 'priority-low')         return !task.completed && !task.archived && task.priority === 'low';
-    if (v === 'status-not-started')   return !task.completed && !task.archived && (task.status || 'not-started') === 'not-started';
-    if (v === 'status-in-progress')   return !task.completed && !task.archived && task.status === 'in-progress';
-    if (v === 'status-blocked')       return !task.completed && !task.archived && task.status === 'blocked';
-    if (v === 'status-on-hold')       return !task.completed && !task.archived && task.status === 'on-hold';
+    if (v === 'priority-high')        return !task.completed && !task.archived && task.priority === 'high' && !isDeferred(task);
+    if (v === 'priority-medium')      return !task.completed && !task.archived && task.priority === 'medium' && !isDeferred(task);
+    if (v === 'priority-low')         return !task.completed && !task.archived && task.priority === 'low' && !isDeferred(task);
+    if (v === 'status-not-started')   return !task.completed && !task.archived && (task.status || 'not-started') === 'not-started' && !isDeferred(task);
+    if (v === 'status-in-progress')   return !task.completed && !task.archived && task.status === 'in-progress' && !isDeferred(task);
+    if (v === 'status-blocked')       return !task.completed && !task.archived && task.status === 'blocked' && !isDeferred(task);
+    if (v === 'status-on-hold')       return !task.completed && !task.archived && task.status === 'on-hold' && !isDeferred(task);
     if (v === 'archived')             return task.archived === true;
-    if (v.startsWith('tag:'))         return !task.completed && !task.archived && (task.tags||[]).includes(v.slice(4));
+    if (v.startsWith('tag:'))         return !task.completed && !task.archived && (task.tags||[]).includes(v.slice(4)) && !isDeferred(task);
     return false;
   });
 }
@@ -945,9 +968,11 @@ function updateStats() {
 function updateCounts() {
   const t = todayStr();
   const active = tasks.filter(x => !x.completed);
-  document.getElementById('cnt-all').textContent       = active.length;
-  document.getElementById('cnt-today').textContent     = active.filter(x => x.due === t).length;
+  document.getElementById('cnt-all').textContent       = active.filter(x => !isDeferred(x)).length;
+  document.getElementById('cnt-today').textContent     = active.filter(x => x.due === t && !isDeferred(x)).length;
   document.getElementById('cnt-overdue').textContent   = active.filter(x => x.due && x.due < t).length;
+  const cntDeferred = document.getElementById('cnt-deferred');
+  if (cntDeferred) cntDeferred.textContent = active.filter(isDeferred).length;
   document.getElementById('cnt-completed').textContent = tasks.filter(x => x.completed && !x.archived).length;
   const cntArchived = document.getElementById('cnt-archived');
   if (cntArchived) cntArchived.textContent = tasks.filter(x => x.archived).length;
@@ -2956,6 +2981,9 @@ function openTaskModal(id = null) {
     if (document.getElementById('tm-due-time')) document.getElementById('tm-due-time').value = task.dueTime || '';
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
+    const overdueAlertCb = document.getElementById('tm-overdue-alert');
+    if (overdueAlertCb) overdueAlertCb.checked = task.overdueAlert === true;
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -2969,8 +2997,9 @@ function openTaskModal(id = null) {
     modalAttachments = [];
     const clearBtnNew = document.getElementById('tm-due-time-clear');
     if (clearBtnNew) clearBtnNew.style.display = 'none';
-    const clearBtnNew2 = document.getElementById('tm-due-time-clear');
-    if (clearBtnNew2) clearBtnNew2.style.display = 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
+    const overdueAlertCbNew = document.getElementById('tm-overdue-alert');
+    if (overdueAlertCbNew) overdueAlertCbNew.checked = false;
   }
 
   renderModalAttachments();
@@ -3001,6 +3030,8 @@ function saveTask() {
     energy:     document.getElementById('tm-energy').value,
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
+    hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
+    overdueAlert: document.getElementById('tm-overdue-alert')?.checked || false,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -3806,6 +3837,8 @@ function refreshDueBtn() {
     if (lbl) lbl.textContent = 'Pick a date';
     if (btn) btn.classList.remove('has-date');
   }
+  const hideUntilGroup = document.getElementById('hide-until-form-group');
+  if (hideUntilGroup) hideUntilGroup.style.display = (settings.deferEnabled && !!modalDue) ? '' : 'none';
 }
 
 function onDueTimeChange(val) {
@@ -4132,6 +4165,9 @@ function applySettings() {
   if (dueFormGroup) dueFormGroup.style.display = s.dueEnabled !== false ? '' : 'none';
   const dueTimeFormGroup = document.getElementById('due-time-form-group');
   if (dueTimeFormGroup) dueTimeFormGroup.style.display = (s.dueEnabled !== false && s.dueTimeEnabled !== false) ? '' : 'none';
+  const overdueAlertFG = document.getElementById('overdue-alert-form-group');
+  if (overdueAlertFG) overdueAlertFG.style.display = (s.overdueAlertEnabled && s.overdueAlertMode === 'per-task') ? '' : 'none';
+  toggleDeferSidebarItem();
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
@@ -4236,6 +4272,13 @@ async function openSettings() {
   document.getElementById('set-whatnow').checked            = s.whatNowEnabled;
   document.getElementById('set-completion').checked         = s.completionDialog;
   toggleCompletionDialogSub();
+  if (document.getElementById('set-tag-custom-colors'))     document.getElementById('set-tag-custom-colors').checked     = s.tagCustomColorsEnabled === true;
+  if (document.getElementById('tag-colors-section'))        document.getElementById('tag-colors-section').style.display  = s.tagCustomColorsEnabled ? '' : 'none';
+  if (s.tagCustomColorsEnabled) renderTagColorSettings();
+  if (document.getElementById('set-defer-enabled'))          document.getElementById('set-defer-enabled').checked          = s.deferEnabled === true;
+  if (document.getElementById('set-overdue-alert-enabled'))  document.getElementById('set-overdue-alert-enabled').checked  = s.overdueAlertEnabled === true;
+  if (document.getElementById('set-overdue-alert-mode'))     document.getElementById('set-overdue-alert-mode').value        = s.overdueAlertMode || 'all';
+  toggleOverdueAlertSub();
   if (document.getElementById('set-celebration-enabled'))    document.getElementById('set-celebration-enabled').checked    = s.celebrationEnabled !== false;
   if (document.getElementById('set-completion-dialog-high')) document.getElementById('set-completion-dialog-high').checked = s.completionDialogHigh !== false;
   if (document.getElementById('set-completion-dialog-med'))  document.getElementById('set-completion-dialog-med').checked  = s.completionDialogMed  !== false;
@@ -4543,6 +4586,80 @@ function toggleCompletionDialogSub() {
   if (sub) sub.style.display = (el && el.checked) ? '' : 'none';
 }
 
+// ── Tag colour settings ───────────────────────────────────────────────────
+let _tagColorSettingsTags = [];
+
+function renderTagColorSettings() {
+  const el = document.getElementById('tag-colors-list');
+  if (!el) return;
+  _tagColorSettingsTags = [...new Set(tasks.flatMap(t => t.tags || []))].sort();
+  if (_tagColorSettingsTags.length === 0) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 0">No tags yet — add tags to tasks first.</div>';
+    return;
+  }
+  el.innerHTML = _tagColorSettingsTags.map((tag, i) =>
+    `<div class="setting-row" style="padding:6px 0">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="tag-color-dot-${i}" style="width:10px;height:10px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>
+        <span class="setting-label">${esc(tag)}</span>
+      </div>
+      <input type="color" value="${getTagColor(tag)}" onchange="setTagColor(${i},this.value)"
+        style="width:36px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px">
+    </div>`
+  ).join('');
+}
+
+function setTagColor(index, color) {
+  const tag = _tagColorSettingsTags[index];
+  if (!tag) return;
+  if (!settings.tagColors) settings.tagColors = {};
+  settings.tagColors[tag] = color;
+  const dot = document.getElementById(`tag-color-dot-${index}`);
+  if (dot) dot.style.background = color;
+  renderAll();
+}
+
+function toggleTagColorSection() {
+  const enabled = document.getElementById('set-tag-custom-colors')?.checked;
+  const section = document.getElementById('tag-colors-section');
+  if (section) section.style.display = enabled ? '' : 'none';
+  if (enabled) renderTagColorSettings();
+  renderAll();
+}
+
+// ── Overdue alerts ────────────────────────────────────────────────────────
+function checkOverdueAlerts() {
+  if (!settings.overdueAlertEnabled) return;
+  const t = todayStr();
+  let overdue = tasks.filter(task => !task.completed && !task.archived && task.due && task.due < t);
+  if (settings.overdueAlertMode === 'per-task') overdue = overdue.filter(task => task.overdueAlert);
+  if (!overdue.length) return;
+  const list = document.getElementById('overdue-alert-list');
+  if (!list) return;
+  list.innerHTML = overdue.map(task =>
+    `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="font-weight:600;color:var(--text)">${esc(task.title)}</div>
+      <div style="font-size:12px;color:var(--red);margin-top:2px">Due: ${fmtDate(task.due)}</div>
+    </div>`
+  ).join('');
+  document.getElementById('overdue-alert-overlay').classList.add('open');
+}
+
+function acknowledgeOverdueAlert() {
+  document.getElementById('overdue-alert-overlay').classList.remove('open');
+}
+
+function toggleOverdueAlertSub() {
+  const enabled = document.getElementById('set-overdue-alert-enabled')?.checked;
+  const sub = document.getElementById('overdue-alert-sub');
+  if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
+function toggleDeferSidebarItem() {
+  const el = document.getElementById('sidebar-deferred');
+  if (el) el.style.display = settings.deferEnabled ? '' : 'none';
+}
+
 function toggleBreakInputs() {
   const el = document.getElementById('set-break-enabled') || document.getElementById('set-break-enabled-general');
   const enabled = el ? el.checked : settings.breakEnabled;
@@ -4568,6 +4685,10 @@ function saveSettingsFromModal() {
   settings.quickAddEnabled   = document.getElementById('set-quickadd').checked;
   settings.whatNowEnabled    = document.getElementById('set-whatnow').checked;
   settings.completionDialog  = document.getElementById('set-completion').checked;
+  if (document.getElementById('set-tag-custom-colors'))    settings.tagCustomColorsEnabled = document.getElementById('set-tag-custom-colors').checked;
+  if (document.getElementById('set-defer-enabled'))         settings.deferEnabled           = document.getElementById('set-defer-enabled').checked;
+  if (document.getElementById('set-overdue-alert-enabled')) settings.overdueAlertEnabled    = document.getElementById('set-overdue-alert-enabled').checked;
+  if (document.getElementById('set-overdue-alert-mode'))    settings.overdueAlertMode       = document.getElementById('set-overdue-alert-mode').value;
   if (document.getElementById('set-celebration-enabled'))    settings.celebrationEnabled    = document.getElementById('set-celebration-enabled').checked;
   if (document.getElementById('set-completion-dialog-high')) settings.completionDialogHigh  = document.getElementById('set-completion-dialog-high').checked;
   if (document.getElementById('set-completion-dialog-med'))  settings.completionDialogMed   = document.getElementById('set-completion-dialog-med').checked;

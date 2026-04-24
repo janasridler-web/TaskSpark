@@ -1302,6 +1302,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <div class="sidebar-item active" data-view="all" onclick="setView('all',this)"><span class="si-icon">☰</span>All Tasks<span class="si-count" id="cnt-all">0</span></div>
       <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon">◷</span>Due Today<span class="si-count" id="cnt-today">0</span></div>
       <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon">!</span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
+      <div class="sidebar-item" data-view="deferred" id="sidebar-deferred" onclick="setView('deferred',this)" style="display:none"><span class="si-icon">◷</span>Deferred<span class="si-count" id="cnt-deferred">0</span></div>
       <div class="sidebar-item" data-view="completed" onclick="setView('completed',this)"><span class="si-icon">✓</span>Completed<span class="si-count" id="cnt-completed">0</span></div>
       <div class="sidebar-item" data-view="archived" onclick="setView('archived',this)"><span class="si-icon" style="color:var(--text3)">◫</span>Archived<span class="si-count" id="cnt-archived">0</span></div>
 
@@ -1476,6 +1477,16 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
           <button type="button" id="tm-due-time-clear" onclick="clearDueTime()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:none;color:var(--text3);font-size:12px;cursor:pointer;white-space:nowrap" title="Clear time">✕ Clear</button>
         </div>
       </div>
+    </div>
+    <div class="form-group" id="hide-until-form-group" style="display:none">
+      <label class="form-label">Hide until <span style="font-weight:400;color:var(--text3)">(days before due date)</span></label>
+      <input class="form-input" id="tm-hide-until" type="number" min="1" placeholder="e.g. 3">
+    </div>
+    <div class="form-group" id="overdue-alert-form-group" style="display:none">
+      <label class="form-label" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="tm-overdue-alert" style="width:16px;height:16px;accent-color:var(--accent)">
+        Flag for overdue alert
+      </label>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -1695,6 +1706,20 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   </div>
 </div>
 
+<!-- Overdue alert modal -->
+<div class="modal-overlay" id="overdue-alert-overlay">
+  <div class="modal modal-sm" id="overdue-alert-modal">
+    <div style="background:var(--red);margin:-28px -28px 20px;padding:18px 24px;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+      <div style="font-size:18px;font-weight:700;color:#fff">⚠ Overdue Tasks</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.7);margin-top:3px">These tasks need your attention</div>
+    </div>
+    <div id="overdue-alert-list" style="max-height:320px;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="acknowledgeOverdueAlert()">Acknowledge</button>
+    </div>
+  </div>
+</div>
+
 <!-- What Now modal -->
 <div class="modal-overlay" id="whatnow-modal-overlay" onclick="closeModalOutside(event,'whatnow-modal-overlay')">
   <div class="modal modal-sm">
@@ -1752,6 +1777,24 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Due Time</div><div class="setting-desc">Add a specific time alongside the due date</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-due-time-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Defer tasks</div><div class="setting-desc">Hide a task until a set number of days before its due date</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-defer-enabled" onchange="saveSettings();toggleDeferSidebarItem();renderAll()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Overdue task alerts</div><div class="setting-desc">Show a blocking warning when tasks become overdue</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-overdue-alert-enabled" onchange="toggleOverdueAlertSub()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-sub-group" id="overdue-alert-sub" style="display:none">
+              <div class="setting-sub-label">Alert me for</div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Alert mode</div></div>
+                <select id="set-overdue-alert-mode" class="form-input" style="width:auto;font-size:12px;padding:4px 8px;height:auto">
+                  <option value="all">All overdue tasks</option>
+                  <option value="per-task">Flagged tasks only</option>
+                </select>
+              </div>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
@@ -2016,6 +2059,16 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a What's New button in the sidebar</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Tag Colours</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Custom tag colours</div><div class="setting-desc">Choose a colour for each of your tags instead of using the auto-assigned palette</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-tag-custom-colors" onchange="toggleTagColorSection()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="tag-colors-section" style="display:none">
+              <div id="tag-colors-list"></div>
             </div>
           </div>
         </div>
