@@ -1,0 +1,62 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number to release (e.g. 3.6.0)'
+        required: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify version matches package.json
+        shell: node {0}
+        run: |
+          const pkg = require('./package.json');
+          const input = '${{ github.event.inputs.version }}';
+          if (pkg.version !== input) {
+            console.error(`Version mismatch: package.json says ${pkg.version} but input was ${input}`);
+            process.exit(1);
+          }
+          console.log(`Version ${input} confirmed.`);
+
+      - name: Prepare main.js from template
+        run: cp src/main.template.js src/main.js
+
+      - name: Inject OAuth credentials
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const mainJsPath = path.join(process.cwd(), 'src', 'main.js');
+          let src = fs.readFileSync(mainJsPath, 'utf8');
+          src = src.replace("'__APP_CLIENT_ID__'",         `'${process.env.GOOGLE_CLIENT_ID}'`);
+          src = src.replace("'__APP_CLIENT_SECRET__'",     `'${process.env.GOOGLE_CLIENT_SECRET}'`);
+          src = src.replace("'__OUTLOOK_CLIENT_ID__'",     `'${process.env.OUTLOOK_CLIENT_ID}'`);
+          src = src.replace("'__OUTLOOK_CLIENT_SECRET__'", `'${process.env.OUTLOOK_CLIENT_SECRET}'`);
+          fs.writeFileSync(mainJsPath, src);
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          OUTLOOK_CLIENT_SECRET: ${{ secrets.OUTLOOK_CLIENT_SECRET }}
+
+      - name: Build and publish to taskspark-releases
+        run: npm run build -- --publish always
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}

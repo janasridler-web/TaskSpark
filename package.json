@@ -14,7 +14,7 @@
     "publish": {
       "provider": "github",
       "owner": "janasridler-web",
-      "repo": "taskspark"
+      "repo": "taskspark-releases"
     },
     "win": {
       "target": "nsis",
