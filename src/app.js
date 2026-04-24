@@ -3434,12 +3434,14 @@ function toggleComplete(id) {
       (task.priority === 'low'    && settings.completionDialogLow  === true)
     );
     if (!showDialog) {
-      saveTasks(); renderAll();
-      triggerCelebration(id);
-      if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      triggerCelebration(id, () => {
+        saveTasks(); renderAll();
+        if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      });
       return;
     }
-    // Show completion dialog
+    // Show completion dialog — animate card while it's still in the DOM
+    triggerCelebration(id);
     completionTaskId = id;
     selectedImpact   = 'medium';
     document.getElementById('cm-task-name').textContent = task.title.length > 50 ? task.title.slice(0,48)+'…' : task.title;
@@ -3489,7 +3491,6 @@ function saveCompletion(skip) {
   }
 
   saveTasks(); renderAll();
-  triggerCelebration(completionTaskId);
   // Prompt recurring after completion dialog
   const completedTask = tasks.find(t => t.id === completionTaskId);
   if (completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none') {
@@ -3528,14 +3529,17 @@ function cancelCompletion() {
   renderAll();
 }
 
-function triggerCelebration(id) {
-  if (!settings.celebrationEnabled) return;
+function triggerCelebration(id, callback) {
+  const card = document.getElementById(`task-card-${id}`);
+  if (!settings.celebrationEnabled || !card) {
+    if (callback) callback();
+    return;
+  }
+  card.classList.add('celebrating');
   setTimeout(() => {
-    const card = document.getElementById(`task-card-${id}`);
-    if (!card) return;
-    card.classList.add('celebrating');
-    setTimeout(() => card.classList.remove('celebrating'), 600);
-  }, 0);
+    card.classList.remove('celebrating');
+    if (callback) callback();
+  }, 450);
 }
 
 // ── Tags ───────────────────────────────────────────────────────────────────
