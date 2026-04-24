@@ -210,11 +210,17 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-card.priority-low{border-left:3.5px solid var(--blue)}
 
 .task-check-wrap{display:flex;align-items:center;padding:16px 4px 16px 14px;flex-shrink:0}
-.task-checkbox{width:20px;height:20px;border:2px solid var(--border2);border-radius:6px;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:all .15s;flex-shrink:0;background:var(--surface);font-size:12px}
-.task-checkbox:hover{border-color:var(--accent);background:var(--accent-l)}
-.task-checkbox.checked{background:var(--accent);border-color:var(--accent);color:#fff}
+.done-btn{font-size:11px;font-weight:700;padding:5px 9px;border-radius:20px;
+  border:1.5px solid var(--accent);color:var(--accent);background:transparent;
+  cursor:pointer;white-space:nowrap;transition:all .15s;font-family:var(--font-sans);flex-shrink:0}
+.done-btn:hover{background:var(--accent-l)}
+.done-btn.done{background:var(--accent);border-color:var(--accent);color:#fff}
+.done-btn:disabled{cursor:default}
+
+@keyframes card-pop{0%{transform:scale(1)}35%{transform:scale(1.025)}100%{transform:scale(1)}}
+@keyframes done-btn-burst{0%{box-shadow:0 0 0 0 var(--accent)}40%{box-shadow:0 0 0 7px color-mix(in srgb,var(--accent) 25%,transparent)}100%{box-shadow:0 0 0 13px transparent}}
+.task-card.celebrating{animation:card-pop .35s ease-out}
+.task-card.celebrating .done-btn{animation:done-btn-burst .5s ease-out}
 
 .task-body{flex:1;padding:14px 10px 14px 10px;min-width:0}
 .task-title{font-size:15px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:3px}
@@ -448,6 +454,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .setting-row:last-child{border-bottom:none}
 .setting-label{font-size:14px;font-weight:500;color:var(--text)}
 .setting-desc{font-size:12px;color:var(--text3);margin-top:2px}
+.setting-sub-group{background:var(--surface2);border-radius:8px;padding:4px 12px;margin:4px 0 6px}
+.setting-sub-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 0 2px}
+.setting-row-sub{padding:5px 0;border-bottom:none}
+.setting-row-sub .setting-label{font-size:13px}
 .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
 .toggle-slider{position:absolute;inset:0;background:var(--border2);border-radius:24px;cursor:pointer;transition:background .2s}
@@ -1679,6 +1689,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <input class="form-input" id="cm-spent" type="number" min="0" step="0.01" placeholder="0.00" style="color:var(--text)">
     </div>
     <div class="modal-footer">
+      <button class="btn-secondary" onclick="cancelCompletion()">Cancel</button>
       <button class="btn-secondary" onclick="saveCompletion(true)">Skip</button>
       <button class="btn-primary" onclick="saveCompletion(false)">Save & Close</button>
     </div>
@@ -1760,8 +1771,27 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <label class="toggle-switch"><input type="checkbox" id="set-attachments-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
+              <div><div class="setting-label">Celebration animation</div><div class="setting-desc">Play a pop animation when a task is completed</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-celebration-enabled" onchange="saveSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
               <div><div class="setting-label">Completion dialog</div><div class="setting-desc">Ask for impact, outcome and deliverable when completing a task</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-completion"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="set-completion" onchange="toggleCompletionDialogSub()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-sub-group" id="completion-dialog-priorities">
+              <div class="setting-sub-label">Show dialog for:</div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">High priority</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-completion-dialog-high"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Medium priority</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-completion-dialog-med"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Low priority</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-completion-dialog-low"><span class="toggle-slider"></span></label>
+              </div>
             </div>
           </div>
         </div>

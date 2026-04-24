@@ -8,8 +8,9 @@ let modalDue     = '';
 let modalDueTime = '';
 let calYear      = null;
 let calMonth     = null;
-let completionTaskId = null;
-let selectedImpact   = 'medium';
+let completionTaskId       = null;
+let completionPreviousStatus = 'not-started';
+let selectedImpact         = 'medium';
 let undoStack    = [];
 let onboardingChecklist = { addTask: false, completeTask: false, whatNow: false, mood: false, dismissed: false };
 
@@ -106,7 +107,11 @@ const DEFAULT_SETTINGS = {
   dueTimeEnabled:    true,
   quickAddEnabled:   true,
   whatNowEnabled:    true,
-  completionDialog:  true,
+  completionDialog:     true,
+  celebrationEnabled:   true,
+  completionDialogHigh: true,
+  completionDialogMed:  true,
+  completionDialogLow:  false,
   soundEnabled:      true,
   soundFile:         null,  // null = use bundled default
   moodEnabled:       true,
@@ -894,7 +899,7 @@ function taskCardHTML(task) {
   return `
   <div class="${cardClass}" id="task-card-${task.id}">
     <div class="task-check-wrap">
-      <div class="task-checkbox ${task.completed?'checked':''}" ${ro ? '' : `onclick="toggleComplete(${task.id})"`} style="${ro ? 'pointer-events:none;opacity:0.4' : ''}">${task.completed?'✓':''}</div>
+      <button class="done-btn${task.completed?' done':''}" ${ro ? 'disabled style="opacity:0.4"' : `onclick="toggleComplete(${task.id})"`}>✓ Done</button>
     </div>
     <div class="task-body">
       <div class="task-title" id="task-title-${task.id}" ${ro ? '' : `ondblclick="startInlineEdit(${task.id})"`}>${esc(task.title)}</div>
@@ -3417,12 +3422,19 @@ function toggleComplete(id) {
   pushUndo(completing ? 'Complete task' : 'Uncomplete task');
 
   if (completing) {
+    completionPreviousStatus = task.status || 'not-started';
     if (activeTimerId === id) stopTimerSave();
     task.completed  = true;
     checkOnboardingItem('completeTask');
     task.completedAt = new Date().toISOString();
     task.status = 'done';
-    if (!settings.completionDialog) {
+    triggerCelebration(id);
+    const showDialog = settings.completionDialog && (
+      (task.priority === 'high'   && settings.completionDialogHigh !== false) ||
+      (task.priority === 'medium' && settings.completionDialogMed  !== false) ||
+      (task.priority === 'low'    && settings.completionDialogLow  === true)
+    );
+    if (!showDialog) {
       saveTasks(); renderAll();
       if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
       return;
@@ -3501,6 +3513,28 @@ function selectImpact(level) {
     const el = document.getElementById(`imp-${l}`);
     el.className = `impact-opt ${l === level ? 'selected-'+l : ''}`;
   });
+}
+
+function cancelCompletion() {
+  const task = tasks.find(t => t.id === completionTaskId);
+  if (task) {
+    task.completed   = false;
+    task.completedAt = '';
+    task.status      = completionPreviousStatus;
+  }
+  closeModal('completion-modal-overlay');
+  saveTasks();
+  renderAll();
+}
+
+function triggerCelebration(id) {
+  if (!settings.celebrationEnabled) return;
+  const card = document.getElementById(`task-card-${id}`);
+  if (!card) return;
+  card.classList.remove('celebrating');
+  void card.offsetWidth; // reflow to restart animation
+  card.classList.add('celebrating');
+  setTimeout(() => card.classList.remove('celebrating'), 600);
 }
 
 // ── Tags ───────────────────────────────────────────────────────────────────
@@ -4196,6 +4230,11 @@ async function openSettings() {
   document.getElementById('set-quickadd').checked           = s.quickAddEnabled;
   document.getElementById('set-whatnow').checked            = s.whatNowEnabled;
   document.getElementById('set-completion').checked         = s.completionDialog;
+  toggleCompletionDialogSub();
+  if (document.getElementById('set-celebration-enabled'))    document.getElementById('set-celebration-enabled').checked    = s.celebrationEnabled !== false;
+  if (document.getElementById('set-completion-dialog-high')) document.getElementById('set-completion-dialog-high').checked = s.completionDialogHigh !== false;
+  if (document.getElementById('set-completion-dialog-med'))  document.getElementById('set-completion-dialog-med').checked  = s.completionDialogMed  !== false;
+  if (document.getElementById('set-completion-dialog-low'))  document.getElementById('set-completion-dialog-low').checked  = s.completionDialogLow  === true;
   document.getElementById('set-sound-enabled').checked      = s.soundEnabled;
   document.getElementById('set-mood-enabled').checked        = s.moodEnabled;
   document.getElementById('set-changelog-enabled').checked   = s.changelogEnabled !== false;
@@ -4493,6 +4532,12 @@ function toggleBreakFeatureTab() {
   if (section) section.style.display = enabled ? '' : 'none';
 }
 
+function toggleCompletionDialogSub() {
+  const el = document.getElementById('set-completion');
+  const sub = document.getElementById('completion-dialog-priorities');
+  if (sub) sub.style.display = (el && el.checked) ? '' : 'none';
+}
+
 function toggleBreakInputs() {
   const el = document.getElementById('set-break-enabled') || document.getElementById('set-break-enabled-general');
   const enabled = el ? el.checked : settings.breakEnabled;
@@ -4518,6 +4563,10 @@ function saveSettingsFromModal() {
   settings.quickAddEnabled   = document.getElementById('set-quickadd').checked;
   settings.whatNowEnabled    = document.getElementById('set-whatnow').checked;
   settings.completionDialog  = document.getElementById('set-completion').checked;
+  if (document.getElementById('set-celebration-enabled'))    settings.celebrationEnabled    = document.getElementById('set-celebration-enabled').checked;
+  if (document.getElementById('set-completion-dialog-high')) settings.completionDialogHigh  = document.getElementById('set-completion-dialog-high').checked;
+  if (document.getElementById('set-completion-dialog-med'))  settings.completionDialogMed   = document.getElementById('set-completion-dialog-med').checked;
+  if (document.getElementById('set-completion-dialog-low'))  settings.completionDialogLow   = document.getElementById('set-completion-dialog-low').checked;
   settings.soundEnabled      = document.getElementById('set-sound-enabled').checked;
   settings.moodEnabled       = document.getElementById('set-mood-enabled').checked;
   settings.changelogEnabled  = document.getElementById('set-changelog-enabled').checked;
