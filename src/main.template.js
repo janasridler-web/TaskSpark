@@ -31,8 +31,9 @@ function saveCache(tasks) {
 
 // ── Windows ───────────────────────────────────────────────────────────────────
 let mainWindow;
-let timerWindow      = null;
+let timerWindow       = null;
 let breakPromptWindow = null;
+let focusWindow       = null;
 
 function getWindowState() {
   return loadConfig()?.windowState || null;
@@ -167,6 +168,28 @@ ipcMain.handle('timer-hide', async () => {
   return true;
 });
 
+ipcMain.handle('focus-show', async (_, { taskId, taskName, taskDesc, subtasks, baseLogged }) => {
+  if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
+  const { screen } = require('electron');
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  focusWindow = new BrowserWindow({
+    width, height, x: 0, y: 0,
+    frame: false, resizable: false, skipTaskbar: false,
+    webPreferences: { preload: path.join(__dirname, 'focus-preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  focusWindow.loadFile(path.join(__dirname, 'focus.html'));
+  focusWindow.webContents.once('did-finish-load', () => {
+    focusWindow.webContents.send('focus-start', { taskId, taskName, taskDesc, subtasks, baseLogged });
+  });
+  focusWindow.on('closed', () => { focusWindow = null; });
+  return true;
+});
+
+ipcMain.handle('focus-hide', async () => {
+  if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
+  return true;
+});
+
 ipcMain.handle('timer-pause', async () => {
   if (timerWindow) timerWindow.webContents.send('timer-paused');
   return true;
@@ -180,21 +203,23 @@ ipcMain.handle('timer-resume', async () => {
 ipcMain.on('timer-stop', (_, elapsed) => {
   if (mainWindow) mainWindow.webContents.send('timer-stopped', elapsed);
   if (timerWindow) { try { timerWindow.close(); } catch {} timerWindow = null; }
+  if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
 });
 
-// Timer pause/resume — main.js coordinates both windows
 ipcMain.on('timer-pause-request', () => {
-  // Tell main window to pause (handles elapsed time)
   if (mainWindow) mainWindow.webContents.send('timer-pause-request');
-  // Tell timer window to update its UI
   if (timerWindow) timerWindow.webContents.send('timer-paused');
+  if (focusWindow) focusWindow.webContents.send('focus-paused');
 });
 
 ipcMain.on('timer-resume-request', () => {
-  // Tell main window to resume (handles elapsed time)
   if (mainWindow) mainWindow.webContents.send('timer-resume-request');
-  // Tell timer window to update its UI
   if (timerWindow) timerWindow.webContents.send('timer-resumed');
+  if (focusWindow) focusWindow.webContents.send('focus-resumed');
+});
+
+ipcMain.on('focus-subtask-toggle', (_, data) => {
+  if (mainWindow) mainWindow.webContents.send('focus-subtask-toggled', data);
 });
 
 // ── Break prompt window ───────────────────────────────────────────────────────

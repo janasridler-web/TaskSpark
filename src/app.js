@@ -138,6 +138,7 @@ const DEFAULT_SETTINGS = {
   eodShowTomorrow:   true,
   eodShowStreak:     true,
   timerEnabled:      true,
+  focusModeEnabled:  false,
   budgetEnabled:     true,
   currencySymbol:    '£',
   budgetGroupByTags: false,
@@ -3800,21 +3801,25 @@ function toggleTimer(id) {
     saveTasks();
   }
 
-  // Open the separate always-on-top timer window
-  api.timerShow({
-    taskName:   task.title,
-    baseLogged: task.timeLogged || 0,
-  });
+  if (settings.focusModeEnabled) {
+    api.focusShow({
+      taskId:     task.id,
+      taskName:   task.title,
+      taskDesc:   task.desc || '',
+      subtasks:   task.subtasks || [],
+      baseLogged: task.timeLogged || 0,
+    });
+  } else {
+    api.timerShow({
+      taskName:   task.title,
+      baseLogged: task.timeLogged || 0,
+    });
+    api.minimize();
+  }
 
-  // Start local tick for task card badge updates
   timerInterval = setInterval(tickTimer, 1000);
-
-  // Schedule break check
   scheduleBreak();
   renderTasks();
-
-  // Minimize main window — timer window stays visible
-  api.minimize();
 }
 
 function pauseTimer() {
@@ -3851,10 +3856,8 @@ function tickTimer() {
 }
 
 function stopTimer() {
-  // Close the separate timer window — the 'timer-stopped' IPC event
-  // will fire back and handle saving + restoring the main window
   api.timerHide();
-  // Also clear local state immediately so UI updates
+  api.focusHide();
   clearInterval(timerInterval); timerInterval = null;
   clearBreakTimer();
 }
@@ -4183,7 +4186,8 @@ async function openSettings() {
   document.getElementById('set-tags').checked               = s.tagsEnabled;
   document.getElementById('set-streak').checked             = s.streakEnabled;
   document.getElementById('set-estimates').checked          = s.estimatesEnabled;
-  if (document.getElementById('set-timer-enabled')) document.getElementById('set-timer-enabled').checked = s.timerEnabled !== false;
+  if (document.getElementById('set-timer-enabled'))      document.getElementById('set-timer-enabled').checked      = s.timerEnabled !== false;
+  if (document.getElementById('set-focus-mode-enabled')) document.getElementById('set-focus-mode-enabled').checked = !!s.focusModeEnabled;
   if (document.getElementById('set-due-enabled'))      document.getElementById('set-due-enabled').checked      = s.dueEnabled !== false;
   if (document.getElementById('set-due-time-enabled')) document.getElementById('set-due-time-enabled').checked = s.dueTimeEnabled !== false;
   document.getElementById('set-quickadd').checked           = s.quickAddEnabled;
@@ -4504,7 +4508,8 @@ function saveSettingsFromModal() {
   settings.tagsEnabled       = document.getElementById('set-tags').checked;
   settings.streakEnabled     = document.getElementById('set-streak').checked;
   settings.estimatesEnabled  = document.getElementById('set-estimates').checked;
-  if (document.getElementById('set-timer-enabled')) settings.timerEnabled = document.getElementById('set-timer-enabled').checked;
+  if (document.getElementById('set-timer-enabled'))      settings.timerEnabled     = document.getElementById('set-timer-enabled').checked;
+  if (document.getElementById('set-focus-mode-enabled')) settings.focusModeEnabled = document.getElementById('set-focus-mode-enabled').checked;
   if (document.getElementById('set-due-enabled'))     settings.dueEnabled     = document.getElementById('set-due-enabled').checked;
   if (document.getElementById('set-due-time-enabled')) settings.dueTimeEnabled = document.getElementById('set-due-time-enabled').checked;
   settings.quickAddEnabled   = document.getElementById('set-quickadd').checked;
@@ -6863,6 +6868,14 @@ api.onGlobalQuickAdd((data) => {
     openQuickAdd(fromBackground);
   }
 });
+api.onFocusSubtaskToggled(({ taskId, index }) => {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task || !task.subtasks || !task.subtasks[index]) return;
+  task.subtasks[index].done = !task.subtasks[index].done;
+  saveTasks();
+  renderAll();
+});
+
 api.onTimerStopped((elapsed) => {
   const wasSnoozed = breakSnoozed;
   // Save elapsed time to task

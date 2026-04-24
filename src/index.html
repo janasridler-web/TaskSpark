@@ -1786,6 +1786,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <div><div class="setting-label">Task timer</div><div class="setting-desc">Show the start timer button on task cards</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-timer-enabled"><span class="toggle-slider"></span></label>
             </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Open focus view when timer starts</div><div class="setting-desc">Replace the timer overlay with a fullscreen focus view showing the task, subtasks and timer</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-focus-mode-enabled" onchange="saveSettings()"><span class="toggle-slider"></span></label>
+            </div>
           </div>
           <div class="settings-section">
             <div class="settings-section-title">Break Reminders</div>

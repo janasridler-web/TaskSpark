@@ -58,6 +58,11 @@ contextBridge.exposeInMainWorld('api', {
   sheetsLoad:   (data) => ipcRenderer.invoke('sheets-load', data),
   sheetsSave:   (data) => ipcRenderer.invoke('sheets-save', data),
 
+  // Focus mode
+  focusShow: (data) => ipcRenderer.invoke('focus-show', data),
+  focusHide: ()     => ipcRenderer.invoke('focus-hide'),
+  onFocusSubtaskToggled: (cb) => ipcRenderer.on('focus-subtask-toggled', (_, data) => cb(data)),
+
   // Auto-updater
   onUpdateAvailable:  (cb) => ipcRenderer.on('update-available',  (_, info) => cb(info)),
   onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, info) => cb(info)),

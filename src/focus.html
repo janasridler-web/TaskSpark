@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f0e0d;
+    color: #ede9e3;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+
+  #header {
+    position: absolute;
+    top: 20px;
+    left: 24px;
+    font-size: 11px;
+    color: #2d2a26;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 48px 0;
+    -webkit-app-region: no-drag;
+  }
+
+  #focus-label {
+    font-size: 11px;
+    color: #d97706;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  #task-title {
+    font-size: 36px;
+    font-weight: 700;
+    color: #ede9e3;
+    text-align: center;
+    line-height: 1.2;
+    max-width: 800px;
+    margin-bottom: 12px;
+  }
+
+  #task-desc {
+    font-size: 15px;
+    color: #6a6358;
+    text-align: center;
+    max-width: 600px;
+    line-height: 1.5;
+    margin-bottom: 28px;
+  }
+
+  #subtasks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 480px;
+    width: 100%;
+    margin-bottom: 48px;
+  }
+
+  .subtask-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: background 0.15s;
+    -webkit-app-region: no-drag;
+  }
+
+  .subtask-row:hover { background: #1a1814; }
+
+  .subtask-check {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid #3d3830;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .subtask-check.done { background: #2d6a4f; border-color: #2d6a4f; }
+
+  .subtask-text {
+    font-size: 14px;
+    color: #a09888;
+  }
+
+  .subtask-text.done {
+    color: #3d3830;
+    text-decoration: line-through;
+  }
+
+  #footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 0 52px;
+    gap: 16px;
+    -webkit-app-region: no-drag;
+  }
+
+  #timer-display {
+    font-size: 72px;
+    font-weight: 700;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 4px;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+
+  #timer-display.paused { color: #3d3830; }
+
+  #paused-label {
+    font-size: 11px;
+    color: #6a6358;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    height: 16px;
+  }
+
+  #controls {
+    display: flex;
+    gap: 12px;
+  }
+
+  .focus-btn {
+    border: none;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 12px 28px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: 'Segoe UI', sans-serif;
+    transition: background 0.15s;
+  }
+
+  #pause-btn { background: #1a1814; color: #a09888; }
+  #pause-btn:hover { background: #252220; }
+  #pause-btn.paused { background: #2d6a4f; color: #fff; }
+  #pause-btn.paused:hover { background: #1b4d38; }
+
+  #stop-btn { background: #c0392b; color: #fff; }
+  #stop-btn:hover { background: #9b2c2c; }
+</style>
+</head>
+<body>
+
+<div id="header">TaskSpark</div>
+
+<div id="main">
+  <div id="focus-label">Focusing on</div>
+  <div id="task-title"></div>
+  <div id="task-desc"></div>
+  <div id="subtasks"></div>
+</div>
+
+<div id="footer">
+  <div id="timer-display">00:00</div>
+  <div id="paused-label"></div>
+  <div id="controls">
+    <button id="pause-btn" class="focus-btn" onclick="togglePause()">‖ Pause</button>
+    <button id="stop-btn"  class="focus-btn" onclick="stopFocus()">■ Stop</button>
+  </div>
+</div>
+
+<script>
+  let timerInterval = null;
+  let startTime     = null;
+  let baseLogged    = 0;
+  let isPaused      = false;
+  let displayTotal  = 0;
+  let pausedAt      = 0;
+  let currentTaskId = null;
+  let subtasksData  = [];
+
+  window.focusAPI.onStart((data) => {
+    currentTaskId = data.taskId;
+    baseLogged    = data.baseLogged || 0;
+    subtasksData  = data.subtasks   || [];
+    startTime     = Date.now() / 1000;
+    isPaused      = false;
+    pausedAt      = 0;
+    displayTotal  = baseLogged;
+
+    document.getElementById('task-title').textContent = data.taskName;
+
+    const descEl = document.getElementById('task-desc');
+    descEl.textContent = data.taskDesc || '';
+    descEl.style.display = data.taskDesc ? '' : 'none';
+
+    renderSubtasks();
+    tick();
+    timerInterval = setInterval(tick, 1000);
+  });
+
+  window.focusAPI.onPaused(() => {
+    isPaused = true;
+    pausedAt = displayTotal;
+    clearInterval(timerInterval);
+    document.getElementById('pause-btn').textContent = '▶ Resume';
+    document.getElementById('pause-btn').classList.add('paused');
+    document.getElementById('timer-display').classList.add('paused');
+    document.getElementById('paused-label').textContent = 'Paused';
+  });
+
+  window.focusAPI.onResumed(() => {
+    isPaused   = false;
+    baseLogged = pausedAt;
+    startTime  = Date.now() / 1000;
+    timerInterval = setInterval(tick, 1000);
+    document.getElementById('pause-btn').textContent = '‖ Pause';
+    document.getElementById('pause-btn').classList.remove('paused');
+    document.getElementById('timer-display').classList.remove('paused');
+    document.getElementById('paused-label').textContent = '';
+    tick();
+  });
+
+  function tick() {
+    if (!startTime || isPaused) return;
+    displayTotal = baseLogged + Math.floor(Date.now() / 1000 - startTime);
+    const h = Math.floor(displayTotal / 3600);
+    const m = Math.floor((displayTotal % 3600) / 60);
+    const s = displayTotal % 60;
+    document.getElementById('timer-display').textContent =
+      h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  function togglePause() {
+    if (isPaused) window.focusAPI.resume();
+    else          window.focusAPI.pause();
+  }
+
+  function stopFocus() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    window.focusAPI.stop(displayTotal - baseLogged);
+  }
+
+  function renderSubtasks() {
+    const el = document.getElementById('subtasks');
+    if (!subtasksData.length) { el.style.display = 'none'; return; }
+    el.style.display = 'flex';
+    el.innerHTML = subtasksData.map((s, i) => `
+      <div class="subtask-row" onclick="toggleSubtask(${i})">
+        <div class="subtask-check ${s.done ? 'done' : ''}">${s.done ? '✓' : ''}</div>
+        <div class="subtask-text ${s.done ? 'done' : ''}">${esc(s.title)}</div>
+      </div>
+    `).join('');
+  }
+
+  function toggleSubtask(index) {
+    subtasksData[index].done = !subtasksData[index].done;
+    renderSubtasks();
+    window.focusAPI.toggleSubtask(currentTaskId, index);
+  }
+
+  function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+</script>
+</body>
+</html>
