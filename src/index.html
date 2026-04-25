@@ -691,7 +691,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .list-kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;align-items:flex-start}
 .list-kanban::-webkit-scrollbar{height:5px}
 .list-kanban::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
-.list-kanban-col{flex-shrink:0;width:240px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-lg);display:flex;flex-direction:column;max-height:calc(100vh - 220px)}
+.list-kanban-col{flex:1;min-width:200px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-lg);display:flex;flex-direction:column;max-height:calc(100vh - 220px)}
 .list-kanban-col.drag-over{background:var(--accent-l);border-color:var(--accent)}
 .list-kanban-col-header{padding:10px 14px;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
 .list-kanban-col-del{background:none;border:none;cursor:pointer;font-size:15px;color:var(--text3);padding:0 2px;line-height:1}
@@ -705,7 +705,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .list-kanban-card.dragging{opacity:.4;cursor:grabbing}
 .list-kanban-card.done .list-item-text{text-decoration:line-through;color:var(--text3)}
 .list-kanban-card-row{display:flex;align-items:center;gap:8px}
-.list-kanban-add-col{flex-shrink:0;width:180px;background:none;border:1px dashed var(--border2);border-radius:var(--radius-lg);cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:80px;transition:border-color .15s,color .15s;color:var(--text3);font-size:12px}
+.list-kanban-add-col{flex-shrink:0;width:160px;background:none;border:1px dashed var(--border2);border-radius:var(--radius-lg);cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:80px;transition:border-color .15s,color .15s;color:var(--text3);font-size:12px}
 .list-kanban-add-col:hover{border-color:var(--accent);color:var(--accent)}
 .lists-empty{text-align:center;padding:60px 20px;color:var(--text3)}
 .lists-empty-icon{font-size:40px;margin-bottom:12px}
