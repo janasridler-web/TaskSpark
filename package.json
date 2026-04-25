@@ -4,7 +4,8 @@
   "description": "TaskSpark — Focus · Flow · Finish",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
+    "setup": "node setup.js",
+    "start": "node setup.js && electron .",
     "build": "electron-builder --win --x64",
     "build:dir": "electron-builder --win --x64 --dir"
   },
