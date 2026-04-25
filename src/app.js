@@ -53,6 +53,8 @@ let listsMode = false;
 let currentOpenListId = null;
 let editingListId = null;
 let _listCategoryTargetId = null;
+let _listDragItemId = null;
+let _listDragListId = null;
 
 
 
@@ -5567,7 +5569,7 @@ function _listItemRowHtml(listId, item) {
   return `
     <div class="list-item-row">
       <input type="checkbox" class="list-item-check" ${item.done ? 'checked' : ''} onchange="toggleListItem(${listId},${item.id})">
-      <span class="list-item-text${item.done ? ' done' : ''}">${esc(item.text)}</span>
+      <span class="list-item-text${item.done ? ' done' : ''}" id="list-item-text-${item.id}" ondblclick="startEditListItem(${listId},${item.id})" title="Double-click to edit">${esc(item.text)}</span>
       <button class="list-item-del" onclick="deleteListItem(${listId},${item.id})" title="Remove">×</button>
     </div>`;
 }
@@ -5586,41 +5588,70 @@ function renderListDetail(list, container) {
   const hasCategories = list.categories && list.categories.length > 0;
   const total = list.items.length;
   const done  = list.items.filter(i => i.done).length;
-  let sectionsHtml = '';
+
+  const header = `
+    <div class="list-detail-header">
+      <button class="list-back-btn" onclick="backToLists()">← Back</button>
+      <div class="list-detail-title">${esc(list.name)}</div>
+      <div style="font-size:12px;color:var(--text3)">${done}/${total} done</div>
+    </div>`;
 
   if (!hasCategories) {
     const itemsHtml = list.items.map(item => _listItemRowHtml(list.id, item)).join('') ||
       '<div style="font-size:13px;color:var(--text3);padding:8px 0">No items yet — add one below</div>';
-    sectionsHtml = `<div class="list-category-block">${itemsHtml}${_listAddRowHtml(list.id, null)}</div>`;
-  } else {
-    const uncatItems = list.items.filter(i => !i.categoryId);
-    const uncatHtml  = uncatItems.map(item => _listItemRowHtml(list.id, item)).join('');
-    sectionsHtml += `<div class="list-category-block">${uncatHtml}${_listAddRowHtml(list.id, null)}</div>`;
-
-    list.categories.forEach(cat => {
-      const catItems = list.items.filter(i => i.categoryId === cat.id);
-      const catHtml  = catItems.map(item => _listItemRowHtml(list.id, item)).join('');
-      sectionsHtml += `
-        <div class="list-category-block">
-          <div class="list-category-header">
-            <span>${esc(cat.name)}</span>
-            <button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red);border-color:var(--red)" onclick="deleteListCategory(${list.id},${cat.id})">Remove</button>
-          </div>
-          ${catHtml}
-          ${_listAddRowHtml(list.id, cat.id)}
-        </div>`;
-    });
+    container.innerHTML = `
+      <div class="list-detail-wrap">
+        ${header}
+        <div class="list-category-block">${itemsHtml}${_listAddRowHtml(list.id, null)}</div>
+        <button class="list-add-category-btn" onclick="openListCategoryModal(${list.id})">+ Add Category</button>
+      </div>`;
+    return;
   }
 
+  // Kanban layout — General column + one column per category
+  const columns = [{ id: null, name: 'General' }, ...list.categories];
+  const columnsHtml = columns.map(col => {
+    const colId    = col.id;
+    const colItems = list.items.filter(i => (i.categoryId || null) === colId);
+    const cards    = colItems.map(item => `
+      <div class="list-kanban-card${item.done ? ' done' : ''}"
+        draggable="true"
+        data-item-id="${item.id}"
+        ondragstart="onListItemDragStart(event,${list.id},${item.id})"
+        ondragend="onListItemDragEnd(event)">
+        <div class="list-kanban-card-row">
+          <input type="checkbox" class="list-item-check" ${item.done ? 'checked' : ''} onchange="toggleListItem(${list.id},${item.id})">
+          <span class="list-item-text${item.done ? ' done' : ''}" id="list-item-text-${item.id}" ondblclick="startEditListItem(${list.id},${item.id})" title="Double-click to edit">${esc(item.text)}</span>
+          <button class="list-item-del" onclick="deleteListItem(${list.id},${item.id})">×</button>
+        </div>
+      </div>`).join('');
+
+    const removeBtn = colId !== null
+      ? `<button class="list-kanban-col-del" title="Remove category" onclick="deleteListCategory(${list.id},${colId})">×</button>`
+      : '';
+
+    return `
+      <div class="list-kanban-col"
+        ondragover="onListItemDragOver(event)"
+        ondragleave="onListItemDragLeave(event)"
+        ondrop="onListItemDrop(event,${list.id},${colId})">
+        <div class="list-kanban-col-header">
+          <span>${esc(col.name)}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="kanban-col-count">${colItems.length}</span>
+            ${removeBtn}
+          </div>
+        </div>
+        <div class="list-kanban-col-body">${cards}</div>
+        ${_listAddRowHtml(list.id, colId)}
+      </div>`;
+  }).join('');
+
   container.innerHTML = `
-    <div class="list-detail-wrap">
-      <div class="list-detail-header">
-        <button class="list-back-btn" onclick="backToLists()">← Back</button>
-        <div class="list-detail-title">${esc(list.name)}</div>
-        <div style="font-size:12px;color:var(--text3)">${done}/${total} done</div>
-      </div>
-      ${sectionsHtml}
-      <button class="list-add-category-btn" onclick="openListCategoryModal(${list.id})">+ Add Category</button>
+    ${header}
+    <div class="list-kanban">
+      ${columnsHtml}
+      <div class="list-kanban-add-col" onclick="openListCategoryModal(${list.id})">+ Add Category</div>
     </div>`;
 }
 
@@ -5731,6 +5762,74 @@ function deleteListCategory(listId, catId) {
   if (!list) return;
   list.items.forEach(i => { if (i.categoryId === catId) i.categoryId = null; });
   list.categories = list.categories.filter(c => c.id !== catId);
+  saveLists();
+  renderLists();
+}
+
+function onListItemDragStart(e, listId, itemId) {
+  _listDragListId = listId;
+  _listDragItemId = itemId;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => {
+    const card = e.target.closest('.list-kanban-card');
+    if (card) card.classList.add('dragging');
+  }, 0);
+}
+
+function onListItemDragEnd(e) {
+  document.querySelectorAll('.list-kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
+  document.querySelectorAll('.list-kanban-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+  _listDragItemId = null;
+  _listDragListId = null;
+}
+
+function onListItemDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onListItemDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onListItemDrop(e, listId, categoryId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!_listDragItemId || _listDragListId !== listId) return;
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === _listDragItemId);
+  if (!item) return;
+  item.categoryId = categoryId || null;
+  saveLists();
+  renderLists();
+}
+
+function startEditListItem(listId, itemId) {
+  const span = document.getElementById(`list-item-text-${itemId}`);
+  if (!span) return;
+  const currentText = span.textContent;
+  const input = document.createElement('input');
+  input.value = currentText;
+  input.style.cssText = 'flex:1;background:var(--surface2);border:1px solid var(--accent);border-radius:6px;padding:2px 6px;font-size:13px;color:var(--text);outline:none;width:100%';
+  input.onkeydown = e => {
+    if (e.key === 'Enter')  { e.preventDefault(); saveEditListItem(listId, itemId, input.value.trim()); }
+    if (e.key === 'Escape') { renderLists(); }
+  };
+  input.onblur = () => saveEditListItem(listId, itemId, input.value.trim());
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+function saveEditListItem(listId, itemId, newText) {
+  if (!newText) { renderLists(); return; }
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (!item || item.text === newText) { renderLists(); return; }
+  item.text = newText;
   saveLists();
   renderLists();
 }

@@ -672,21 +672,41 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .list-back-btn{display:flex;align-items:center;gap:4px;background:none;border:1px solid var(--border);border-radius:var(--radius);padding:6px 12px;cursor:pointer;font-size:12px;color:var(--text2);transition:background .15s}
 .list-back-btn:hover{background:var(--surface2)}
 .list-detail-title{font-size:17px;font-weight:700;color:var(--text);flex:1}
+/* Vertical layout (no categories) */
 .list-category-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:12px}
-.list-category-header{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
 .list-item-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
 .list-item-row:last-of-type{border-bottom:none}
 .list-item-check{width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:var(--accent)}
-.list-item-text{flex:1;font-size:13px;color:var(--text);line-height:1.4}
+.list-item-text{flex:1;font-size:13px;color:var(--text);line-height:1.4;cursor:text}
 .list-item-text.done{text-decoration:line-through;color:var(--text3)}
 .list-item-del{background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:0 2px;line-height:1;opacity:0;transition:opacity .1s}
-.list-item-row:hover .list-item-del{opacity:1}
+.list-item-row:hover .list-item-del,.list-kanban-card:hover .list-item-del{opacity:1}
 .list-item-del:hover{color:var(--red)}
 .list-add-item-row{display:flex;align-items:center;gap:8px;margin-top:10px}
 .list-add-item-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px;color:var(--text);outline:none}
 .list-add-item-input:focus{border-color:var(--accent)}
 .list-add-category-btn{background:none;border:1px dashed var(--border2);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--text3);cursor:pointer;width:100%;margin-top:4px;text-align:center;transition:border-color .15s,color .15s}
 .list-add-category-btn:hover{border-color:var(--accent);color:var(--accent)}
+/* Kanban layout (with categories) */
+.list-kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;align-items:flex-start}
+.list-kanban::-webkit-scrollbar{height:5px}
+.list-kanban::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.list-kanban-col{flex-shrink:0;width:240px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-lg);display:flex;flex-direction:column;max-height:calc(100vh - 220px)}
+.list-kanban-col.drag-over{background:var(--accent-l);border-color:var(--accent)}
+.list-kanban-col-header{padding:10px 14px;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+.list-kanban-col-del{background:none;border:none;cursor:pointer;font-size:15px;color:var(--text3);padding:0 2px;line-height:1}
+.list-kanban-col-del:hover{color:var(--red)}
+.list-kanban-col-body{padding:8px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px}
+.list-kanban-col-body::-webkit-scrollbar{width:3px}
+.list-kanban-col-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.list-kanban-col .list-add-item-row{padding:8px;border-top:1px solid var(--border);margin-top:0}
+.list-kanban-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;cursor:grab;transition:box-shadow .15s,opacity .15s}
+.list-kanban-card:hover{border-color:var(--border2);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.list-kanban-card.dragging{opacity:.4;cursor:grabbing}
+.list-kanban-card.done .list-item-text{text-decoration:line-through;color:var(--text3)}
+.list-kanban-card-row{display:flex;align-items:center;gap:8px}
+.list-kanban-add-col{flex-shrink:0;width:180px;background:none;border:1px dashed var(--border2);border-radius:var(--radius-lg);cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:80px;transition:border-color .15s,color .15s;color:var(--text3);font-size:12px}
+.list-kanban-add-col:hover{border-color:var(--accent);color:var(--accent)}
 .lists-empty{text-align:center;padding:60px 20px;color:var(--text3)}
 .lists-empty-icon{font-size:40px;margin-bottom:12px}
 .lists-empty-text{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px}
