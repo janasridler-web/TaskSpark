@@ -668,6 +668,13 @@ async function sheetsEnsure(accessToken, spreadsheetId) {
       `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Wins!A1')}?valueInputOption=RAW`,
       accessToken, { range: 'Wins!A1', values: [['id','quote','source','category','date','mood','createdAt']], majorDimension: 'ROWS' });
   }
+  if (!names.includes('Lists')) {
+    await sheetsRequest('POST', `/v4/spreadsheets/${spreadsheetId}:batchUpdate`, accessToken,
+      { requests: [{ addSheet: { properties: { title: 'Lists' } } }] });
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Lists!A1')}?valueInputOption=RAW`,
+      accessToken, { range: 'Lists!A1', values: [['id','name','createdAt','categories','items']], majorDimension: 'ROWS' });
+  }
   if (!names.includes('Events')) {
     try {
       await sheetsRequest('POST', `/v4/spreadsheets/${spreadsheetId}:batchUpdate`, accessToken,
@@ -742,6 +749,37 @@ ipcMain.handle('ideas-load', async (_, { accessToken, spreadsheetId }) => {
   return rows.map(r => ({
     id: parseInt(r[0]), title: r[1]||'', desc: r[2]||'',
     tags: _j(r[3], []), createdAt: r[4]||''
+  }));
+});
+
+// ── Lists ─────────────────────────────────────────────────────────────────────
+ipcMain.handle('lists-save', async (_, { accessToken, spreadsheetId, lists }) => {
+  await sheetsEnsure(accessToken, spreadsheetId);
+  if (lists.length) {
+    const rows = lists.map(l => [
+      String(l.id), l.name || '', l.createdAt || '',
+      JSON.stringify(l.categories || []), JSON.stringify(l.items || [])
+    ]);
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Lists!A2')}?valueInputOption=RAW`,
+      accessToken, { range: 'Lists!A2', values: rows, majorDimension: 'ROWS' });
+  }
+  const clearFrom = lists.length + 2;
+  await sheetsRequest('POST',
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Lists!A${clearFrom}:E10000`)}:clear`,
+    accessToken, {});
+  return true;
+});
+
+ipcMain.handle('lists-load', async (_, { accessToken, spreadsheetId }) => {
+  await sheetsEnsure(accessToken, spreadsheetId);
+  const data = await sheetsRequest('GET',
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Lists!A2:E10000')}`,
+    accessToken);
+  const rows = (data.values || []).filter(r => r[0]);
+  return rows.map(r => ({
+    id: parseInt(r[0]), name: r[1] || '', createdAt: r[2] || '',
+    categories: _j(r[3], []), items: _j(r[4], [])
   }));
 });
 

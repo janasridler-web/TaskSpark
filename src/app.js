@@ -5737,14 +5737,28 @@ function deleteListCategory(listId, catId) {
 
 async function saveLists() {
   api.saveConfig({ lists });
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      await api.listsSave({ accessToken, spreadsheetId, lists });
+    } catch (e) { console.error('Lists save error:', e); }
+  }
 }
 
 async function loadLists() {
   lists = [];
-  try {
-    const cfg = await api.loadConfig();
-    lists = cfg && cfg.lists ? cfg.lists : [];
-  } catch { lists = []; }
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      const remote = await api.listsLoad({ accessToken, spreadsheetId });
+      if (remote) lists = remote;
+    } catch (e) {
+      console.error('Lists load error:', e);
+      try { const cfg = await api.loadConfig(); lists = cfg && cfg.lists ? cfg.lists : []; } catch {}
+    }
+  } else {
+    try { const cfg = await api.loadConfig(); lists = cfg && cfg.lists ? cfg.lists : []; } catch { lists = []; }
+  }
   const cntEl = document.getElementById('cnt-lists');
   if (cntEl) cntEl.textContent = lists.length;
 }
