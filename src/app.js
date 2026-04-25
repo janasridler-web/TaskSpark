@@ -4804,12 +4804,14 @@ function showHabitsView() {
   document.getElementById('kanban-container').style.display = 'none';
   document.getElementById('ideas-container').classList.remove('active');
   document.getElementById('wins-container').classList.remove('active');
+  const listsC = document.getElementById('lists-container');
+  if (listsC) listsC.classList.remove('active');
   const bvc = document.getElementById('budget-view-container');
   if (bvc) bvc.classList.remove('active');
   const calVC1 = document.getElementById('calendar-view-container');
   if (calVC1) { calVC1.classList.remove('active'); calVC1.style.display = 'none'; }
   document.getElementById('habits-container').classList.add('active');
-  kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+  kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
   // Update sidebar active state
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   const habitsBtn = document.getElementById('sidebar-habits-main');
