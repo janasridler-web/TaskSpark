@@ -47,6 +47,13 @@ let wins = [];
 let editingWinId = null;
 let winsMode = false;
 
+// Lists
+let lists = [];
+let listsMode = false;
+let currentOpenListId = null;
+let editingListId = null;
+let _listCategoryTargetId = null;
+
 
 
 const FORMSPREE_URL = 'https://formspree.io/f/xwvrjnkd';
@@ -126,6 +133,7 @@ const DEFAULT_SETTINGS = {
   ideasEnabled:      true,
   habitsEnabled:     true,
   winsEnabled:       true,
+  listsEnabled:      true,
   streakWeekends:    false,  // include weekends in streak count
   graceDayEnabled:   true,   // allow one missed day per streak
   vacationMode:      false,  // pause streak while away
@@ -373,6 +381,7 @@ async function init() {
         await loadIdeas();
         await loadHabits();
         await loadWins();
+        await loadLists();
         if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
         setTimeout(showWorkspaceSetupModal, 800);
       } else {
@@ -386,7 +395,7 @@ async function init() {
         renderWorkspaceDropdown();
         updateWorkspaceTitle();
         await connectToSheets();
-        await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
         if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
@@ -400,7 +409,7 @@ async function init() {
       renderWorkspaceDropdown();
       updateWorkspaceTitle();
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
       if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
@@ -411,6 +420,7 @@ async function init() {
     await loadIdeas();
     await loadHabits();
     await loadWins();
+    await loadLists();
   } else {
     showAuth();
   }
@@ -814,6 +824,7 @@ function renderAll() {
   else if (ideasMode) renderIdeas();
   else if (habitsMode) renderHabits();
   else if (winsMode) renderWins();
+  else if (listsMode) renderLists();
   else if (budgetViewMode) renderBudgetView();
   else if (calendarViewMode) renderCalendarView();
   else renderTasks();
@@ -1192,7 +1203,7 @@ function setView(view, el) {
   const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
     'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
     'status-not-started':'Not Started', 'status-in-progress':'In Progress',
-    'status-blocked':'Blocked', 'status-on-hold':'On Hold', 'budget-view':'Budget View', 'calendar-view':'Calendar', 'stats':'Stats' };
+    'status-blocked':'Blocked', 'status-on-hold':'On Hold', 'budget-view':'Budget View', 'calendar-view':'Calendar', 'stats':'Stats', 'lists':'Lists' };
   document.getElementById('view-title').textContent =
     view.startsWith('tag:') ? '#' + view.slice(4) : (titles[view] || view);
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
@@ -1212,7 +1223,8 @@ function setView(view, el) {
   if (statsContainerEl) statsContainerEl.classList.remove('active');
 
   if (view === 'kanban') {
-    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = false; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
@@ -1221,33 +1233,36 @@ function setView(view, el) {
     if (calVCk) { calVCk.classList.remove('active'); }
     switchViewMode('kanban');
   } else if (view === 'ideas') {
-    ideasMode = true; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = false; ideasMode = true; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
     const calVCi = document.getElementById('calendar-view-container');
     if (calVCi) { calVCi.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
     document.getElementById('ideas-container').classList.add('active');
     renderIdeas();
   } else if (view === 'wins') {
-    winsMode = true; ideasMode = false; habitsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = false; winsMode = true; ideasMode = false; habitsMode = false; budgetViewMode = false; calendarViewMode = false;
     const calVCw = document.getElementById('calendar-view-container');
     if (calVCw) { calVCw.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
     document.getElementById('wins-container').classList.add('active');
     renderWins();
   } else if (view === 'budget-view') {
-    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false; statsMode = false;
+    listsMode = false; budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false; statsMode = false;
     const calVCb = document.getElementById('calendar-view-container');
     if (calVCb) { calVCb.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
@@ -1256,11 +1271,12 @@ function setView(view, el) {
     if (budgetViewContainer) budgetViewContainer.classList.add('active');
     renderBudgetView();
   } else if (view === 'stats') {
-    statsMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false;
+    listsMode = false; statsMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false;
     const calVCs = document.getElementById('calendar-view-container');
     if (calVCs) calVCs.classList.remove('active');
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
@@ -1273,9 +1289,10 @@ function setView(view, el) {
     _statsCache = {};
     renderStatsView();
   } else if (view === 'calendar-view') {
-    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; statsMode = false;
+    listsMode = false; calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; statsMode = false;
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
@@ -1285,8 +1302,23 @@ function setView(view, el) {
     const calVC = document.getElementById('calendar-view-container');
     if (calVC) calVC.classList.add('active');
     loadCalEvents().then(() => renderCalendarView());
+  } else if (view === 'lists') {
+    listsMode = true; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false; statsMode = false;
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    if (budgetViewContainer) budgetViewContainer.classList.remove('active');
+    const calVCl = document.getElementById('calendar-view-container');
+    if (calVCl) calVCl.classList.remove('active');
+    const statsCVl = document.getElementById('stats-container');
+    if (statsCVl) statsCVl.classList.remove('active');
+    document.getElementById('lists-container').classList.add('active');
+    renderLists();
   } else {
-    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false; statsMode = false;
+    listsMode = false; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false; statsMode = false;
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
@@ -4213,6 +4245,12 @@ function applySettings() {
   if (habitsItem) habitsItem.style.display = s.habitsEnabled !== false ? '' : 'none';
   const winsItem = document.querySelector('[data-view="wins"]');
   if (winsItem) winsItem.style.display = s.winsEnabled !== false ? '' : 'none';
+  const listsItem = document.getElementById('sidebar-lists');
+  if (listsItem) listsItem.style.display = s.listsEnabled !== false ? '' : 'none';
+  if (s.listsEnabled === false && listsMode) {
+    listsMode = false;
+    setView('all', document.querySelector('[data-view="all"]'));
+  }
   const budgetViewItem = document.getElementById('sidebar-budget-view');
   if (budgetViewItem) budgetViewItem.style.display = s.budgetEnabled !== false ? '' : 'none';
   const calendarViewItem = document.getElementById('sidebar-calendar-view');
@@ -4227,7 +4265,7 @@ function applySettings() {
   }
   // Hide the entire TOOLS section if all tools are disabled
   const toolsSection = document.getElementById('sidebar-tools-section');
-  if (toolsSection) toolsSection.style.display = (s.statsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false || s.kanbanEnabled !== false) ? '' : 'none';
+  if (toolsSection) toolsSection.style.display = (s.statsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.listsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false || s.kanbanEnabled !== false) ? '' : 'none';
   const wsDropdown = document.getElementById('workspace-dropdown');
   const wsTitle = document.getElementById('workspace-title');
   if (wsDropdown) wsDropdown.style.display = s.workspacesEnabled !== false ? '' : 'none';
@@ -4300,6 +4338,7 @@ async function openSettings() {
   if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
   if (document.getElementById('set-wins-enabled'))      document.getElementById('set-wins-enabled').checked      = s.winsEnabled !== false;
+  if (document.getElementById('set-lists-enabled'))     document.getElementById('set-lists-enabled').checked     = s.listsEnabled !== false;
   if (document.getElementById('set-workspaces-enabled')) document.getElementById('set-workspaces-enabled').checked = s.workspacesEnabled !== false;
   if (document.getElementById('set-attachments-enabled')) document.getElementById('set-attachments-enabled').checked = s.attachmentsEnabled !== false;
   if (document.getElementById('set-calendar-enabled')) document.getElementById('set-calendar-enabled').checked = s.calendarEnabled !== false;
@@ -4724,6 +4763,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-ideas-enabled'))     settings.ideasEnabled     = document.getElementById('set-ideas-enabled').checked;
   if (document.getElementById('set-habits-enabled'))    settings.habitsEnabled    = document.getElementById('set-habits-enabled').checked;
   if (document.getElementById('set-wins-enabled'))      settings.winsEnabled      = document.getElementById('set-wins-enabled').checked;
+  if (document.getElementById('set-lists-enabled'))     settings.listsEnabled     = document.getElementById('set-lists-enabled').checked;
   if (document.getElementById('set-workspaces-enabled')) settings.workspacesEnabled = document.getElementById('set-workspaces-enabled').checked;
   if (document.getElementById('set-attachments-enabled')) settings.attachmentsEnabled = document.getElementById('set-attachments-enabled').checked;
   if (document.getElementById('set-calendar-enabled')) settings.calendarEnabled = document.getElementById('set-calendar-enabled').checked;
@@ -5449,6 +5489,253 @@ async function loadWins() {
   const cntEl = document.getElementById('cnt-wins');
   if (cntEl) cntEl.textContent = wins.length;
 }
+
+// ── Lists ─────────────────────────────────────────────────────────────────
+
+function renderLists() {
+  const container = document.getElementById('lists-container');
+  if (!container) return;
+  const cntEl = document.getElementById('cnt-lists');
+  if (cntEl) cntEl.textContent = lists.length;
+
+  if (currentOpenListId !== null) {
+    const list = lists.find(l => l.id === currentOpenListId);
+    if (list) { renderListDetail(list, container); return; }
+    currentOpenListId = null;
+  }
+
+  if (!lists.length) {
+    container.innerHTML = `
+      <div class="lists-header">
+        <div></div>
+        <button class="btn-primary" onclick="openListModal()">+ New List</button>
+      </div>
+      <div class="lists-empty">
+        <div class="lists-empty-icon">☑</div>
+        <div class="lists-empty-text">No lists yet</div>
+        <div class="lists-empty-sub">Create a list to keep track of anything — shopping, reading, errands…</div>
+      </div>`;
+    return;
+  }
+
+  const cards = lists.map(list => {
+    const total     = list.items.length;
+    const done      = list.items.filter(i => i.done).length;
+    const remaining = total - done;
+    return `
+      <div class="list-card" onclick="openList(${list.id})">
+        <div class="list-card-name">${esc(list.name)}</div>
+        <div class="list-card-meta">${remaining} remaining · ${total} item${total !== 1 ? 's' : ''}</div>
+        <div class="list-card-actions" onclick="event.stopPropagation()">
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px" onclick="openListModal(${list.id})">Edit</button>
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red);border-color:var(--red)" onclick="deleteList(${list.id})">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="lists-header">
+      <div style="font-size:13px;color:var(--text3)">${lists.length} list${lists.length !== 1 ? 's' : ''}</div>
+      <button class="btn-primary" onclick="openListModal()">+ New List</button>
+    </div>
+    <div class="lists-grid">${cards}</div>`;
+}
+
+function openList(id) {
+  currentOpenListId = id;
+  renderLists();
+}
+
+function backToLists() {
+  currentOpenListId = null;
+  renderLists();
+}
+
+function _listItemRowHtml(listId, item) {
+  return `
+    <div class="list-item-row">
+      <input type="checkbox" class="list-item-check" ${item.done ? 'checked' : ''} onchange="toggleListItem(${listId},${item.id})">
+      <span class="list-item-text${item.done ? ' done' : ''}">${esc(item.text)}</span>
+      <button class="list-item-del" onclick="deleteListItem(${listId},${item.id})" title="Remove">×</button>
+    </div>`;
+}
+
+function _listAddRowHtml(listId, categoryId) {
+  const safeId = categoryId === null ? 'null' : categoryId;
+  const placeholder = categoryId === null ? 'Add item…' : 'Add item to category…';
+  return `
+    <div class="list-add-item-row">
+      <input class="list-add-item-input" id="list-add-input-${safeId}" placeholder="${placeholder}" onkeydown="handleListItemKey(event,${listId},${categoryId})">
+      <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="addListItem(${listId},${categoryId})">Add</button>
+    </div>`;
+}
+
+function renderListDetail(list, container) {
+  const hasCategories = list.categories && list.categories.length > 0;
+  const total = list.items.length;
+  const done  = list.items.filter(i => i.done).length;
+  let sectionsHtml = '';
+
+  if (!hasCategories) {
+    const itemsHtml = list.items.map(item => _listItemRowHtml(list.id, item)).join('') ||
+      '<div style="font-size:13px;color:var(--text3);padding:8px 0">No items yet — add one below</div>';
+    sectionsHtml = `<div class="list-category-block">${itemsHtml}${_listAddRowHtml(list.id, null)}</div>`;
+  } else {
+    const uncatItems = list.items.filter(i => !i.categoryId);
+    const uncatHtml  = uncatItems.map(item => _listItemRowHtml(list.id, item)).join('');
+    sectionsHtml += `<div class="list-category-block">${uncatHtml}${_listAddRowHtml(list.id, null)}</div>`;
+
+    list.categories.forEach(cat => {
+      const catItems = list.items.filter(i => i.categoryId === cat.id);
+      const catHtml  = catItems.map(item => _listItemRowHtml(list.id, item)).join('');
+      sectionsHtml += `
+        <div class="list-category-block">
+          <div class="list-category-header">
+            <span>${esc(cat.name)}</span>
+            <button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red);border-color:var(--red)" onclick="deleteListCategory(${list.id},${cat.id})">Remove</button>
+          </div>
+          ${catHtml}
+          ${_listAddRowHtml(list.id, cat.id)}
+        </div>`;
+    });
+  }
+
+  container.innerHTML = `
+    <div class="list-detail-header">
+      <button class="list-back-btn" onclick="backToLists()">← Back</button>
+      <div class="list-detail-title">${esc(list.name)}</div>
+      <div style="font-size:12px;color:var(--text3)">${done}/${total} done</div>
+    </div>
+    ${sectionsHtml}
+    <button class="list-add-category-btn" onclick="openListCategoryModal(${list.id})">+ Add Category</button>`;
+}
+
+function openListModal(id = null) {
+  editingListId = id;
+  document.getElementById('list-modal-title').textContent = id ? '📋 Edit List' : '📋 New List';
+  const input = document.getElementById('list-name-input');
+  if (id) {
+    const list = lists.find(l => l.id === id);
+    input.value = list ? list.name : '';
+  } else {
+    input.value = '';
+  }
+  document.getElementById('list-modal-overlay').classList.add('open');
+  setTimeout(() => input.focus(), 50);
+}
+
+function saveList() {
+  const name = document.getElementById('list-name-input').value.trim();
+  if (!name) { showToast('Please enter a name'); return; }
+  if (editingListId) {
+    const list = lists.find(l => l.id === editingListId);
+    if (list) list.name = name;
+  } else {
+    lists.push({ id: Date.now(), name, createdAt: new Date().toISOString(), categories: [], items: [] });
+  }
+  closeModal('list-modal-overlay');
+  saveLists();
+  renderLists();
+}
+
+function deleteList(id) {
+  const list = lists.find(l => l.id === id);
+  showConfirmModal(
+    'Delete List',
+    list ? `Delete <strong>${esc(list.name)}</strong> and all its items? This cannot be undone.` : 'Delete this list?',
+    'Delete',
+    () => {
+      lists = lists.filter(l => l.id !== id);
+      if (currentOpenListId === id) currentOpenListId = null;
+      saveLists();
+      renderLists();
+    },
+    true
+  );
+}
+
+function addListItem(listId, categoryId) {
+  const safeId  = categoryId === null ? 'null' : categoryId;
+  const input   = document.getElementById(`list-add-input-${safeId}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items.push({ id: Date.now(), text, done: false, categoryId: categoryId || null });
+  saveLists();
+  renderLists();
+  setTimeout(() => {
+    const refocused = document.getElementById(`list-add-input-${safeId}`);
+    if (refocused) refocused.focus();
+  }, 0);
+}
+
+function handleListItemKey(e, listId, categoryId) {
+  if (e.key === 'Enter') { e.preventDefault(); addListItem(listId, categoryId); }
+}
+
+function toggleListItem(listId, itemId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (!item) return;
+  item.done = !item.done;
+  saveLists();
+  renderLists();
+}
+
+function deleteListItem(listId, itemId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items = list.items.filter(i => i.id !== itemId);
+  saveLists();
+  renderLists();
+}
+
+function openListCategoryModal(listId) {
+  _listCategoryTargetId = listId;
+  const input = document.getElementById('list-category-name-input');
+  input.value = '';
+  document.getElementById('list-category-modal-overlay').classList.add('open');
+  setTimeout(() => input.focus(), 50);
+}
+
+function saveListCategory() {
+  const name = document.getElementById('list-category-name-input').value.trim();
+  if (!name) { showToast('Please enter a category name'); return; }
+  const list = lists.find(l => l.id === _listCategoryTargetId);
+  if (!list) return;
+  list.categories.push({ id: Date.now(), name });
+  closeModal('list-category-modal-overlay');
+  saveLists();
+  renderLists();
+}
+
+function deleteListCategory(listId, catId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items.forEach(i => { if (i.categoryId === catId) i.categoryId = null; });
+  list.categories = list.categories.filter(c => c.id !== catId);
+  saveLists();
+  renderLists();
+}
+
+async function saveLists() {
+  api.saveConfig({ lists });
+}
+
+async function loadLists() {
+  lists = [];
+  try {
+    const cfg = await api.loadConfig();
+    lists = cfg && cfg.lists ? cfg.lists : [];
+  } catch { lists = []; }
+  const cntEl = document.getElementById('cnt-lists');
+  if (cntEl) cntEl.textContent = lists.length;
+}
+
+// ── End Lists ─────────────────────────────────────────────────────────────
 
 function openArchiveModal() {
   document.getElementById('archive-modal-overlay').classList.add('open');
