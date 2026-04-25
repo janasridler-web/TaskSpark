@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, protocol, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, protocol, globalShortcut, Menu, MenuItem } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs   = require('fs');
@@ -63,6 +63,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      spellcheck: true,
     },
   });
 
@@ -71,6 +72,27 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url); return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('context-menu', (_e, params) => {
+    const menu = new Menu();
+    if (params.misspelledWord) {
+      for (const s of params.dictionarySuggestions) {
+        menu.append(new MenuItem({ label: s, click: () => mainWindow.webContents.replaceMisspelling(s) }));
+      }
+      if (params.dictionarySuggestions.length) menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({ label: 'Add to dictionary', click: () => mainWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord) }));
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+    if (params.isEditable) {
+      menu.append(new MenuItem({ label: 'Cut',   role: 'cut',   enabled: params.selectionText.length > 0 }));
+      menu.append(new MenuItem({ label: 'Copy',  role: 'copy',  enabled: params.selectionText.length > 0 }));
+      menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+      menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }));
+    } else if (params.selectionText.length > 0) {
+      menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+    }
+    if (menu.items.length) menu.popup({ window: mainWindow });
   });
 
   // Save window state on close and resize/move
