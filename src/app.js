@@ -5524,10 +5524,20 @@ function renderLists() {
     const total     = list.items.length;
     const done      = list.items.filter(i => i.done).length;
     const remaining = total - done;
+    const previewItems = list.items.slice(0, 3);
+    const previewHtml = previewItems.length
+      ? previewItems.map(item => `
+          <div class="list-card-preview-item">
+            <span class="list-card-preview-dot${item.done ? ' done' : ''}"></span>
+            <span class="list-card-preview-text${item.done ? ' done' : ''}">${esc(item.text)}</span>
+          </div>`).join('') +
+        (list.items.length > 3 ? `<div class="list-card-preview-more">+${list.items.length - 3} more</div>` : '')
+      : `<div class="list-card-preview-empty">No items yet</div>`;
     return `
       <div class="list-card" onclick="openList(${list.id})">
         <div class="list-card-name">${esc(list.name)}</div>
         <div class="list-card-meta">${remaining} remaining · ${total} item${total !== 1 ? 's' : ''}</div>
+        <div class="list-card-preview">${previewHtml}</div>
         <div class="list-card-actions" onclick="event.stopPropagation()">
           <button class="btn-secondary" style="font-size:12px;padding:5px 10px" onclick="openListModal(${list.id})">Edit</button>
           <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red);border-color:var(--red)" onclick="deleteList(${list.id})">Delete</button>
@@ -5603,13 +5613,15 @@ function renderListDetail(list, container) {
   }
 
   container.innerHTML = `
-    <div class="list-detail-header">
-      <button class="list-back-btn" onclick="backToLists()">← Back</button>
-      <div class="list-detail-title">${esc(list.name)}</div>
-      <div style="font-size:12px;color:var(--text3)">${done}/${total} done</div>
-    </div>
-    ${sectionsHtml}
-    <button class="list-add-category-btn" onclick="openListCategoryModal(${list.id})">+ Add Category</button>`;
+    <div class="list-detail-wrap">
+      <div class="list-detail-header">
+        <button class="list-back-btn" onclick="backToLists()">← Back</button>
+        <div class="list-detail-title">${esc(list.name)}</div>
+        <div style="font-size:12px;color:var(--text3)">${done}/${total} done</div>
+      </div>
+      ${sectionsHtml}
+      <button class="list-add-category-btn" onclick="openListCategoryModal(${list.id})">+ Add Category</button>
+    </div>`;
 }
 
 function openListModal(id = null) {
