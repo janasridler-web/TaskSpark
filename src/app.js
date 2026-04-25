@@ -5600,10 +5600,10 @@ function renderListDetail(list, container) {
     const itemsHtml = list.items.map(item => _listItemRowHtml(list.id, item)).join('') ||
       '<div style="font-size:13px;color:var(--text3);padding:8px 0">No items yet — add one below</div>';
     container.innerHTML = `
-      <div class="list-detail-wrap">
-        ${header}
-        <div class="list-category-block">${itemsHtml}${_listAddRowHtml(list.id, null)}</div>
-        <button class="list-add-category-btn" onclick="openListCategoryModal(${list.id})">+ Add Category</button>
+      ${header}
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div class="list-category-block" style="flex:1">${itemsHtml}${_listAddRowHtml(list.id, null)}</div>
+        <div class="list-kanban-add-col" style="min-height:60px" onclick="openListCategoryModal(${list.id})">+ Add Category</div>
       </div>`;
     return;
   }
