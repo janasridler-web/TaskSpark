@@ -7256,11 +7256,13 @@ async function switchWorkspace(id) {
       if (cntWins) cntWins.textContent = wins.length;
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
-      // Background sync to pick up any remote changes
+      // Background sync to pick up any remote changes. Use refreshFromSheets
+      // so we don't reload from the (now-stale) local cache and flash an
+      // empty list before the Sheets response arrives.
       setTimeout(async () => {
-        await api.saveCache([]);
-        await connectToSheets();
+        await refreshFromSheets();
         await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists(), loadCalEvents()]);
+        renderAll();
         _wsCacheSet(id, { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists], calEvents: [...calEvents] });
       }, 500);
     } else {
