@@ -53,8 +53,8 @@ contextBridge.exposeInMainWorld('api', {
   habitsLoad:    (data) => ipcRenderer.invoke('habits-load', data),
   winsSave:      (data) => ipcRenderer.invoke('wins-save', data),
   winsLoad:      (data) => ipcRenderer.invoke('wins-load', data),
-  eventsSave:    (data) => ipcRenderer.invoke('events-save', data),
-  eventsLoad:    (data) => ipcRenderer.invoke('events-load', data),
+  listsSave:     (data) => ipcRenderer.invoke('lists-save', data),
+  listsLoad:     (data) => ipcRenderer.invoke('lists-load', data),
   eventsSave:    (data) => ipcRenderer.invoke('events-save', data),
   eventsLoad:    (data) => ipcRenderer.invoke('events-load', data),
   sheetsLoad:   (data) => ipcRenderer.invoke('sheets-load', data),
@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('api', {
   workspacesLoad: ()       => ipcRenderer.invoke('workspaces-load'),
   workspacesSave: (data)   => ipcRenderer.invoke('workspaces-save', data),
   driveCreateSheetNamed: (data) => ipcRenderer.invoke('drive-create-sheet-named', data),
+  driveUploadPdf:        (data) => ipcRenderer.invoke('drive-upload-pdf', data),
   driveFindSheetById: (data)    => ipcRenderer.invoke('drive-find-sheet-by-id', data),
   driveWorkspacesLoad: (data)   => ipcRenderer.invoke('drive-workspaces-load', data),
   driveWorkspacesSave: (data)   => ipcRenderer.invoke('drive-workspaces-save', data), // data includes spreadsheetId

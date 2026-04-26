@@ -8,15 +8,22 @@ let modalDue     = '';
 let modalDueTime = '';
 let calYear      = null;
 let calMonth     = null;
-let completionTaskId = null;
-let selectedImpact   = 'medium';
+let completionTaskId       = null;
+let completionPreviousStatus = 'not-started';
+let selectedImpact         = 'medium';
 let undoStack    = [];
+let onboardingChecklist = { addTask: false, completeTask: false, whatNow: false, mood: false, dismissed: false };
 
 // View mode
 let kanbanMode = false;
 let ideasMode  = false;
 let budgetViewMode = false;
 let calendarViewMode = false;
+let statsMode  = false;
+
+// Stats state (not persisted — resets each visit)
+let statsCurrentRange = '30d';
+let _statsCache = {};
 
 // Calendar
 let calEvents = [];
@@ -40,7 +47,18 @@ let wins = [];
 let editingWinId = null;
 let winsMode = false;
 
+// Lists
+let lists = [];
+let listsMode = false;
+let currentOpenListId = null;
+let editingListId = null;
+let _listCategoryTargetId = null;
+let _listDragItemId = null;
+let _listDragListId = null;
 
+
+
+const FORMSPREE_URL = 'https://formspree.io/f/xwvrjnkd';
 
 // Workspaces
 const MAX_WORKSPACES = 3;
@@ -59,6 +77,11 @@ let configSheetId = null;  // ID of the TaskSpark-Config spreadsheet
 let rootSpreadsheetId = null;      // The original spreadsheet — used for cross-app workspace config
 // Pre-fetched workspace data cache: { [wsId]: { tasks, habits, ideas, wins } }
 const _wsCache = {};
+function _wsCacheSet(id, data) {
+  _wsCache[id] = data;
+  const activeIds = new Set(workspaces.map(w => String(w.id)));
+  Object.keys(_wsCache).forEach(k => { if (!activeIds.has(k) && k !== String(id)) delete _wsCache[k]; });
+}
 
 // Auth state
 let offlineMode   = false;
@@ -75,6 +98,7 @@ let timerInterval      = null;
 let timerPaused        = false;
 let timerPausedAt      = null;
 let timerPausedElapsed = 0;
+let timerDidMinimize   = false;
 let breakSnoozed    = false;
 let breakAfterTimer = null;
 let breakInterval   = null;
@@ -92,7 +116,11 @@ const DEFAULT_SETTINGS = {
   dueTimeEnabled:    true,
   quickAddEnabled:   true,
   whatNowEnabled:    true,
-  completionDialog:  true,
+  completionDialog:     true,
+  celebrationEnabled:   true,
+  completionDialogHigh: true,
+  completionDialogMed:  true,
+  completionDialogLow:  false,
   soundEnabled:      true,
   soundFile:         null,  // null = use bundled default
   moodEnabled:       true,
@@ -107,6 +135,7 @@ const DEFAULT_SETTINGS = {
   ideasEnabled:      true,
   habitsEnabled:     true,
   winsEnabled:       true,
+  listsEnabled:      true,
   streakWeekends:    false,  // include weekends in streak count
   graceDayEnabled:   true,   // allow one missed day per streak
   vacationMode:      false,  // pause streak while away
@@ -125,30 +154,48 @@ const DEFAULT_SETTINGS = {
   eodShowTomorrow:   true,
   eodShowStreak:     true,
   timerEnabled:      true,
+  focusModeEnabled:  false,
+  tagCustomColorsEnabled: false,
+  tagColors: {},
+  deferEnabled:      false,
+  overdueAlertEnabled: false,
+  overdueAlertMode:  'all',
   budgetEnabled:     true,
   currencySymbol:    '£',
   budgetGroupByTags: false,
   attachmentsEnabled: true,
   calendarEnabled: true,
+  statsEnabled:    true,
 };
 let settings = { ...DEFAULT_SETTINGS };
 
 function getBreakIntervalMs() { return settings.breakIntervalMins * 60 * 1000; }
 function getBreakDurationS()  { return settings.breakDurationMins * 60; }
 
+// Pre-create the audio elements once and reuse them — avoids re-decoding the
+// MP3 on every break and avoids leaking Audio objects.
+const _breakAudioDefault = new Audio('../assets/break-chime.mp3');
+_breakAudioDefault.volume = 0.75;
+let _breakAudioCustomSrc = null;
+let _breakAudioCustom = null;
 function playBreakSound() {
   if (!settings.soundEnabled) return;
-  const src = settings.soundFile
-    ? `file:///${settings.soundFile.replace(/\\/g, '/')}`
-    : '../assets/break-chime.mp3';
-  const audio = new Audio(src);
-  audio.volume = 0.75;
-  audio.play().catch(() => {
-    if (!settings.soundFile) return;
-    const fallback = new Audio('../assets/break-chime.mp3');
-    fallback.volume = 0.75;
-    fallback.play().catch(() => {});
-  });
+  if (settings.soundFile) {
+    const src = `file:///${settings.soundFile.replace(/\\/g, '/')}`;
+    if (src !== _breakAudioCustomSrc) {
+      _breakAudioCustomSrc = src;
+      _breakAudioCustom = new Audio(src);
+      _breakAudioCustom.volume = 0.75;
+    }
+    try { _breakAudioCustom.currentTime = 0; } catch {}
+    _breakAudioCustom.play().catch(() => {
+      try { _breakAudioDefault.currentTime = 0; } catch {}
+      _breakAudioDefault.play().catch(() => {});
+    });
+  } else {
+    try { _breakAudioDefault.currentTime = 0; } catch {}
+    _breakAudioDefault.play().catch(() => {});
+  }
 }
 
 
@@ -200,12 +247,52 @@ function dueStatus(due) {
 }
 
 function getTagColor(tag) {
+  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) {
+    const v = settings.tagColors[tag];
+    if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
+  }
   if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
   return tagColorMap[tag];
 }
 
+function isDeferred(task) {
+  if (!settings.deferEnabled || !task.hideUntilDays || !task.due) return false;
+  const t = todayStr();
+  if (task.due <= t) return false;
+  const show = new Date(task.due + 'T00:00:00');
+  show.setDate(show.getDate() - task.hideUntilDays);
+  return show.toISOString().slice(0, 10) > t;
+}
+
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Escape a string for safe use inside a single-quoted JS literal in an inline
+// HTML event handler (e.g. onclick="fn('${escJs(value)}')"). The browser
+// HTML-decodes attributes once before treating them as JS, so esc() alone is
+// not enough — single quotes inside JS strings would terminate the literal.
+function escJs(s) {
+  return String(s)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/"/g,'\\"')
+    .replace(/</g,'\\x3c')
+    .replace(/>/g,'\\x3e')
+    .replace(/\r/g,'\\r')
+    .replace(/\n/g,'\\n');
+}
+
+// Validate a user-supplied URL — only allow http/https/mailto. Returns the URL
+// if safe, or empty string if not (callers should hide the link in that case).
+function safeUrl(u) {
+  if (!u) return '';
+  try {
+    const p = new URL(u, location.href).protocol.toLowerCase();
+    return (p === 'http:' || p === 'https:' || p === 'mailto:') ? u : '';
+  } catch {
+    return '';
+  }
 }
 
 // ── Collapsible sidebar sections ───────────────────────────────────────────
@@ -224,11 +311,28 @@ function toggleSection(name) {
   }
 }
 
+let _lastSyncErrorAt = 0;
 function setSyncStatus(state, msg = '') {
   const lbl = document.getElementById('sync-lbl');
-  if (state === 'ok') { lbl.textContent = '● Synced'; lbl.style.color = 'var(--accent)'; }
-  else if (state === 'offline') { lbl.textContent = '○ Offline'; lbl.style.color = 'var(--text3)'; }
-  // error and syncing states are silently ignored
+  if (!lbl) return;
+  if (state === 'ok') {
+    lbl.textContent = '● Synced'; lbl.style.color = 'var(--accent)';
+    lbl.title = '';
+  } else if (state === 'offline') {
+    lbl.textContent = '○ Offline'; lbl.style.color = 'var(--text3)';
+    lbl.title = '';
+  } else if (state === 'syncing') {
+    lbl.textContent = '… Syncing'; lbl.style.color = 'var(--text3)';
+  } else if (state === 'error') {
+    lbl.textContent = '⚠ Sync error'; lbl.style.color = 'var(--red)';
+    lbl.title = msg || 'Last sync failed — will retry';
+    // Throttle error toasts so a save-on-every-keystroke loop can't spam
+    const now = Date.now();
+    if (now - _lastSyncErrorAt > 30000) {
+      _lastSyncErrorAt = now;
+      showToast('⚠ Sync failed' + (msg ? ` — ${msg}` : ''));
+    }
+  }
   const btn = document.getElementById('open-sheet-btn');
   if (btn) btn.style.display = spreadsheetId ? '' : 'none';
 }
@@ -286,6 +390,7 @@ async function init() {
     if (cfg.sortMode) document.getElementById('sort-select').value = cfg.sortMode;
     if (cfg.settings) settings = { ...DEFAULT_SETTINGS, ...cfg.settings };
     if (cfg.configSheetId) configSheetId = cfg.configSheetId;
+    if (cfg.onboardingChecklist) onboardingChecklist = { ...onboardingChecklist, ...cfg.onboardingChecklist };
     updateChangelogSidebarBtn();
   }
   applySettings();
@@ -336,7 +441,8 @@ async function init() {
         await loadIdeas();
         await loadHabits();
         await loadWins();
-        if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+        await loadLists();
+        if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
         setTimeout(showWorkspaceSetupModal, 800);
       } else {
         // Got workspaces from Drive — proceed normally
@@ -349,8 +455,8 @@ async function init() {
         renderWorkspaceDropdown();
         updateWorkspaceTitle();
         await connectToSheets();
-        await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
-        if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
+        if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
     } else {
@@ -363,17 +469,18 @@ async function init() {
       renderWorkspaceDropdown();
       updateWorkspaceTitle();
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
-      if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
+      if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
   } else if (cfg && cfg.offlineMode) {
     offlineMode = true;
     showApp();
-    loadOfflineTasks();
+    await loadOfflineTasks();
     await loadIdeas();
     await loadHabits();
     await loadWins();
+    await loadLists();
   } else {
     showAuth();
   }
@@ -402,18 +509,29 @@ async function init() {
   checkStartOfDay();
   // Schedule end of day notification
   scheduleEod();
+  // Midnight: refresh views and fire overdue alerts when date rolls over.
+  // One-shot setTimeout to ms-until-midnight; reschedule from inside the handler.
+  function _scheduleMidnight() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setDate(now.getDate() + 1);
+    next.setHours(0, 0, 30, 0); // 30s past to avoid race conditions
+    const ms = next.getTime() - now.getTime();
+    setTimeout(() => {
+      try { renderAll(); checkOverdueAlerts(); } catch (e) { console.warn('midnight tick error', e); }
+      _scheduleMidnight();
+    }, Math.max(60000, ms));
+  }
+  _scheduleMidnight();
 }
 
 
 function hideLoadingScreen() {
   const el = document.getElementById('loading-screen');
   if (!el) return;
-  const elapsed = Date.now() - (window._appStartTime || Date.now());
-  const remaining = Math.max(0, 3000 - elapsed);
-  setTimeout(() => {
-    el.classList.add('fade-out');
-    setTimeout(() => el.classList.add('hidden'), 380);
-  }, remaining);
+  // Fade out as soon as the app is ready — no artificial minimum
+  el.classList.add('fade-out');
+  setTimeout(() => el.classList.add('hidden'), 380);
 }
 
 function showAuth() {
@@ -497,8 +615,16 @@ api.onOauthCode(async ({ code }) => {
         }
       } catch (e) { console.warn('[onOauthCode] workspace load failed:', e.message); }
 
+      // B33: re-apply workspace settings after sign-in (parity with init())
+      if (workspaces.length) {
+        const active = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+        if (active && active.settings) {
+          settings = { ...DEFAULT_SETTINGS, ...active.settings };
+          applySettings();
+        }
+      }
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
 
       // Show workspace setup modal if no workspaces configured yet
       if (workspaces.length === 0) {
@@ -547,9 +673,22 @@ async function ensureToken() {
       accessToken = tokens.access_token;
       tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
       await api.saveConfig({ accessToken, tokenExpiry });
+      return;
     }
+    // Refresh-token revoked or expired: surface to user and force re-auth
+    if (tokens.error === 'invalid_grant') {
+      await api.saveConfig({ accessToken: null, refreshToken: null, tokenExpiry: 0 });
+      accessToken = null; refreshToken = null; tokenExpiry = 0;
+      showToast('Sign-in expired — please sign in again');
+      throw new Error('invalid_grant');
+    }
+    throw new Error(tokens.error_description || tokens.error || 'No access token returned');
   } catch (e) {
     console.warn('Token refresh failed:', e);
+    if (e.message === 'invalid_grant') {
+      // Re-throw so the caller can stop trying to use a dead token
+      throw e;
+    }
   }
 }
 
@@ -591,7 +730,10 @@ async function connectToSheets() {
     }
     await api.saveCache(tasks);
     setSyncStatus('ok');
+    if (tasks.length > 0) checkOnboardingItem('addTask');
     renderAll();
+    renderGettingStartedCard();
+    setTimeout(checkOverdueAlerts, 500);
   } catch (e) {
     console.error('[connectToSheets] error:', e.message);
     setSyncStatus('error', e.message.slice(0, 50));
@@ -634,9 +776,14 @@ async function refreshFromSheets() {
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
 
+let _cacheSaveErrorShown = false;
 async function saveTasks() {
   _lastTasksHTML = ''; // Invalidate render cache
-  await api.saveCache(tasks);
+  const cacheResult = await api.saveCache(tasks);
+  if (cacheResult && cacheResult.ok === false && !_cacheSaveErrorShown) {
+    _cacheSaveErrorShown = true;
+    showToast('⚠ Could not save offline cache — disk may be full');
+  }
   if (offlineMode) { setSyncStatus('offline'); return; }
   const activeWs = getActiveWorkspace();
   if (activeWs && activeWs.readOnly) { setSyncStatus('ok'); return; }
@@ -665,7 +812,11 @@ function sampleTasks() {
 
 // ── Undo ───────────────────────────────────────────────────────────────────
 function pushUndo(desc) {
-  undoStack.push({ desc, snapshot: JSON.parse(JSON.stringify(tasks)) });
+  // structuredClone is faster than JSON round-trip and preserves Dates/Maps
+  const snapshot = (typeof structuredClone === 'function')
+    ? structuredClone(tasks)
+    : JSON.parse(JSON.stringify(tasks));
+  undoStack.push({ desc, snapshot });
   if (undoStack.length > 20) undoStack.shift();
 }
 
@@ -706,16 +857,25 @@ document.getElementById('main')?.addEventListener('click', e => {
   }
 });
 
+function _isTypingTarget(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+  // Ctrl+Z: don't hijack the user's text-input undo
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    if (_isTypingTarget(document.activeElement)) return;
+    e.preventDefault(); undo(); return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key === ' ') { e.preventDefault(); if (settings.quickAddEnabled && !document.getElementById('quick-add-overlay').classList.contains('open')) openQuickAdd(); return; }
   if (e.key === 'Escape') {
     closeAllModals();
     document.getElementById('quick-add-overlay').classList.remove('open');
   }
-  if (e.key === 'n' && !e.ctrlKey && !e.metaKey &&
-      document.activeElement.tagName !== 'INPUT' &&
-      document.activeElement.tagName !== 'TEXTAREA') {
+  if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !_isTypingTarget(document.activeElement)) {
     openTaskModal();
   }
 });
@@ -729,19 +889,20 @@ function filterTasks() {
         !(task.desc||'').toLowerCase().includes(q) &&
         !(task.tags||[]).some(tg => tg.toLowerCase().includes(q))) return false;
     const v = currentView;
-    if (v === 'all')             return !task.completed && !task.archived;
-    if (v === 'today')           return !task.completed && !task.archived && task.due === t;
+    if (v === 'all')             return !task.completed && !task.archived && !isDeferred(task);
+    if (v === 'today')           return !task.completed && !task.archived && task.due === t && !isDeferred(task);
     if (v === 'overdue')         return !task.completed && !task.archived && task.due && task.due < t;
+    if (v === 'deferred')        return !task.completed && !task.archived && isDeferred(task);
     if (v === 'completed')       return task.completed && !task.archived;
-    if (v === 'priority-high')        return !task.completed && !task.archived && task.priority === 'high';
-    if (v === 'priority-medium')      return !task.completed && !task.archived && task.priority === 'medium';
-    if (v === 'priority-low')         return !task.completed && !task.archived && task.priority === 'low';
-    if (v === 'status-not-started')   return !task.completed && !task.archived && (task.status || 'not-started') === 'not-started';
-    if (v === 'status-in-progress')   return !task.completed && !task.archived && task.status === 'in-progress';
-    if (v === 'status-blocked')       return !task.completed && !task.archived && task.status === 'blocked';
-    if (v === 'status-on-hold')       return !task.completed && !task.archived && task.status === 'on-hold';
+    if (v === 'priority-high')        return !task.completed && !task.archived && task.priority === 'high' && !isDeferred(task);
+    if (v === 'priority-medium')      return !task.completed && !task.archived && task.priority === 'medium' && !isDeferred(task);
+    if (v === 'priority-low')         return !task.completed && !task.archived && task.priority === 'low' && !isDeferred(task);
+    if (v === 'status-not-started')   return !task.completed && !task.archived && (task.status || 'not-started') === 'not-started' && !isDeferred(task);
+    if (v === 'status-in-progress')   return !task.completed && !task.archived && task.status === 'in-progress' && !isDeferred(task);
+    if (v === 'status-blocked')       return !task.completed && !task.archived && task.status === 'blocked' && !isDeferred(task);
+    if (v === 'status-on-hold')       return !task.completed && !task.archived && task.status === 'on-hold' && !isDeferred(task);
     if (v === 'archived')             return task.archived === true;
-    if (v.startsWith('tag:'))         return !task.completed && !task.archived && (task.tags||[]).includes(v.slice(4));
+    if (v.startsWith('tag:'))         return !task.completed && !task.archived && (task.tags||[]).includes(v.slice(4)) && !isDeferred(task);
     return false;
   });
 }
@@ -767,8 +928,10 @@ function renderAll() {
   else if (ideasMode) renderIdeas();
   else if (habitsMode) renderHabits();
   else if (winsMode) renderWins();
+  else if (listsMode) renderLists();
   else if (budgetViewMode) renderBudgetView();
   else if (calendarViewMode) renderCalendarView();
+  else if (statsMode) renderStatsView();
   else renderTasks();
   updateCounts();
   updateTagSidebar();
@@ -792,7 +955,10 @@ function renderTasks() {
   if (!filtered.length) {
     const msg = currentView === 'completed' ? 'No completed tasks yet' : 'All clear!';
     const sub = currentView === 'completed' ? 'Complete a task to see it here' : 'Add a new task to get started';
-    const html = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
+    const cta = currentView === 'completed' || isReadOnly()
+      ? ''
+      : '<button class="btn-primary" style="margin-top:16px" onclick="openTaskModal()">+ New Task</button>';
+    const html = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div>${cta}</div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
     return;
@@ -838,14 +1004,15 @@ function taskCardHTML(task) {
     const sym = settings.currencySymbol || '£';
     const spent = task.spent || 0;
     const over = spent > task.budget;
-    budgetBadge = `<span class="badge badge-budget${over ? ' over' : ''}">${sym}${spent.toFixed(2)}/${sym}${parseFloat(task.budget).toFixed(2)}</span>`;
+    const overPrefix = over ? '⚠ ' : '';
+    budgetBadge = `<span class="badge badge-budget${over ? ' over' : ''}" title="${over ? 'Over budget' : 'Within budget'}">${overPrefix}${sym}${spent.toFixed(2)}/${sym}${parseFloat(task.budget).toFixed(2)}</span>`;
   }
 
   // Live timer badge
   let liveTimeBadge = '';
   if (isRunning || task.timeLogged) {
     const base = task.timeLogged || 0;
-    const disp = fmtSecs(isRunning ? base + Math.floor((Date.now()/1000) - timerStart) : base);
+    const disp = fmtSecs(isRunning ? base + Math.floor((Date.now()/1000) - timerStart) + timerPausedElapsed : base);
     liveTimeBadge = `<span class="badge badge-time ${isRunning?'running':''}" id="time-badge-${task.id}">◷ ${disp}</span>`;
   }
 
@@ -854,7 +1021,8 @@ function taskCardHTML(task) {
   if (task.completed && (task.impact || task.outcome)) {
     const impBadge = task.impact ? `<span class="impact-badge impact-${task.impact}">${task.impact.charAt(0).toUpperCase()+task.impact.slice(1)} Impact</span>` : '';
     const outcomeText = task.outcome ? `<span>${esc(task.outcome)}</span>` : '';
-    const delivLink = task.deliverable ? `<a class="deliverable-link" href="${esc(task.deliverable)}" target="_blank">🔗 ${esc(task.deliverable)}</a>` : '';
+    const safeDeliv = safeUrl(task.deliverable);
+    const delivLink = safeDeliv ? `<a class="deliverable-link" href="${esc(safeDeliv)}" target="_blank" rel="noopener noreferrer">🔗 ${esc(safeDeliv)}</a>` : '';
     completionDetail = `<div class="completion-detail">${impBadge}${outcomeText}${delivLink}</div>`;
   }
 
@@ -884,7 +1052,7 @@ function taskCardHTML(task) {
         ${dueBadge}<span class="badge badge-priority-${task.priority}">${task.priority.charAt(0).toUpperCase()+task.priority.slice(1)}</span>
         ${settings.statusEnabled !== false ? (task.status ? `<span class="badge badge-status status-${task.status || 'not-started'}">${(task.status || 'not-started').replace(/-/g,' ')}</span>` : '<span class="badge badge-status status-not-started">not started</span>') : ''}
         ${settings.energyEnabled !== false ? `<span class="badge badge-energy energy-${task.energy || 'medium'}">${task.energy==='high'?'⚡ high':task.energy==='low'?'🌿 low':'◆ medium'}</span>` : ''}
-        ${task.recur && task.recur !== 'none' ? `<span class="badge badge-recur">↺ ${task.recur === 'custom' ? 'every ' + (task.recurInterval||1) + 'd' : task.recur}</span>` : ''}
+        ${task.recurrence && task.recurrence.type && task.recurrence.type !== 'none' ? `<span class="badge badge-recur">↺ ${task.recurrence.type === 'custom' ? 'every ' + (task.recurrence.interval||1) + 'd' : task.recurrence.type === 'days' ? 'weekly' : task.recurrence.type}</span>` : ''}
         ${tagBadges}${timeBadge}${liveTimeBadge}${budgetBadge}${renderAttachmentBadges(task)}
       </div>
       ${completionDetail}
@@ -921,9 +1089,11 @@ function updateStats() {
 function updateCounts() {
   const t = todayStr();
   const active = tasks.filter(x => !x.completed);
-  document.getElementById('cnt-all').textContent       = active.length;
-  document.getElementById('cnt-today').textContent     = active.filter(x => x.due === t).length;
+  document.getElementById('cnt-all').textContent       = active.filter(x => !isDeferred(x)).length;
+  document.getElementById('cnt-today').textContent     = active.filter(x => x.due === t && !isDeferred(x)).length;
   document.getElementById('cnt-overdue').textContent   = active.filter(x => x.due && x.due < t).length;
+  const cntDeferred = document.getElementById('cnt-deferred');
+  if (cntDeferred) cntDeferred.textContent = active.filter(isDeferred).length;
   document.getElementById('cnt-completed').textContent = tasks.filter(x => x.completed && !x.archived).length;
   const cntArchived = document.getElementById('cnt-archived');
   if (cntArchived) cntArchived.textContent = tasks.filter(x => x.archived).length;
@@ -941,7 +1111,7 @@ function updateTagSidebar() {
   const tagSet = {};
   tasks.filter(t => !t.completed && !t.archived).forEach(t => (t.tags||[]).forEach(tag => { tagSet[tag] = (tagSet[tag]||0)+1; }));
   document.getElementById('tag-list').innerHTML = Object.keys(tagSet).sort().map(tag => `
-    <div class="sidebar-item" onclick="setView('tag:${esc(tag)}',this)">
+    <div class="sidebar-item" onclick="setView('tag:${escJs(tag)}',this)">
       <span class="tag-dot" style="background:${getTagColor(tag)}"></span>
       <span>${esc(tag)}</span>
       <span class="si-count">${tagSet[tag]}</span>
@@ -969,13 +1139,14 @@ function checkGraceDayPrompt() {
   if (streakBeforeYesterday === 0) return; // no streak to protect
   // Mark as prompted today
   try { localStorage.setItem(cfg_key, JSON.stringify({ date: todayStr() })); } catch {}
-  // Show prompt
+  // Show prompt as informational — calcStreak already protects via the
+  // graceDayEnabled flag, so the button is effectively confirmation, not action.
   setTimeout(() => {
     showConfirmModal(
-      '⚡ Streak at risk',
-      'You missed yesterday and your <strong>' + streakBeforeYesterday + ' day streak</strong> is at risk.<br><br>Would you like to use your grace day to protect it? You get one grace day per streak.',
-      'Use Grace Day',
-      () => { showToast('Grace day used — streak protected!'); }
+      '⚡ Grace day applied',
+      'You missed yesterday but your <strong>' + streakBeforeYesterday + ' day streak</strong> has been protected automatically by your grace day.',
+      'Got it',
+      () => {}
     );
   }, 2000);
 }
@@ -1045,9 +1216,11 @@ function updateStreak() {
   best.textContent = longest > 0 ? `Best: ${longest} day${longest !== 1 ? 's' : ''}` : '';
 }
 
+// Use sessionStorage so the prompt re-shows on next launch if the user
+// dismissed it without resuming. Avoids polluting persisted settings.
 function promptVacationReturn() {
-  if (settings._vacationPromptShown) return;
-  settings._vacationPromptShown = true;
+  try { if (sessionStorage.getItem('ts_vacation_prompt_shown')) return; } catch {}
+  try { sessionStorage.setItem('ts_vacation_prompt_shown', '1'); } catch {}
   setTimeout(() => {
     showConfirmModal(
       'Welcome back!',
@@ -1056,7 +1229,6 @@ function promptVacationReturn() {
       () => {
         settings.vacationMode   = false;
         settings.vacationReturn = null;
-        settings._vacationPromptShown = false;
         api.saveConfig({ settings });
         updateStreak();
         showToast('Streak resumed! Welcome back ★');
@@ -1143,7 +1315,7 @@ function setView(view, el) {
   const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
     'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
     'status-not-started':'Not Started', 'status-in-progress':'In Progress',
-    'status-blocked':'Blocked', 'status-on-hold':'On Hold', 'budget-view':'Budget View', 'calendar-view':'Calendar' };
+    'status-blocked':'Blocked', 'status-on-hold':'On Hold', 'budget-view':'Budget View', 'calendar-view':'Calendar', 'stats':'Stats', 'lists':'Lists' };
   document.getElementById('view-title').textContent =
     view.startsWith('tag:') ? '#' + view.slice(4) : (titles[view] || view);
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
@@ -1154,9 +1326,17 @@ function setView(view, el) {
   }
 
   const budgetViewContainer = document.getElementById('budget-view-container');
+  const toolbarEl = document.getElementById('toolbar');
+  const statsBarEl = document.getElementById('stats-bar');
+  if (toolbarEl) toolbarEl.style.display = '';
+  if (statsBarEl) statsBarEl.style.display = '';
+  statsMode = false;
+  const statsContainerEl = document.getElementById('stats-container');
+  if (statsContainerEl) statsContainerEl.classList.remove('active');
 
   if (view === 'kanban') {
-    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = false; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
@@ -1165,55 +1345,98 @@ function setView(view, el) {
     if (calVCk) { calVCk.classList.remove('active'); }
     switchViewMode('kanban');
   } else if (view === 'ideas') {
-    ideasMode = true; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = false; ideasMode = true; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
     const calVCi = document.getElementById('calendar-view-container');
     if (calVCi) { calVCi.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
     document.getElementById('ideas-container').classList.add('active');
     renderIdeas();
   } else if (view === 'wins') {
-    winsMode = true; ideasMode = false; habitsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = false; winsMode = true; ideasMode = false; habitsMode = false; budgetViewMode = false; calendarViewMode = false;
     const calVCw = document.getElementById('calendar-view-container');
     if (calVCw) { calVCw.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
     document.getElementById('wins-container').classList.add('active');
     renderWins();
   } else if (view === 'budget-view') {
-    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false;
+    listsMode = false; budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false; statsMode = false;
     const calVCb = document.getElementById('calendar-view-container');
     if (calVCb) { calVCb.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    const statsCVb = document.getElementById('stats-container');
+    if (statsCVb) statsCVb.classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.add('active');
     renderBudgetView();
+  } else if (view === 'stats') {
+    listsMode = false; statsMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false;
+    const calVCs = document.getElementById('calendar-view-container');
+    if (calVCs) calVCs.classList.remove('active');
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    if (budgetViewContainer) budgetViewContainer.classList.remove('active');
+    const statsC = document.getElementById('stats-container');
+    if (statsC) statsC.classList.add('active');
+    if (toolbarEl) toolbarEl.style.display = 'none';
+    if (statsBarEl) statsBarEl.style.display = 'none';
+    statsCurrentRange = '30d';
+    _statsCache = {};
+    renderStatsView();
   } else if (view === 'calendar-view') {
-    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false;
+    listsMode = false; calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; statsMode = false;
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('lists-container').classList.remove('active');
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    if (budgetViewContainer) budgetViewContainer.classList.remove('active');
+    const statsCVc = document.getElementById('stats-container');
+    if (statsCVc) statsCVc.classList.remove('active');
+    const calVC = document.getElementById('calendar-view-container');
+    if (calVC) calVC.classList.add('active');
+    loadCalEvents().then(() => renderCalendarView());
+  } else if (view === 'lists') {
+    listsMode = true; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false; statsMode = false;
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
-    const calVC = document.getElementById('calendar-view-container');
-    if (calVC) calVC.classList.add('active');
-    loadCalEvents().then(() => renderCalendarView());
+    const calVCl = document.getElementById('calendar-view-container');
+    if (calVCl) calVCl.classList.remove('active');
+    const statsCVl = document.getElementById('stats-container');
+    if (statsCVl) statsCVl.classList.remove('active');
+    document.getElementById('lists-container').classList.add('active');
+    renderLists();
   } else {
-    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = false; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false; statsMode = false;
+    document.getElementById('lists-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     if (budgetViewContainer) budgetViewContainer.classList.remove('active');
+    const statsCe = document.getElementById('stats-container');
+    if (statsCe) statsCe.classList.remove('active');
     const calVCe = document.getElementById('calendar-view-container');
     if (calVCe) { calVCe.classList.remove('active'); }
     const mainElE = document.getElementById('main');
@@ -1334,7 +1557,7 @@ function renderKanban() {
     const tagColor = tag === 'Untagged' ? 'var(--text3)' : getTagColor(tag);
     return `
       <div class="kanban-tag-group">
-        <div class="kanban-tag-header" onclick="toggleKanbanGroup('${esc(tag)}')">
+        <div class="kanban-tag-header" onclick="toggleKanbanGroup('${escJs(tag)}')">
           <span class="kanban-tag-arrow ${isOpen?'':'collapsed'}">▾</span>
           <span class="kanban-tag-label" style="color:${tagColor}">${esc(tag)}</span>
           <span class="kanban-col-count">${tagTasks.length}</span>
@@ -1479,7 +1702,7 @@ function renderMonthCell(dateStr, dayNum, otherMonth, today, activeTasks, comple
   const items = getItemsForDate(dateStr, activeTasks, allEvents, completedTasks);
   const shown = items.slice(0, 5), extra = items.length - 5;
   const chips = shown.map(item => {
-    const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="event.stopPropagation();openTaskModal(${item.id})"` : `onclick="event.stopPropagation();openCalEventModal('${item.id}')"`;
+    const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="event.stopPropagation();openTaskModal(${item.id})"` : `onclick="event.stopPropagation();openCalEventModal('${escJs(item.id)}')"`;
     const typeClass = item.eventType === 'holiday' ? ' event-holiday' : '';
     return `<div class="cal-chip ${item.type}${typeClass}" ${click}>${item.label}</div>`;
   }).join('');
@@ -1488,7 +1711,7 @@ function renderMonthCell(dateStr, dayNum, otherMonth, today, activeTasks, comple
   if (otherMonth) classes.push('other-month');
   if (isToday) classes.push('today');
   else if (isPast) classes.push('past');
-  return `<div class="${classes.join(' ')}" onclick="openCalEventModal(null,'${dateStr}')">
+  return `<div class="${classes.join(' ')}" onclick="openCalEventModal(null,'${escJs(dateStr)}')">
     <div class="cal-day-num">${dayNum}</div>${chips}${moreBtn}
   </div>`;
 }
@@ -1520,7 +1743,7 @@ function renderWeekView(date, today, activeTasks, completedTasks = [], allEvents
     const items = getItemsForDate(ds, activeTasks, allEvents.filter(e => e.allDay), completedTasks);
     // Also add timed events that fall on this day to all-day for tasks
     const chips = items.map(item => {
-      const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="openTaskModal(${item.id})"` : `onclick="openCalEventModal('${item.id}')"`;
+      const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="openTaskModal(${item.id})"` : `onclick="openCalEventModal('${escJs(item.id)}')"`;
       return `<div class="cal-chip ${item.type}" ${click}>${item.label}</div>`;
     }).join('');
     return `<div class="cal-week-allday-cell">${chips}</div>`;
@@ -1539,11 +1762,11 @@ function renderWeekView(date, today, activeTasks, completedTasks = [], allEvents
       const eh = parseInt((e.end||e.start).slice(11,13)||sh+1), em = parseInt((e.end||e.start).slice(14,16)||0);
       const top = sh*48 + sm/60*48;
       const height = Math.max(24, ((eh*60+em)-(sh*60+sm))/60*48);
-      return `<div class="cal-week-event event" style="top:${top}px;height:${height}px" onclick="event.stopPropagation();openCalEventModal('${e.id}')">${esc(e.title)}</div>`;
+      return `<div class="cal-week-event event" style="top:${top}px;height:${height}px" onclick="event.stopPropagation();openCalEventModal('${escJs(e.id)}')">${esc(e.title)}</div>`;
     }).join('');
     const hourCells = Array.from({length:24}, () => '<div class="cal-week-cell"></div>').join('');
     const isPastDay = ds < today && ds !== today;
-    return `<div class="cal-week-day-col${ds===today?' today':''}${isPastDay?' past':''}" onclick="openCalEventModal(null,'${ds}')">
+    return `<div class="cal-week-day-col${ds===today?' today':''}${isPastDay?' past':''}" onclick="openCalEventModal(null,'${escJs(ds)}')">
       ${hourCells}<div style="position:absolute;inset:0;pointer-events:none;z-index:1"><div style="pointer-events:all">${eventChips}</div></div>
     </div>`;
   }).join('');
@@ -1573,7 +1796,7 @@ function renderDayView(date, today, activeTasks, completedTasks = [], allEvents 
   const allDayChips = allDayItems.map(item => {
     const click = (item.type === 'task' || item.type === 'task-done')
       ? `onclick="openTaskModal(${item.id})"`
-      : `onclick="openCalEventModal('${item.id}')"`;
+      : `onclick="openCalEventModal('${escJs(item.id)}')"`;
     const typeClass = item.eventType === 'holiday' ? ' event-holiday' : item.eventType === 'outlook' ? ' event-outlook' : '';
     return `<div class="cal-chip ${item.type}${typeClass}" ${click}>${item.label}</div>`;
   }).join('');
@@ -1586,7 +1809,7 @@ function renderDayView(date, today, activeTasks, completedTasks = [], allEvents 
     const top = sh*60 + sm/60*60;
     const height = Math.max(28, ((eh*60+em)-(sh*60+sm))/60*60);
     const typeClass = e.source === 'outlook' ? ' event-outlook' : '';
-    return `<div class="cal-week-event event${typeClass}" style="top:${top}px;height:${height}px;left:8px;right:8px" onclick="event.stopPropagation();openCalEventModal('${e.id}')">${esc(e.title)}</div>`;
+    return `<div class="cal-week-event event${typeClass}" style="top:${top}px;height:${height}px;left:8px;right:8px" onclick="event.stopPropagation();openCalEventModal('${escJs(e.id)}')">${esc(e.title)}</div>`;
   }).join('');
 
   const timeLabels = Array.from({length:24}, (_,h) => {
@@ -1613,7 +1836,7 @@ function renderDayView(date, today, activeTasks, completedTasks = [], allEvents 
         </div>
         <div class="cal-week-scroll day-view">
           <div class="cal-week-time-col">${timeLabels}</div>
-          <div class="cal-week-day-col${isToday?' today':''}${isPast?' past':''}" onclick="openCalEventModal(null,'${ds}')">
+          <div class="cal-week-day-col${isToday?' today':''}${isPast?' past':''}" onclick="openCalEventModal(null,'${escJs(ds)}')">
             ${hourCells}
             <div style="position:absolute;inset:0;pointer-events:none;z-index:1">
               <div style="pointer-events:all">${eventChips}</div>
@@ -1636,7 +1859,6 @@ async function connectOutlook() {
     const result = await api.outlookStart();
     if (result.code) {
       const tokens = await api.outlookExchange({ code: result.code, redirectUri: result.redirectUri, codeVerifier: result.codeVerifier });
-      console.log('Outlook token response:', JSON.stringify(tokens).slice(0, 200));
       if (tokens.access_token) {
         outlookAccessToken  = tokens.access_token;
         outlookRefreshToken = tokens.refresh_token;
@@ -1704,12 +1926,20 @@ async function refreshOutlookToken() {
   return false;
 }
 
-async function loadOutlookEvents() {
+// 5-minute TTL cache for Outlook events to avoid hammering Graph on every
+// calendar tab switch. Pass {force:true} to bypass.
+let _outlookCacheAt = 0;
+let _outlookCacheKey = '';
+async function loadOutlookEvents(opts = {}) {
   if (!outlookConnected || !outlookAccessToken) return;
+  const now   = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+  const end   = new Date(now.getFullYear(), now.getMonth() + 3, 0).toISOString();
+  const cacheKey = start + '|' + end;
+  if (!opts.force && _outlookCacheKey === cacheKey && Date.now() - _outlookCacheAt < 5 * 60 * 1000 && outlookEvents.length) {
+    return;
+  }
   try {
-    const now   = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-    const end   = new Date(now.getFullYear(), now.getMonth() + 3, 0).toISOString();
     let data = await api.outlookLoadEvents({ accessToken: outlookAccessToken, startDate: start, endDate: end });
     if (data.error?.code === 'InvalidAuthenticationToken') {
       const refreshed = await refreshOutlookToken();
@@ -1738,11 +1968,13 @@ async function loadOutlookEvents() {
         readonly: true
       };
     });
+    _outlookCacheAt = Date.now();
+    _outlookCacheKey = cacheKey;
   } catch(err) { console.error('Outlook load error:', err); }
 }
 
 async function initOutlook() {
-  const saved = settings.outlookRefreshToken || (config && config.outlookRefreshToken);
+  const saved = settings.outlookRefreshToken;
   if (saved) {
     outlookRefreshToken = saved;
     const ok = await refreshOutlookToken();
@@ -1771,7 +2003,7 @@ function renderCalEventTags() {
   const pills = document.getElementById('cev-tag-pills');
   if (!pills) return;
   pills.innerHTML = calEventTags.map(tag =>
-    `<span class="tag-pill" style="background:${getCalEventTagColor(tag)}">${esc(tag)}<button class="tag-pill-x" onclick="removeCalEventTag('${esc(tag)}')">&times;</button></span>`
+    `<span class="tag-pill" style="background:${getCalEventTagColor(tag)}">${esc(tag)}<button class="tag-pill-x" onclick="removeCalEventTag('${escJs(tag)}')">&times;</button></span>`
   ).join('');
 }
 
@@ -1799,7 +2031,7 @@ function showCalTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectCalTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectCalTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
       <span style="width:8px;height:8px;border-radius:50%;background:${getCalEventTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -1871,7 +2103,11 @@ function toggleCalEventAllDay() {
   }
 }
 
+let _savingCalEvent = false;
 function saveCalEvent() {
+  if (_savingCalEvent) return;
+  _savingCalEvent = true;
+  setTimeout(() => { _savingCalEvent = false; }, 800);
   const title = document.getElementById('cev-title').value.trim();
   if (!title) { document.getElementById('cev-title').focus(); return; }
   const allDay = document.getElementById('cev-allday').checked;
@@ -1896,15 +2132,20 @@ function saveCalEvent() {
   // If this is a holiday/vacation event, offer to enable vacation mode
   if (isHoliday && allDay) {
     const startDate = document.getElementById('cev-date-start') ? document.getElementById('cev-date-start').value : '';
-        const endDate = document.getElementById('cev-date-end') ? document.getElementById('cev-date-end').value : startDate;
+    const endDate = document.getElementById('cev-date-end') ? document.getElementById('cev-date-end').value : startDate;
     if (startDate && startDate > calFmtDate(new Date())) {
-      if (confirm('Enable vacation mode for this period? Your streak will be paused until the event ends.')) {
-        settings.vacationMode = true;
-        settings.vacationReturn = endDate;
-        api.saveConfig({ settings });
-        applySettings();
-        showToast('Vacation mode enabled — streak paused until ' + endDate);
-      }
+      showConfirmModal(
+        'Enable vacation mode?',
+        'Your streak will be paused until the event ends.',
+        'Enable',
+        () => {
+          settings.vacationMode = true;
+          settings.vacationReturn = endDate;
+          api.saveConfig({ settings });
+          applySettings();
+          showToast('Vacation mode enabled — streak paused until ' + endDate);
+        }
+      );
     }
   }
   closeModal('cal-event-modal-overlay');
@@ -1920,19 +2161,25 @@ function deleteCalEvent() {
 }
 
 async function saveCalEvents() {
-  if (offlineMode) return;
+  if (offlineMode || !accessToken || !spreadsheetId) return;
+  if (isReadOnly()) return;
   try {
     await ensureToken();
     await api.eventsSave({ accessToken, spreadsheetId, events: calEvents });
-  } catch(e) { console.error('Events save error:', e); }
+  } catch(e) { console.error('Events save error:', e); setSyncStatus('error', 'Calendar sync failed'); }
 }
 
 async function loadCalEvents() {
-  if (offlineMode) return;
+  if (offlineMode || !accessToken || !spreadsheetId) return;
   try {
     await ensureToken();
-    calEvents = await api.eventsLoad({ accessToken, spreadsheetId });
-  } catch(e) { calEvents = []; }
+    const remote = await api.eventsLoad({ accessToken, spreadsheetId });
+    if (Array.isArray(remote)) calEvents = remote;
+    // On a transient failure that returns null/undefined, keep what we already have
+  } catch(e) {
+    // B32: Don't wipe events on a transient network blip — keep cached view
+    console.warn('Events load error:', e.message);
+  }
 }
 
 function renderBudgetView() {
@@ -2022,6 +2269,811 @@ function renderBudgetView() {
   }
 }
 
+// ── Stats View ─────────────────────────────────────────────────────────────
+
+function statsFmtTime(secs) {
+  secs = Math.max(0, Math.floor(secs));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function statsDateRange(range) {
+  const now = new Date();
+  if (range === 'today') {
+    const s = dateToLocalStr(now);
+    return { start: new Date(s + 'T00:00:00'), end: new Date(s + 'T23:59:59.999'), totalDays: 1 };
+  }
+  const days = { '7d': 7, '30d': 30, '90d': 90, 'year': 365 }[range] || 30;
+  const end = new Date(now); end.setHours(23, 59, 59, 999);
+  const start = new Date(end); start.setDate(start.getDate() - days + 1); start.setHours(0, 0, 0, 0);
+  let totalDays = days;
+  if (!settings.streakWeekends) {
+    let wd = 0; const c = new Date(start);
+    while (c <= end) { const d = c.getDay(); if (d !== 0 && d !== 6) wd++; c.setDate(c.getDate()+1); }
+    totalDays = wd;
+  }
+  return { start, end, totalDays };
+}
+
+function statsPrevRange(range) {
+  const { start, end } = statsDateRange(range);
+  const dur = end.getTime() - start.getTime();
+  const prevEnd = new Date(start.getTime() - 1);
+  const prevStart = new Date(prevEnd.getTime() - dur + 1);
+  return { start: prevStart, end: prevEnd };
+}
+
+function statsSessionsInRange(task, start, end) {
+  return (task.timeSessions || []).filter(s => {
+    const d = new Date(s.start);
+    return d >= start && d <= end;
+  });
+}
+
+function statsRunningSecsForTask(task, start, end) {
+  if (activeTimerId !== task.id || !timerStart) return 0;
+  const runStart = new Date(timerStart * 1000);
+  if (runStart < start || runStart > end) return 0;
+  return Math.floor(Date.now() / 1000 - timerStart) + timerPausedElapsed;
+}
+
+function statsTaskTimeInRange(task, start, end) {
+  const fromSessions = statsSessionsInRange(task, start, end).reduce((s, sess) => s + (sess.elapsed || 0), 0);
+  return fromSessions + statsRunningSecsForTask(task, start, end);
+}
+
+function statsCompletedInRange(start, end) {
+  return tasks.filter(t => t.completed && t.completedAt &&
+    new Date(t.completedAt) >= start && new Date(t.completedAt) <= end);
+}
+
+function statsCreatedInRange(start, end) {
+  return tasks.filter(t => t.createdAt &&
+    new Date(t.createdAt) >= start && new Date(t.createdAt) <= end);
+}
+
+function statsDetectProfile(start, end) {
+  if (settings.timerEnabled === false) return 'PROFILE_BASIC';
+  const hasSessions = tasks.some(t =>
+    statsSessionsInRange(t, start, end).length > 0 ||
+    statsRunningSecsForTask(t, start, end) > 0
+  );
+  if (!hasSessions) return 'PROFILE_BASIC';
+  if (settings.estimatesEnabled === false) return 'PROFILE_TIMER';
+  const eligibleCount = statsCompletedInRange(start, end).filter(t =>
+    t.estimate > 0 && (t.timeSessions || []).length > 0
+  ).length;
+  return eligibleCount >= 3 ? 'PROFILE_FULL' : 'PROFILE_TIMER';
+}
+
+function statsIsNewUser() {
+  const withDates = tasks.filter(t => t.createdAt);
+  if (!withDates.length) return true;
+  const first = Math.min(...withDates.map(t => new Date(t.createdAt).getTime()));
+  return (Date.now() - first) / 86400000 < 7;
+}
+
+function statsNewUserDay() {
+  const withDates = tasks.filter(t => t.createdAt);
+  if (!withDates.length) return 1;
+  const first = Math.min(...withDates.map(t => new Date(t.createdAt).getTime()));
+  return Math.min(7, Math.floor((Date.now() - first) / 86400000) + 1);
+}
+
+function statsCalcCompleted(start, end) {
+  const { start: ps, end: pe } = statsPrevRange(statsCurrentRange);
+  const count = statsCompletedInRange(start, end).length;
+  const prev  = statsCompletedInRange(ps, pe).length;
+  return { count, delta: count - prev };
+}
+
+function statsCalcActiveDays(start, end, totalDays) {
+  const done = statsCompletedInRange(start, end);
+  let days = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
+  if (!settings.streakWeekends) {
+    days = new Set([...days].filter(d => { const wd = new Date(d + 'T00:00:00').getDay(); return wd !== 0 && wd !== 6; }));
+  }
+  const activeDays = days.size;
+  const avg = activeDays > 0 ? (done.length / activeDays) : 0;
+  return { activeDays, totalDays, avg };
+}
+
+function statsCalcTimeTracked(start, end) {
+  let totalSecs = 0, sessionCount = 0;
+  tasks.forEach(t => {
+    statsSessionsInRange(t, start, end).forEach(s => { totalSecs += s.elapsed || 0; sessionCount++; });
+    const run = statsRunningSecsForTask(t, start, end);
+    if (run > 0) { totalSecs += run; sessionCount++; }
+  });
+  return { totalSecs, sessionCount };
+}
+
+function statsCalcAvgTime(start, end) {
+  const times = statsCompletedInRange(start, end)
+    .map(t => statsTaskTimeInRange(t, start, end))
+    .filter(s => s > 0);
+  if (!times.length) return { mean: 0, median: 0 };
+  const mean = times.reduce((a, b) => a + b, 0) / times.length;
+  const sorted = [...times].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return { mean, median };
+}
+
+function statsCalcOnEstimate(start, end) {
+  const eligible = statsCompletedInRange(start, end).filter(t =>
+    t.estimate > 0 && (t.timeSessions || []).length > 0
+  );
+  if (!eligible.length) return { rate: 0, onCount: 0, eligibleCount: 0 };
+  const onCount = eligible.filter(t => {
+    const actualMins = (t.timeLogged || 0) / 60;
+    return Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
+  }).length;
+  return { rate: Math.round(onCount / eligible.length * 100), onCount, eligibleCount: eligible.length };
+}
+
+function statsCalcThroughput(start, end, range) {
+  const done = statsCompletedInRange(start, end);
+  const useWeekly = (range === '90d' || range === 'year');
+  const useMonthly = (range === 'year');
+  const buckets = {};
+  done.forEach(t => {
+    const d = new Date(t.completedAt);
+    let key;
+    if (useMonthly) {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    } else if (useWeekly) {
+      const day = new Date(d); day.setDate(day.getDate() - day.getDay());
+      key = dateToLocalStr(day);
+    } else {
+      key = dateToLocalStr(d);
+    }
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  return buckets;
+}
+
+function statsCalcDayOfWeek(start, end) {
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const counts = { Mon:0, Tue:0, Wed:0, Thu:0, Fri:0, Sat:0, Sun:0 };
+  statsCompletedInRange(start, end).forEach(t => {
+    const d = new Date(t.completedAt);
+    const dow = d.getDay(); // 0=Sun
+    const key = days[dow === 0 ? 6 : dow - 1];
+    counts[key]++;
+  });
+  return counts;
+}
+
+function statsCalcCreatedVsCompleted(start, end) {
+  const completedBuckets = {}, createdBuckets = {};
+  const bucket = d => { const w = new Date(d); w.setDate(w.getDate() - w.getDay()); return dateToLocalStr(w); };
+  statsCompletedInRange(start, end).forEach(t => { const k = bucket(new Date(t.completedAt)); completedBuckets[k] = (completedBuckets[k]||0)+1; });
+  statsCreatedInRange(start, end).forEach(t => { const k = bucket(new Date(t.createdAt)); createdBuckets[k] = (createdBuckets[k]||0)+1; });
+  return { completedBuckets, createdBuckets };
+}
+
+function statsCalcHeatmap(start, end) {
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const grid = {}; // grid[dow][hour] = minutes
+  days.forEach(d => { grid[d] = new Array(24).fill(0); });
+  tasks.forEach(t => {
+    statsSessionsInRange(t, start, end).forEach(s => {
+      const d = new Date(s.start);
+      const dow = days[d.getDay() === 0 ? 6 : d.getDay() - 1];
+      grid[dow][d.getHours()] += Math.round((s.elapsed || 0) / 60);
+    });
+  });
+  const allVals = days.flatMap(d => grid[d]);
+  const maxVal = Math.max(...allVals, 1);
+  const intensity = v => v === 0 ? 0 : v <= maxVal * 0.25 ? 1 : v <= maxVal * 0.5 ? 2 : v <= maxVal * 0.75 ? 3 : 4;
+  return { grid, intensity };
+}
+
+function statsCalcTimeByTag(start, end) {
+  const tagTotals = {};
+  let untaggedSecs = 0;
+  statsCompletedInRange(start, end).forEach(t => {
+    const secs = statsTaskTimeInRange(t, start, end);
+    if (!secs) return;
+    const tags = t.tags || [];
+    if (!tags.length) { untaggedSecs += secs; return; }
+    tags.forEach(tag => { tagTotals[tag] = (tagTotals[tag] || 0) + secs; });
+  });
+  const sorted = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
+  return { sorted, untaggedSecs };
+}
+
+function statsCalcEstimateScatter(start, end) {
+  return statsCompletedInRange(start, end)
+    .filter(t => t.estimate > 0 && (t.timeSessions || []).length > 0)
+    .map(t => {
+      const actualMins = (t.timeLogged || 0) / 60;
+      const onBand = Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
+      return { estimate: t.estimate, actual: actualMins, onBand };
+    });
+}
+
+function statsCalcEstimateBreakdown(start, end) {
+  const scatter = statsCalcEstimateScatter(start, end);
+  let onCount = 0, earlyCount = 0, overCount = 0;
+  scatter.forEach(p => {
+    const ratio = (p.actual - p.estimate) / p.estimate;
+    if (Math.abs(ratio) <= 0.20) onCount++;
+    else if (ratio < -0.20) earlyCount++;
+    else overCount++;
+  });
+  return { onCount, earlyCount, overCount, total: scatter.length };
+}
+
+function statsCalcStreakPanel(start, end, totalDays) {
+  const done = statsCompletedInRange(start, end);
+  const daySet = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
+  const activeDays = daySet.size;
+  return {
+    current: calcStreak(),
+    longest: calcLongestStreak(),
+    activeDays,
+    totalDays,
+    avgPerActiveDay: activeDays > 0 ? (done.length / activeDays) : 0
+  };
+}
+
+function statsCalcTodayKPIs() {
+  const today = dateToLocalStr(new Date());
+  const { start, end } = statsDateRange('today');
+  const doneToday = statsCompletedInRange(start, end);
+  const plannedToday = tasks.filter(t => !t.completed && !t.archived && t.due === today).length;
+  const { totalSecs, sessionCount } = statsCalcTimeTracked(start, end);
+  const running = activeTimerId ? tasks.find(t => t.id === activeTimerId) : null;
+  const runningMins = running && timerStart ? Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed) / 60) : 0;
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today && t.id !== activeTimerId).length;
+  return { doneCount: doneToday.length, plannedToday, totalSecs, sessionCount, running, runningMins, openToday };
+}
+
+function renderStatsWelcome() {
+  const day = statsNewUserDay();
+  const remaining = 7 - day;
+  const pct = Math.round((day / 7) * 100);
+  const timerOn = settings.timerEnabled !== false;
+  const estimatesOn = settings.estimatesEnabled !== false;
+  const totalCompleted = tasks.filter(t => t.completed).length;
+  const streak = calcStreak();
+  const totalSecs = tasks.reduce((s, t) => s + (t.timeLogged || 0), 0);
+  const sessionCount = tasks.reduce((n, t) => n + (t.timeSessions || []).length, 0);
+
+  const titleCopy = day <= 1 ? 'Off to a great start.'
+    : day <= 3 ? 'Building momentum.'
+    : day <= 5 ? 'Stats are filling in.'
+    : 'Almost a full week of data.';
+  const bodyCopy = day <= 1
+    ? 'Stats get more interesting after a few days. Keep completing tasks and come back to watch this page fill in.'
+    : day <= 5
+    ? `You're on day ${day}. Each completed task adds a data point — a few more days and the trends will start to emerge.`
+    : "You're nearly at a full week. The main trends will unlock soon — hang tight.";
+
+  const tiles = [
+    `<div class="stats-tile"><div class="stats-tile-label">Tasks completed</div><div class="stats-tile-value">${totalCompleted}</div><div class="stats-tile-delta">since you started</div></div>`,
+    `<div class="stats-tile"><div class="stats-tile-label">Current streak</div><div class="stats-tile-value">${streak}<span class="stats-tile-unit">day${streak !== 1 ? 's' : ''}</span></div><div class="stats-tile-delta">${streak > 0 ? 'nice — keep it going' : 'complete a task to start one'}</div></div>`,
+  ];
+  if (timerOn) tiles.push(`<div class="stats-tile"><div class="stats-tile-label">Time tracked</div><div class="stats-tile-value">${statsFmtTime(totalSecs)}</div><div class="stats-tile-delta">${sessionCount} session${sessionCount !== 1 ? 's' : ''}</div></div>`);
+
+  const coming = [
+    { when: '7 days', what: 'Throughput trends and day-of-week patterns' },
+    { when: '2 weeks', what: 'Created vs completed comparison' },
+    { when: '30 days', what: 'Monthly trends and long-term patterns' },
+  ];
+  if (timerOn) {
+    coming.splice(1, 0, { when: '10 sessions', what: 'Productivity heatmap — when you work best' });
+    coming.push({ when: 'anytime', what: "Time by tag — once you've tagged some tasks" });
+  }
+  if (timerOn && estimatesOn) coming.push({ when: '3 estimates', what: "Estimate accuracy — how well you're calibrating" });
+
+  const bars = [[30,.35],[55,.5],[75,.7],[90,.85],[60,.55],[45,.4],[80,.7]];
+  const preview = bars.map(([w, op]) => `<div class="stats-preview-bar" style="width:${w}%;opacity:${op}"></div>`).join('');
+
+  return `<div class="stats-page">
+    <div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div></div>
+    <div class="stats-welcome-card">
+      <div>
+        <div class="stats-welcome-title">${titleCopy}</div>
+        <div class="stats-welcome-body">${bodyCopy}</div>
+        <div class="stats-welcome-progress">
+          <div class="stats-welcome-progress-row"><span>Day ${day} of 7</span><span class="stats-welcome-progress-count">${remaining > 0 ? remaining + ' more day' + (remaining > 1 ? 's' : '') : 'Almost there!'}</span></div>
+          <div class="stats-progress-track"><div class="stats-progress-fill" style="width:${pct}%"></div></div>
+        </div>
+      </div>
+      <div class="stats-welcome-visual">${preview}<div class="stats-preview-label">A preview of what's coming</div></div>
+    </div>
+    <div class="stats-section-label">What we can show you so far</div>
+    <div class="stats-tiles" style="grid-template-columns:repeat(${tiles.length},1fr)">${tiles.join('')}</div>
+    <div class="stats-coming-card">
+      <div class="stats-coming-title">What unlocks as you keep going</div>
+      <div class="stats-coming-list">${coming.map(i=>`<div class="stats-coming-item"><div class="stats-coming-when">${i.when}</div><div class="stats-coming-what">${i.what}</div></div>`).join('')}</div>
+    </div>
+    <div class="stats-footnote">No pressure — just a heads up about what's ahead.</div>
+  </div>`;
+}
+
+function statsRangeLabel(range) {
+  return { 'today':'Today', '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
+}
+
+async function statsExportToGoogleDoc() {
+  if (!accessToken) {
+    showToast('Connect your Google account first to export stats.');
+    return;
+  }
+  const btn = document.querySelector('.stats-export-btn');
+  try {
+    await ensureToken();
+    if (btn) { btn.textContent = 'Exporting…'; btn.disabled = true; }
+
+    const range   = statsCurrentRange;
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const title   = `TaskSpark Stats — ${statsRangeLabel(range)} — ${dateStr}`;
+
+    // Collect all page CSS, promoting @media print rules to regular rules.
+    // Skip @font-face and strip external url() refs so the hidden window
+    // doesn't block on network requests (e.g. Google Fonts).
+    const cssRules = [];
+    for (const sheet of document.styleSheets) {
+      try {
+        for (const rule of sheet.cssRules) {
+          if (rule.type === CSSRule.FONT_FACE_RULE) continue;
+          if (rule.type === CSSRule.MEDIA_RULE && rule.conditionText === 'print') {
+            for (const pr of rule.cssRules) cssRules.push(pr.cssText);
+          } else {
+            cssRules.push(rule.cssText);
+          }
+        }
+      } catch {}
+    }
+    const css = cssRules.join('\n').replace(/url\(['"]?https?:\/\/[^'")\s]+['"]?\)/g, 'none');
+
+    // Capture the live rendered stats DOM (SVG charts and all)
+    const statsEl  = document.getElementById('stats-container');
+    const statsHtml = statsEl ? statsEl.innerHTML : '';
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+${css}
+@page { margin: 1.5cm 2cm; }
+body { background: #ffffff !important; margin: 0; padding: 0; overflow: visible !important; }
+#stats-container {
+  display: block !important; overflow: visible !important;
+  height: auto !important; flex: none !important; width: 100% !important;
+}
+.stats-export-btn, .stats-range-picker { display: none !important; }
+.stats-print-tasks { display: block !important; }
+svg { overflow: visible !important; }
+</style>
+</head><body>
+<div id="stats-container" class="active">${statsHtml}</div>
+</body></html>`;
+
+    const result = await api.driveUploadPdf({ accessToken, title, html });
+    if (result && result.id) {
+      api.openAttachment(`https://drive.google.com/file/d/${result.id}/view`);
+    }
+  } catch (e) {
+    console.error('Export PDF to Drive failed:', e);
+    showToast('Export failed. Please try again.');
+  } finally {
+    if (btn) { btn.textContent = 'Export PDF'; btn.disabled = false; }
+  }
+}
+
+function renderStatsPrintTaskList(start, end, range) {
+  const completed = statsCompletedInRange(start, end)
+    .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
+  const exportedAt = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
+  const heading = `<div class="stats-print-tasks-header">Completed tasks &middot; ${statsRangeLabel(range)} <span style="font-weight:400;color:var(--text2)">· exported ${exportedAt}</span></div>`;
+  if (!completed.length) return `<div class="stats-print-tasks">${heading}<div style="font-size:13px;color:var(--text3)">No completed tasks in this period.</div></div>`;
+  const groups = {};
+  completed.forEach(t => {
+    const k = dateToLocalStr(new Date(t.completedAt));
+    if (!groups[k]) groups[k] = [];
+    groups[k].push(t);
+  });
+  const rows = Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([k, ts]) => {
+    const label = new Date(k + 'T00:00:00').toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
+    const items = ts.map(t => {
+      const tags = (t.tags||[]).map(g=>`<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+      const secs = statsTaskTimeInRange(t, start, end);
+      return `<div class="stats-print-task-row"><div class="stats-print-task-title">${esc(t.title)}${tags}</div><div class="stats-print-task-time">${secs ? statsFmtTime(secs) : ''}</div></div>`;
+    }).join('');
+    return `<div class="stats-print-group"><div class="stats-print-group-date">${label}</div>${items}</div>`;
+  }).join('');
+  return `<div class="stats-print-tasks">${heading}${rows}</div>`;
+}
+
+function statsRangePicker(active) {
+  return ['today','7d','30d','90d','year'].map(r =>
+    `<button class="stats-range-btn${r === active ? ' active' : ''}" onclick="statsSetRange('${r}')">${statsRangeLabel(r)}</button>`
+  ).join('');
+}
+
+function statsKpiRow(profile, start, end, range) {
+  const comp   = statsCalcCompleted(start, end);
+  const active = statsCalcActiveDays(start, end, statsDateRange(range).totalDays);
+  const dl     = range === 'today' ? '' : (comp.delta > 0 ? `<div class="stats-kpi-delta up">+${comp.delta} vs previous ${range}</div>` : comp.delta < 0 ? `<div class="stats-kpi-delta down">${comp.delta} vs previous ${range}</div>` : `<div class="stats-kpi-delta">no change vs previous ${range}</div>`);
+  const cols   = profile === 'PROFILE_BASIC' ? 2 : 4;
+  let html = `
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed</div><div class="stats-kpi-value">${comp.count}</div>${dl}</div>
+    <div class="stats-kpi"><div class="stats-kpi-label">Active days</div><div class="stats-kpi-value">${active.activeDays}<span class="stats-kpi-unit">/ ${active.totalDays}</span></div><div class="stats-kpi-delta">${active.avg.toFixed(1)} tasks per active day</div></div>`;
+  if (profile !== 'PROFILE_BASIC') {
+    const tt = statsCalcTimeTracked(start, end);
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(tt.totalSecs)}</div><div class="stats-kpi-delta">across ${tt.sessionCount} session${tt.sessionCount !== 1 ? 's' : ''}</div></div>`;
+  }
+  if (profile === 'PROFILE_TIMER') {
+    const avg = statsCalcAvgTime(start, end);
+    const avgVal = avg.mean > 0 ? `${Math.round(avg.mean/60)}<span class="stats-kpi-unit">min</span>` : `<span style="color:var(--text3)">—</span>`;
+    const avgDelta = avg.mean > 0 ? `median ${Math.round(avg.median/60)} min` : 'no timed tasks yet';
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">Avg time per task</div><div class="stats-kpi-value">${avgVal}</div><div class="stats-kpi-delta">${avgDelta}</div></div>`;
+  }
+  if (profile === 'PROFILE_FULL') {
+    const est = statsCalcOnEstimate(start, end);
+    const estVal = est.eligibleCount > 0 ? `${est.rate}<span class="stats-kpi-unit">%</span>` : `<span style="color:var(--text3)">—</span>`;
+    const estDelta = est.eligibleCount > 0 ? `within ±20% · ${est.onCount} of ${est.eligibleCount} eligible` : 'no tasks with estimates yet';
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">On-estimate rate</div><div class="stats-kpi-value">${estVal}</div><div class="stats-kpi-delta">${estDelta}</div></div>`;
+  }
+  return `<div class="stats-kpi-row stats-kpi-cols-${cols}">${html}</div>`;
+}
+
+function statsChartBuckets(start, end, range) {
+  const throughput = statsCalcThroughput(start, end, range);
+  const buckets = [];
+  if (range === 'year') {
+    const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endM = new Date(end.getFullYear(), end.getMonth(), 1);
+    while (cur <= endM) {
+      const key = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`;
+      buckets.push({ key, label: cur.toLocaleDateString('en-GB',{month:'short'}), count: throughput[key]||0 });
+      cur.setMonth(cur.getMonth()+1);
+    }
+  } else if (range === '90d') {
+    const cur = new Date(start); cur.setDate(cur.getDate()-cur.getDay());
+    while (cur <= end) {
+      const key = dateToLocalStr(cur);
+      buckets.push({ key, label: cur.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), count: throughput[key]||0 });
+      cur.setDate(cur.getDate()+7);
+    }
+  } else {
+    const cur = new Date(start);
+    while (cur <= end) {
+      const key = dateToLocalStr(cur);
+      buckets.push({ key, label: cur.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), count: throughput[key]||0 });
+      cur.setDate(cur.getDate()+1);
+    }
+  }
+  return buckets;
+}
+
+function statsLineSvg(points, maxVal, color, W, H, PL, PT, PB, dashed) {
+  if (!points.length) return '';
+  const xP = i => PL + (points.length <= 1 ? W/2 : (i/(points.length-1))*W);
+  const yP = v => PT + H - (v/Math.max(maxVal,1))*H;
+  const base = PT+H;
+  const line = points.map((p,i) => `${i===0?'M':'L'} ${xP(i).toFixed(1)},${yP(p).toFixed(1)}`).join(' ');
+  const area = `M ${xP(0).toFixed(1)},${base} `+points.map((p,i)=>`L ${xP(i).toFixed(1)},${yP(p).toFixed(1)}`).join(' ')+` L ${xP(points.length-1).toFixed(1)},${base} Z`;
+  return (dashed ? '' : `<path d="${area}" fill="${color}" opacity="0.12"/>`) +
+    `<path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"${dashed?' stroke-dasharray="4,3"':''}/>`;
+}
+
+function renderStatsThroughputCard(start, end, range) {
+  const buckets = statsChartBuckets(start, end, range);
+  const maxVal = Math.max(...buckets.map(b=>b.count), 1);
+  const PL=28, PT=8, PB=20, W=560, H=155, TW=PL+W, TH=PT+H+PB;
+  const yStep = maxVal<=5?1:maxVal<=10?2:maxVal<=20?5:10;
+  let grid='';
+  for (let v=yStep; v<=maxVal; v+=yStep) {
+    const y=(PT+H-(v/maxVal)*H).toFixed(1);
+    grid+=`<line x1="${PL}" y1="${y}" x2="${TW}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
+      <text x="${PL-3}" y="${+y+3}" fill="var(--text3)" font-size="9" text-anchor="end">${v}</text>`;
+  }
+  const base=(PT+H).toFixed(1);
+  grid+=`<line x1="${PL}" y1="${base}" x2="${TW}" y2="${base}" stroke="var(--border2)" stroke-width="1"/>`;
+  const labelAt = buckets.length<=7 ? buckets.map((_,i)=>i) : [0,Math.floor(buckets.length/2),buckets.length-1];
+  const xP = i => PL+(buckets.length<=1?W/2:(i/(buckets.length-1))*W);
+  const labels = labelAt.map(i=>`<text x="${xP(i).toFixed(1)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">${buckets[i].label}</text>`).join('');
+  const totalDone = buckets.reduce((a,b)=>a+(b.count||0),0);
+  const peak = Math.max(0, ...buckets.map(b=>b.count||0));
+  const svg = `<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-labelledby="stats-throughput-title"><title id="stats-throughput-title">Tasks completed over time. Total: ${totalDone}. Peak: ${peak} on a single day.</title>${grid}${statsLineSvg(buckets.map(b=>b.count),maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${labels}</svg>`;
+  const hint = {today:'',  '7d':'Daily · last 7 days','30d':'Daily · last 30 days','90d':'Weekly · last 90 days','year':'Monthly · last year'}[range]||'';
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Tasks completed over time</div><div class="stats-card-hint">${hint}</div></div>${svg}</div>`;
+}
+
+function renderStatsCreatedVsCompletedCard(start, end, daysInRange) {
+  if (daysInRange < 14) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div><div class="stats-card-hint">Weekly</div></div><div class="stats-empty-msg">Not enough history yet — needs at least 14 days of data.</div></div>`;
+  }
+  const { completedBuckets, createdBuckets } = statsCalcCreatedVsCompleted(start, end);
+  const allKeys = [];
+  const wCur = new Date(start); wCur.setDate(wCur.getDate() - wCur.getDay());
+  const wEnd = new Date(end);
+  while (wCur <= wEnd) { allKeys.push(dateToLocalStr(wCur)); wCur.setDate(wCur.getDate()+7); }
+  if (!allKeys.length) return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div></div><div class="stats-empty-msg">No data for this period.</div></div>`;
+  const cVals = allKeys.map(k=>completedBuckets[k]||0);
+  const crVals = allKeys.map(k=>createdBuckets[k]||0);
+  const maxVal = Math.max(...cVals,...crVals,1);
+  const PL=28,PT=8,PB=20,W=560,H=155,TW=PL+W,TH=PT+H+PB;
+  const base=(PT+H).toFixed(1);
+  const grid=`<line x1="${PL}" y1="${base}" x2="${TW}" y2="${base}" stroke="var(--border2)" stroke-width="1"/>`;
+  const labelAt = allKeys.length<=5?allKeys.map((_,i)=>i):[0,Math.floor(allKeys.length/2),allKeys.length-1];
+  const xP = i=>PL+(allKeys.length<=1?W/2:(i/(allKeys.length-1))*W);
+  const labels = labelAt.map(i=>{
+    const d=new Date(allKeys[i]+'T00:00:00');
+    return `<text x="${xP(i).toFixed(1)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</text>`;
+  }).join('');
+  const dots = cVals.map((_,i)=>`<circle cx="${xP(i).toFixed(1)}" cy="${(PT+H-(cVals[i]/maxVal)*H).toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
+  const legend=`<text x="${TW-80}" y="14" fill="var(--text2)" font-size="11">— Completed</text><text x="${TW-80}" y="26" fill="var(--amber)" font-size="11">- - Created</text>`;
+  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-label="Created vs completed tasks over time">${grid}${statsLineSvg(crVals,maxVal,'var(--amber)',W,H,PL,PT,PB,true)}${statsLineSvg(cVals,maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${dots}${labels}${legend}</svg>`;
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div><div class="stats-card-hint">Weekly</div></div>${svg}</div>`;
+}
+
+function renderStatsDowCard(start, end, daysInRange) {
+  if (daysInRange < 14) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">By day of week</div><div class="stats-card-hint">Tasks completed</div></div><div class="stats-empty-msg">Not enough history yet — needs at least 14 days of data.</div></div>`;
+  }
+  const counts = statsCalcDayOfWeek(start, end);
+  const days = settings.streakWeekends ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] : ['Mon','Tue','Wed','Thu','Fri'];
+  const maxVal = Math.max(...days.map(d => counts[d]||0), 1);
+  const bars = days.map(d=>`<div class="stats-dow-row"><div class="stats-dow-label">${d}</div><div class="stats-dow-track"><div class="stats-dow-fill" style="width:${Math.round((counts[d]||0)/maxVal*100)}%"></div></div><div class="stats-dow-val">${counts[d]||0}</div></div>`).join('');
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">By day of week</div><div class="stats-card-hint">Tasks completed</div></div><div class="stats-dow-bars">${bars}</div></div>`;
+}
+
+function renderStatsHeatmapCard(start, end) {
+  const totalSessions = tasks.reduce((n,t)=>n+statsSessionsInRange(t,start,end).length,0);
+  if (totalSessions < 10) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">When you're most productive</div><div class="stats-card-hint">Time tracked by hour</div></div><div class="stats-empty-msg">Not enough sessions yet — needs at least 10 timer sessions.</div></div>`;
+  }
+  const { grid, intensity } = statsCalcHeatmap(start, end);
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const cells = days.map(day=>{
+    const row = days.indexOf(day);
+    const label = `<div class="stats-hm-label">${day}</div>`;
+    const cols = grid[day].map((v,h)=>`<div class="stats-hm-cell"${intensity(v)>0?` data-v="${intensity(v)}"`:''} title="${day} ${h}:00 — ${v}m"></div>`).join('');
+    return label+cols;
+  }).join('');
+  const hourLabels = `<div></div>`+Array.from({length:24},(_,h)=>`<div style="text-align:center;font-size:9px;color:var(--text3)">${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':h===23?'':''}${''}</div>`).join('');
+  const legend=`<div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--text2)"><span>Less</span><div style="width:10px;height:10px;background:var(--surface2);border-radius:2px"></div><div style="width:10px;height:10px;background:color-mix(in srgb,var(--accent) 25%,var(--surface2));border-radius:2px"></div><div style="width:10px;height:10px;background:color-mix(in srgb,var(--accent) 50%,var(--surface2));border-radius:2px"></div><div style="width:10px;height:10px;background:color-mix(in srgb,var(--accent) 75%,var(--surface2));border-radius:2px"></div><div style="width:10px;height:10px;background:var(--accent);border-radius:2px"></div><span>More</span></div>`;
+  const hmGrid=`<div class="stats-heatmap">${cells}</div><div class="stats-heatmap" style="margin-top:2px">${hourLabels}</div>`;
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">When you're most productive</div><div class="stats-card-hint">Time tracked by hour</div></div>${hmGrid}${legend}</div>`;
+}
+
+function renderStatsTimeByTagCard(start, end) {
+  const { sorted, untaggedSecs } = statsCalcTimeByTag(start, end);
+  if (!sorted.length && !untaggedSecs) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div><div class="stats-empty-msg">No tagged tasks with tracked time yet.</div></div>`;
+  }
+  const rows = sorted.map(([tag,secs])=>`<div class="stats-tag-row"><div class="stats-tag-name">${esc(tag)}</div><div class="stats-tag-time">${statsFmtTime(secs)}</div></div>`).join('');
+  const untagged = untaggedSecs ? `<div class="stats-tag-row"><div class="stats-tag-name untagged">Untagged</div><div class="stats-tag-time">${statsFmtTime(untaggedSecs)}</div></div>` : '';
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div>${rows}${untagged}</div>`;
+}
+
+function renderStatsEstimateBreakdownCard(start, end) {
+  const bd = statsCalcEstimateBreakdown(start, end);
+  if (!bd.total) return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimate accuracy breakdown</div></div><div class="stats-empty-msg">No eligible tasks yet.</div></div>`;
+  const earlyPct = Math.round(bd.earlyCount/bd.total*100);
+  const onPct    = Math.round(bd.onCount/bd.total*100);
+  const overPct  = 100-earlyPct-onPct;
+  return `<div class="stats-card">
+    <div class="stats-card-header"><div class="stats-card-title">Estimate accuracy breakdown</div><div class="stats-card-hint">${bd.total} completed tasks had estimates</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">On estimate <span style="font-size:11px;color:var(--text3)">(within ±20%)</span></div><div class="stats-stat-value" style="color:var(--accent)">${bd.onCount} tasks</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Finished early <span style="font-size:11px;color:var(--text3)">(20%+ under)</span></div><div class="stats-stat-value">${bd.earlyCount} tasks</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Ran over <span style="font-size:11px;color:var(--text3)">(20%+ over)</span></div><div class="stats-stat-value" style="color:var(--amber)">${bd.overCount} tasks</div></div>
+    <div class="stats-estimate-bar" style="margin-top:14px">
+      <div class="stats-estimate-bar-early" style="width:${earlyPct}%"></div>
+      <div class="stats-estimate-bar-on" style="width:${onPct}%"></div>
+      <div class="stats-estimate-bar-over" style="width:${overPct}%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px"><span>Early</span><span>On estimate</span><span>Over</span></div>
+  </div>`;
+}
+
+function renderStatsScatterCard(start, end) {
+  const points = statsCalcEstimateScatter(start, end);
+  if (!points.length) return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimated vs actual</div></div><div class="stats-empty-msg">No eligible tasks yet.</div></div>`;
+  const maxVal = Math.max(...points.flatMap(p=>[p.estimate,p.actual]),30);
+  const ceil = maxVal<=60?60:maxVal<=120?120:maxVal<=240?240:Math.ceil(maxVal/60)*60;
+  const PL=30,PT=8,PB=24,W=550,H=155,TW=PL+W,TH=PT+H+PB;
+  const xP = v=>PL+(v/ceil)*W;
+  const yP = v=>PT+H-(v/ceil)*H;
+  const ideal=`<path d="M ${xP(0)},${yP(0)} L ${xP(ceil)},${yP(ceil)}" stroke="var(--border2)" stroke-width="1.5" stroke-dasharray="4,4"/>`;
+  const idealLabel=`<text x="${xP(ceil*0.7)}" y="${yP(ceil*0.7)-5}" fill="var(--text3)" font-size="9">ideal (estimate = actual)</text>`;
+  const dots=points.map(p=>`<circle cx="${xP(p.estimate).toFixed(1)}" cy="${yP(p.actual).toFixed(1)}" r="3.5" fill="${p.onBand?'var(--accent)':'var(--amber)'}" opacity="0.75"/>`).join('');
+  const axes=`<line x1="${PL}" y1="${PT+H}" x2="${TW}" y2="${PT+H}" stroke="var(--border2)" stroke-width="1"/>
+    <text x="${PL}" y="${TH}" fill="var(--text3)" font-size="10">0</text>
+    <text x="${xP(ceil/2)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">Estimated (min) →</text>
+    <text x="${TW}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="end">${ceil}</text>
+    <text x="${PL+2}" y="${PT+10}" fill="var(--text3)" font-size="10">↑ Actual</text>`;
+  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-label="Estimate vs actual time spent">${ideal}${idealLabel}${dots}${axes}</svg>`;
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimated vs actual</div><div class="stats-card-hint">Each dot is a completed task</div></div>${svg}</div>`;
+}
+
+function statsSetRange(range) {
+  statsCurrentRange = range;
+  renderStatsView();
+}
+
+function renderStatsView() {
+  const container = document.getElementById('stats-container');
+  if (!container) return;
+
+  if (statsIsNewUser()) {
+    container.innerHTML = renderStatsWelcome();
+    return;
+  }
+
+  const range = statsCurrentRange;
+  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div><button class="stats-export-btn" onclick="statsExportToGoogleDoc()">Export PDF</button></div></div>`;
+
+  if (range === 'today') {
+    const { start: ts, end: te } = statsDateRange('today');
+    container.innerHTML = `<div class="stats-page">${header}${renderStatsDailyLayout()}${renderStatsPrintTaskList(ts, te, 'today')}</div>`;
+    statsStartDailyTick();
+    return;
+  }
+
+  const { start, end, totalDays } = statsDateRange(range);
+  const profile = statsDetectProfile(start, end);
+  const daysInRange = Math.round((end - start) / 86400000);
+  const noData = statsCompletedInRange(start, end).length === 0;
+
+  let rows = '';
+  if (noData) rows += `<div class="stats-empty-range">No completed tasks in this period — numbers will fill in once you start wrapping things up.</div>`;
+  rows += `<div class="stats-grid" style="margin-bottom:16px">${renderStatsThroughputCard(start, end, range)}<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Streak</div></div>${renderStatsStreakPanel(start, end, totalDays)}</div></div>`;
+  if (range !== '7d') rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsCreatedVsCompletedCard(start, end, daysInRange)}${renderStatsDowCard(start, end, daysInRange)}</div>`;
+  if (profile !== 'PROFILE_BASIC') {
+    rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsHeatmapCard(start, end)}${renderStatsTimeByTagCard(start, end)}</div>`;
+  }
+  if (profile === 'PROFILE_FULL') {
+    rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsEstimateBreakdownCard(start, end)}${renderStatsScatterCard(start, end)}</div>`;
+  }
+
+  container.innerHTML = `<div class="stats-page">${header}${statsKpiRow(profile, start, end, range)}${rows}<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>${renderStatsPrintTaskList(start, end, range)}</div>`;
+}
+
+function renderStatsStreakPanel(start, end, totalDays) {
+  const s = statsCalcStreakPanel(start, end, totalDays);
+  return `<div class="stats-streak-big">${s.current}</div><div class="stats-streak-label">day current streak</div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Longest streak</div><div class="stats-stat-value">${s.longest} days</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">This period</div><div class="stats-stat-value">${s.activeDays} / ${s.totalDays} days</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Avg per active day</div><div class="stats-stat-value">${s.avgPerActiveDay.toFixed(1)} tasks</div></div>`;
+}
+
+function renderStatsDailyLayout() {
+  const { start, end } = statsDateRange('today');
+  const kpis = statsCalcTodayKPIs();
+  const timerOn = settings.timerEnabled !== false;
+  const hasActivity = kpis.doneCount > 0 || (timerOn && kpis.sessionCount > 0);
+  const now = new Date();
+  const banner = `<div class="stats-date-banner" id="stats-date-banner">${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
+  let kpiHtml = `
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed today</div><div class="stats-kpi-value">${kpis.doneCount}</div><div class="stats-kpi-delta">of ${kpis.plannedToday} planned</div></div>`;
+  if (timerOn) {
+    kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(kpis.totalSecs)}</div><div class="stats-kpi-delta">across ${kpis.sessionCount} session${kpis.sessionCount !== 1 ? 's' : ''}</div></div>
+    <div class="stats-kpi"><div class="stats-kpi-label">In progress</div><div class="stats-kpi-value">${kpis.running ? 1 : 0}</div><div class="stats-kpi-delta">${kpis.running ? `running for ${kpis.runningMins}m` : 'no active timer'}</div></div>`;
+  }
+  kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Still open today</div><div class="stats-kpi-value">${kpis.openToday}</div><div class="stats-kpi-delta">due before end of day</div></div>`;
+  const kpiCols = timerOn ? 4 : 2;
+  const kpiRow = `<div class="stats-kpi-row stats-kpi-cols-${kpiCols}">${kpiHtml}</div>`;
+  const activityCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Today's activity</div><div class="stats-card-hint">24-hour view</div></div>${renderStatsActivityStrip()}</div>` : '';
+  if (!hasActivity) {
+    return banner + kpiRow + activityCard + `<div class="stats-card"><div class="stats-empty-msg">Nothing to reflect on yet. Come back once you've got the day going.</div></div>`;
+  }
+  const hourCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Time by hour</div><div class="stats-card-hint">Minutes tracked</div></div>${renderStatsHourChart()}</div>` : '';
+  return banner + kpiRow + activityCard + renderStatsDailyTaskLists(start, end) + hourCard + `<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>`;
+}
+
+function renderStatsDailyTaskLists(start, end) {
+  const today = dateToLocalStr(new Date());
+  const doneToday = statsCompletedInRange(start, end);
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today);
+
+  const doneItems = doneToday.map(t => {
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const secs = statsTaskTimeInRange(t, start, end);
+    return `<div class="stats-task-item"><div class="stats-task-check">✓</div><div class="stats-task-title done">${esc(t.title)}${tags}</div><div class="stats-task-time">${secs ? statsFmtTime(secs) : ''}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">No tasks completed yet today.</div>`;
+
+  const openItems = openToday.map(t => {
+    const isRunning = activeTimerId === t.id;
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const timeStr = isRunning ? `running · ${Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed)/60)}m` : (t.dueTime ? `due ${fmtTime(t.dueTime)}` : 'due today');
+    return `<div class="stats-task-item"><div class="stats-task-check ${isRunning ? 'running' : 'open'}"></div><div class="stats-task-title">${esc(t.title)}${tags}</div><div class="stats-task-time">${timeStr}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">Nothing else due today.</div>`;
+
+  return `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Completed today</div><div class="stats-card-hint">${doneToday.length} tasks</div></div><div class="stats-task-list">${doneItems}</div></div>
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Still on today's plate</div><div class="stats-card-hint">${openToday.length} open</div></div><div class="stats-task-list">${openItems}</div></div>
+  </div>`;
+}
+
+function renderStatsActivityStrip() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowPct = Math.min(100, ((Date.now() - midnight) / dayMs) * 100);
+  const blocks = [], dots = [];
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs) {
+        const startPct = ((sStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((s.elapsed || 0) * 1000 / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%"></div>`);
+      }
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = Math.max(timerStart * 1000, midnight);
+      if (runStart < midnight + dayMs) {
+        const startPct = ((runStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((Date.now() - runStart) / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%;background:var(--amber)"></div>`);
+      }
+    }
+    if (t.completed && t.completedAt) {
+      const cAt = new Date(t.completedAt).getTime();
+      if (cAt >= midnight && cAt < midnight + dayMs) {
+        const pct = ((cAt - midnight) / dayMs) * 100;
+        dots.push(`<div class="stats-strip-dot" style="left:${pct.toFixed(2)}%"></div>`);
+      }
+    }
+  });
+  const hourLabels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  const legend = `<div class="stats-strip-legend">
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch"></div><span>Session</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch" style="background:var(--amber);opacity:1"></div><span>Running now</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-dot"></div><span>Task completed</span></div>
+  </div>`;
+  return `<div class="stats-strip-track">${blocks.join('')}${dots.join('')}<div class="stats-strip-now" style="left:${nowPct.toFixed(2)}%"></div></div>
+    <div class="stats-strip-hours">${hourLabels}</div>${legend}`;
+}
+
+function renderStatsHourChart() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowHour = new Date().getHours();
+  const hourMins = new Array(24).fill(0);
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs)
+        hourMins[new Date(s.start).getHours()] += Math.round((s.elapsed || 0) / 60);
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = timerStart * 1000;
+      if (runStart >= midnight && runStart < midnight + dayMs)
+        hourMins[new Date(runStart).getHours()] += Math.floor((Date.now()/1000 - timerStart) / 60);
+    }
+  });
+  const maxMins = Math.max(...hourMins, 1);
+  const bars = hourMins.map((mins, h) => {
+    const pct = (mins / maxMins) * 100;
+    const cls = h === nowHour ? 'stats-hour-bar now' : mins === 0 ? 'stats-hour-bar empty' : 'stats-hour-bar';
+    return `<div class="${cls}" style="height:${mins > 0 ? Math.max(pct, 4).toFixed(1) : '0'}%"></div>`;
+  }).join('');
+  const labels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  return `<div class="stats-hour-chart">${bars}</div><div class="stats-hour-labels">${labels}</div>`;
+}
+
+let _statsDailyTick = null;
+function statsStartDailyTick() {
+  clearInterval(_statsDailyTick);
+  _statsDailyTick = setInterval(() => {
+    if (!statsMode || statsCurrentRange !== 'today') { clearInterval(_statsDailyTick); return; }
+    const el = document.getElementById('stats-date-banner');
+    if (!el) { clearInterval(_statsDailyTick); return; }
+    const now = new Date();
+    el.textContent = `${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}`;
+  }, 30000);
+}
+
 function toggleKanbanGroup(tag) {
   const el = document.getElementById('kanban-group-' + tag);
   if (!el) return;
@@ -2078,6 +3130,7 @@ function openTaskModal(id = null) {
   editingId = id;
   modalTags = [];
   modalDue  = '';
+  modalAttachments = [];
   document.getElementById('task-modal-title').textContent = id ? 'Edit Task' : 'New Task';
 
   if (id) {
@@ -2099,6 +3152,9 @@ function openTaskModal(id = null) {
     if (document.getElementById('tm-due-time')) document.getElementById('tm-due-time').value = task.dueTime || '';
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
+    const overdueAlertCb = document.getElementById('tm-overdue-alert');
+    if (overdueAlertCb) overdueAlertCb.checked = task.overdueAlert === true;
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -2112,8 +3168,9 @@ function openTaskModal(id = null) {
     modalAttachments = [];
     const clearBtnNew = document.getElementById('tm-due-time-clear');
     if (clearBtnNew) clearBtnNew.style.display = 'none';
-    const clearBtnNew2 = document.getElementById('tm-due-time-clear');
-    if (clearBtnNew2) clearBtnNew2.style.display = 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
+    const overdueAlertCbNew = document.getElementById('tm-overdue-alert');
+    if (overdueAlertCbNew) overdueAlertCbNew.checked = false;
   }
 
   renderModalAttachments();
@@ -2126,7 +3183,11 @@ function openTaskModal(id = null) {
   setTimeout(() => document.getElementById('tm-title').focus(), 100);
 }
 
+let _savingTask = false;
 function saveTask() {
+  if (_savingTask) return;
+  _savingTask = true;
+  setTimeout(() => { _savingTask = false; }, 800);
   const title = document.getElementById('tm-title').value.trim();
   if (!title) { document.getElementById('tm-title').focus(); return; }
 
@@ -2144,6 +3205,8 @@ function saveTask() {
     energy:     document.getElementById('tm-energy').value,
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
+    hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
+    overdueAlert: document.getElementById('tm-overdue-alert')?.checked || false,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -2164,6 +3227,7 @@ function saveTask() {
       ...data
     };
     tasks.push(newTask);
+    checkOnboardingItem('addTask');
   }
 
   closeModal('task-modal-overlay');
@@ -2225,6 +3289,11 @@ function showLinkInputDialog() {
   document.body.appendChild(overlay);
   const input = overlay.querySelector('#att-link-input');
   input.focus();
+  let keyHandler = null;
+  const cleanup = () => {
+    if (overlay.parentNode) document.body.removeChild(overlay);
+    if (keyHandler) document.removeEventListener('keydown', keyHandler, true);
+  };
   const confirm = () => {
     const url = input.value.trim();
     if (!url) return;
@@ -2232,11 +3301,16 @@ function showLinkInputDialog() {
     const name = withProtocol.replace(/^https?:\/\//, '').split('/')[0];
     modalAttachments.push({ type: 'link', name, path: withProtocol });
     renderModalAttachments();
-    document.body.removeChild(overlay);
+    cleanup();
   };
   overlay.querySelector('#att-link-confirm').onclick = confirm;
-  overlay.querySelector('#att-link-cancel').onclick  = () => document.body.removeChild(overlay);
-  input.onkeydown = e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') document.body.removeChild(overlay); };
+  overlay.querySelector('#att-link-cancel').onclick  = cleanup;
+  // Click outside the dialog body to dismiss
+  overlay.addEventListener('click', e => { if (e.target === overlay) cleanup(); });
+  // Escape closes from anywhere
+  keyHandler = e => { if (e.key === 'Escape') { e.preventDefault(); cleanup(); } };
+  document.addEventListener('keydown', keyHandler, true);
+  input.onkeydown = e => { if (e.key === 'Enter') confirm(); };
 }
 
 function showAttachmentTypeDialog() {
@@ -2252,9 +3326,18 @@ function showAttachmentTypeDialog() {
       </div>
     </div>`;
     document.body.appendChild(overlay);
-    overlay.querySelector('#att-file-btn').onclick   = () => { document.body.removeChild(overlay); resolve('file'); };
-    overlay.querySelector('#att-link-btn').onclick   = () => { document.body.removeChild(overlay); resolve('link'); };
-    overlay.querySelector('#att-cancel-btn').onclick = () => { document.body.removeChild(overlay); resolve(null); };
+    let keyHandler = null;
+    const close = (val) => {
+      if (overlay.parentNode) document.body.removeChild(overlay);
+      if (keyHandler) document.removeEventListener('keydown', keyHandler, true);
+      resolve(val);
+    };
+    overlay.querySelector('#att-file-btn').onclick   = () => close('file');
+    overlay.querySelector('#att-link-btn').onclick   = () => close('link');
+    overlay.querySelector('#att-cancel-btn').onclick = () => close(null);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
+    keyHandler = e => { if (e.key === 'Escape') { e.preventDefault(); close(null); } };
+    document.addEventListener('keydown', keyHandler, true);
   });
 }
 
@@ -2334,14 +3417,18 @@ function renderSubtasksHTML(task) {
   </div>`;
 }
 
+function _subtaskStateKey() {
+  // Namespace by workspace so task IDs from different workspaces don't collide
+  return 'taskspark_subtask_state_' + (activeWorkspaceId || 'default');
+}
 function getSubtaskState() {
-  try { return JSON.parse(localStorage.getItem('taskspark_subtask_state') || '{}'); } catch { return {}; }
+  try { return JSON.parse(localStorage.getItem(_subtaskStateKey()) || '{}'); } catch { return {}; }
 }
 
 function saveSubtaskState(id, isOpen) {
   const state = getSubtaskState();
   state[id] = isOpen;
-  try { localStorage.setItem('taskspark_subtask_state', JSON.stringify(state)); } catch {}
+  try { localStorage.setItem(_subtaskStateKey(), JSON.stringify(state)); } catch {}
 }
 
 function toggleSubtasks(id) {
@@ -2544,7 +3631,7 @@ function deleteTask(id) {
   if (!task) return;
   showConfirmModal(
     'Delete Task',
-    `Delete "<strong>${esc(task.title)}</strong>"? This cannot be undone.`,
+    `Delete "<strong>${task.title}</strong>"? This cannot be undone.`,
     'Delete',
     () => {
       if (activeTimerId === id) cancelTimer();
@@ -2564,16 +3651,26 @@ function toggleComplete(id) {
   pushUndo(completing ? 'Complete task' : 'Uncomplete task');
 
   if (completing) {
+    completionPreviousStatus = task.status || 'not-started';
     if (activeTimerId === id) stopTimerSave();
     task.completed  = true;
+    checkOnboardingItem('completeTask');
     task.completedAt = new Date().toISOString();
     task.status = 'done';
-    if (!settings.completionDialog) {
-      saveTasks(); renderAll();
-      if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+    const showDialog = settings.completionDialog && (
+      (task.priority === 'high'   && settings.completionDialogHigh !== false) ||
+      (task.priority === 'medium' && settings.completionDialogMed  !== false) ||
+      (task.priority === 'low'    && settings.completionDialogLow  === true)
+    );
+    if (!showDialog) {
+      triggerCelebration(id, () => {
+        saveTasks(); renderAll();
+        if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      });
       return;
     }
-    // Show completion dialog
+    // Show completion dialog — animate card while it's still in the DOM
+    triggerCelebration(id);
     completionTaskId = id;
     selectedImpact   = 'medium';
     document.getElementById('cm-task-name').textContent = task.title.length > 50 ? task.title.slice(0,48)+'…' : task.title;
@@ -2623,13 +3720,23 @@ function saveCompletion(skip) {
   }
 
   saveTasks(); renderAll();
-  // Prompt recurring after completion dialog
+  // If the user pressed Skip, don't pile on more prompts
+  if (skip) return;
+  // Sequence the prompts so a recurrence prompt isn't immediately overwritten by a wins prompt
   const completedTask = tasks.find(t => t.id === completionTaskId);
-  if (completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none') {
-    setTimeout(() => promptRecurringTask(completedTask), 300);
-  }
-  // Offer to add to Wins Board if enabled
-  if (settings.winsEnabled !== false && completedTask) {
+  const recurring = completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none';
+  const winsOk    = settings.winsEnabled !== false && completedTask;
+  if (recurring) {
+    setTimeout(() => promptRecurringTask(completedTask, winsOk ? () => {
+      // After recurrence prompt closes, optionally show wins prompt
+      setTimeout(() => showConfirmModal(
+        'Add to Wins Board',
+        `Capture <strong>${esc(completedTask.title)}</strong> as a win?`,
+        'Add Win',
+        () => addWinFromTask(completedTask.title)
+      ), 200);
+    } : null), 300);
+  } else if (winsOk) {
     setTimeout(() => {
       showConfirmModal(
         'Add to Wins Board',
@@ -2647,6 +3754,31 @@ function selectImpact(level) {
     const el = document.getElementById(`imp-${l}`);
     el.className = `impact-opt ${l === level ? 'selected-'+l : ''}`;
   });
+}
+
+function cancelCompletion() {
+  const task = tasks.find(t => t.id === completionTaskId);
+  if (task) {
+    task.completed   = false;
+    task.completedAt = '';
+    task.status      = completionPreviousStatus;
+  }
+  closeModal('completion-modal-overlay');
+  saveTasks();
+  renderAll();
+}
+
+function triggerCelebration(id, callback) {
+  const card = document.getElementById(`task-card-${id}`);
+  if (!settings.celebrationEnabled || !card) {
+    if (callback) callback();
+    return;
+  }
+  card.classList.add('celebrating');
+  setTimeout(() => {
+    if (callback) callback();
+    else card.classList.remove('celebrating');
+  }, 450);
 }
 
 // ── Tags ───────────────────────────────────────────────────────────────────
@@ -2681,7 +3813,7 @@ function showTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
       <span style="width:8px;height:8px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -2777,7 +3909,7 @@ function renderCalendar() {
       dateStr === today ? 'today' : '',
       dateStr === modalDue ? 'selected' : '',
     ].filter(Boolean).join(' ');
-    cells += `<div class="${cls}" onclick="pickDate('${dateStr}')">${d}</div>`;
+    cells += `<div class="${cls}" onclick="pickDate('${escJs(dateStr)}')">${d}</div>`;
   }
 
   popup.innerHTML = `
@@ -2808,17 +3940,113 @@ function pickDate(dateStr) {
   document.removeEventListener('click', closeCalendarOutside);
 }
 
-function refreshDueBtn() {
-  const btn = document.getElementById('tm-due-btn');
-  const lbl = document.getElementById('tm-due-label');
-  if (modalDue) {
-    const timePart = modalDueTime ? ` ${fmtTime(modalDueTime)}` : '';
-    lbl.textContent = fmtDate(modalDue) + timePart;
+// ── Wins date picker ─────────────────────────────────────────────────────────
+let winCalYear = new Date().getFullYear();
+let winCalMonth = new Date().getMonth();
+let winSelectedDate = '';
+
+function refreshWinDateBtn() {
+  const btn = document.getElementById('win-date-btn');
+  const lbl = document.getElementById('win-date-label');
+  if (!btn || !lbl) return;
+  if (winSelectedDate) {
+    lbl.textContent = fmtDate(winSelectedDate);
     btn.classList.add('has-date');
   } else {
     lbl.textContent = 'Pick a date';
     btn.classList.remove('has-date');
   }
+}
+
+function toggleWinCalendar() {
+  const popup = document.getElementById('win-calendar-popup');
+  if (popup.style.display === 'none') {
+    const d = winSelectedDate ? new Date(winSelectedDate + 'T00:00:00') : new Date();
+    winCalYear = d.getFullYear(); winCalMonth = d.getMonth();
+    renderWinCalendar();
+    const btn  = document.getElementById('win-date-btn');
+    const rect = btn.getBoundingClientRect();
+    popup.style.display = 'block';
+    popup.style.left  = rect.left + 'px';
+    popup.style.width = rect.width + 'px';
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 320 && rect.top > 320) {
+      popup.style.top    = (rect.top - popup.offsetHeight - 4) + 'px';
+    } else {
+      popup.style.top    = (rect.bottom + 4) + 'px';
+    }
+    setTimeout(() => document.addEventListener('click', closeWinCalendarOutside), 0);
+  } else {
+    popup.style.display = 'none';
+  }
+}
+
+function closeWinCalendarOutside(e) {
+  const popup = document.getElementById('win-calendar-popup');
+  const btn   = document.getElementById('win-date-btn');
+  if (popup && btn && !popup.contains(e.target) && !btn.contains(e.target)) {
+    popup.style.display = 'none';
+    document.removeEventListener('click', closeWinCalendarOutside);
+  }
+}
+
+function renderWinCalendar() {
+  const popup = document.getElementById('win-calendar-popup');
+  const monthNames = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const today = todayStr();
+  const firstDay   = new Date(winCalYear, winCalMonth, 1).getDay();
+  const daysInMonth = new Date(winCalYear, winCalMonth + 1, 0).getDate();
+  const startOffset = (firstDay + 6) % 7;
+  let cells = '';
+  for (let i = 0; i < startOffset; i++) cells += `<div class="cal-cell empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${winCalYear}-${String(winCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cls = ['cal-cell', ds === today ? 'today' : '', ds === winSelectedDate ? 'selected' : ''].filter(Boolean).join(' ');
+    cells += `<div class="${cls}" onclick="pickWinDate('${escJs(ds)}')">${d}</div>`;
+  }
+  popup.innerHTML = `
+    <div class="cal-header">
+      <button class="cal-nav" onclick="winCalNav(-1,event)">‹</button>
+      <span class="cal-month">${monthNames[winCalMonth]} ${winCalYear}</span>
+      <button class="cal-nav" onclick="winCalNav(1,event)">›</button>
+    </div>
+    <div class="cal-days-hdr">
+      ${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => `<div class="cal-day-hdr">${d}</div>`).join('')}
+    </div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-clear"><button class="cal-clear-btn" onclick="pickWinDate('')">Clear date</button></div>`;
+}
+
+function winCalNav(dir, e) {
+  if (e) e.stopPropagation();
+  winCalMonth += dir;
+  if (winCalMonth < 0)  { winCalMonth = 11; winCalYear--; }
+  if (winCalMonth > 11) { winCalMonth = 0;  winCalYear++; }
+  renderWinCalendar();
+}
+
+function pickWinDate(dateStr) {
+  winSelectedDate = dateStr;
+  refreshWinDateBtn();
+  const popup = document.getElementById('win-calendar-popup');
+  if (popup) popup.style.display = 'none';
+  document.removeEventListener('click', closeWinCalendarOutside);
+}
+
+function refreshDueBtn() {
+  const lbl = document.getElementById('tm-due-label');
+  const btn = document.getElementById('tm-due-btn');
+  if (modalDue) {
+    const timePart = modalDueTime ? ` ${fmtTime(modalDueTime)}` : '';
+    if (lbl) lbl.textContent = fmtDate(modalDue) + timePart;
+    if (btn) btn.classList.add('has-date');
+  } else {
+    if (lbl) lbl.textContent = 'Pick a date';
+    if (btn) btn.classList.remove('has-date');
+  }
+  const hideUntilGroup = document.getElementById('hide-until-form-group');
+  if (hideUntilGroup) hideUntilGroup.style.display = (settings.deferEnabled && !!modalDue) ? '' : 'none';
 }
 
 function onDueTimeChange(val) {
@@ -2854,21 +4082,21 @@ function toggleTimer(id) {
     saveTasks();
   }
 
-  // Open the separate always-on-top timer window
-  api.timerShow({
-    taskName:   task.title,
-    baseLogged: task.timeLogged || 0,
-  });
+  if (settings.focusModeEnabled) {
+    timerDidMinimize = false;
+    showFocusOverlay(task);
+  } else {
+    timerDidMinimize = true;
+    api.timerShow({
+      taskName:   task.title,
+      baseLogged: task.timeLogged || 0,
+    });
+    api.minimize();
+  }
 
-  // Start local tick for task card badge updates
   timerInterval = setInterval(tickTimer, 1000);
-
-  // Schedule break check
   scheduleBreak();
   renderTasks();
-
-  // Minimize main window — timer window stays visible
-  api.minimize();
 }
 
 function pauseTimer() {
@@ -2880,6 +4108,7 @@ function pauseTimer() {
   clearInterval(timerInterval);
   // Only reset the break countdown — task time is preserved
   clearBreakTimer();
+  updateFocusPauseUI();
 }
 
 function resumeTimer() {
@@ -2891,41 +4120,149 @@ function resumeTimer() {
   timerInterval = setInterval(tickTimer, 1000);
   // Restart break countdown from zero (fresh work session after pause)
   scheduleBreak();
+  updateFocusPauseUI();
 }
 
 function tickTimer() {
   if (!activeTimerId || !timerStart || timerPaused) return;
+  // Skip DOM updates when the document is hidden — the badge isn't visible
+  if (document.visibilityState === 'hidden') return;
   const task    = tasks.find(t => t.id === activeTimerId);
   const base    = task ? (task.timeLogged || 0) : 0;
   const elapsed = Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
   const total   = base + elapsed;
-  // Update live badge in task card
   const badge = document.getElementById(`time-badge-${activeTimerId}`);
   if (badge) badge.textContent = `◷ ${fmtSecs(total)}`;
+  updateFocusTime(total);
 }
 
 function stopTimer() {
-  // Close the separate timer window — the 'timer-stopped' IPC event
-  // will fire back and handle saving + restoring the main window
+  if (activeTimerId && timerStart) {
+    const elapsed = timerPaused
+      ? timerPausedElapsed
+      : Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
+    const task = tasks.find(t => t.id === activeTimerId);
+    if (task && elapsed > 0) {
+      task.timeLogged = (task.timeLogged || 0) + elapsed;
+      task.timeSessions = task.timeSessions || [];
+      task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
+    }
+  }
+  const wasMinimized = timerDidMinimize;
+  const wasSnoozed   = breakSnoozed;
   api.timerHide();
-  // Also clear local state immediately so UI updates
+  hideFocusOverlay();
   clearInterval(timerInterval); timerInterval = null;
+  activeTimerId = null;
+  timerStart    = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
+  breakSnoozed  = false;
+  timerDidMinimize = false;
   clearBreakTimer();
+  saveTasks();
+  renderAll();
+  if (wasSnoozed)         setTimeout(showBreakPanel, 200);
+  else if (wasMinimized)  api.restore();
+}
+
+// ── Focus overlay (in-app focus mode) ──────────────────────────────────────
+function showFocusOverlay(task) {
+  document.getElementById('focus-title').textContent = task.title;
+  const descEl = document.getElementById('focus-desc');
+  descEl.textContent = task.desc || '';
+  descEl.style.display = task.desc ? '' : 'none';
+  renderFocusSubtasks(task.id);
+  updateFocusTime(task.timeLogged || 0);
+  updateFocusPauseUI();
+  document.getElementById('focus-overlay').classList.add('active');
+}
+
+function hideFocusOverlay() {
+  document.getElementById('focus-overlay').classList.remove('active');
+}
+
+function isFocusOverlayActive() {
+  const el = document.getElementById('focus-overlay');
+  return !!(el && el.classList.contains('active'));
+}
+
+function renderFocusSubtasks(taskId) {
+  const task = tasks.find(t => t.id === taskId);
+  const el = document.getElementById('focus-subtasks');
+  if (!task || !task.subtasks || !task.subtasks.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  el.style.display = 'flex';
+  el.innerHTML = task.subtasks.map((s, i) => `
+    <div class="focus-sub-row" onclick="toggleFocusSubtask(${task.id}, ${i})">
+      <div class="focus-sub-check ${s.done ? 'done' : ''}">${s.done ? '✓' : ''}</div>
+      <div class="focus-sub-text ${s.done ? 'done' : ''}">${esc(s.title)}</div>
+    </div>
+  `).join('');
+}
+
+function toggleFocusSubtask(taskId, index) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task || !task.subtasks || !task.subtasks[index]) return;
+  task.subtasks[index].done = !task.subtasks[index].done;
+  saveTasks();
+  renderAll();
+  renderFocusSubtasks(taskId);
+}
+
+function updateFocusTime(totalSecs) {
+  if (!isFocusOverlayActive()) return;
+  const t = Math.max(0, Math.floor(totalSecs || 0));
+  const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('focus-time').textContent =
+    h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function updateFocusPauseUI() {
+  if (!isFocusOverlayActive()) return;
+  const btn   = document.getElementById('focus-pause-btn');
+  const time  = document.getElementById('focus-time');
+  const label = document.getElementById('focus-paused-label');
+  if (timerPaused) {
+    btn.textContent = '▶ Resume';
+    btn.classList.add('paused');
+    time.classList.add('paused');
+    label.textContent = 'Paused';
+  } else {
+    btn.textContent = '‖ Pause';
+    btn.classList.remove('paused');
+    time.classList.remove('paused');
+    label.textContent = '';
+  }
+}
+
+function toggleFocusPause() {
+  if (timerPaused) resumeTimer();
+  else             pauseTimer();
 }
 
 function stopTimerSave() {
   if (!activeTimerId || !timerStart) return;
-  const elapsed = Math.floor(Date.now()/1000 - timerStart);
+  const elapsed = timerPaused
+    ? timerPausedElapsed
+    : Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
   const task    = tasks.find(t => t.id === activeTimerId);
   if (task) {
     task.timeLogged = (task.timeLogged || 0) + elapsed;
     task.timeSessions = task.timeSessions || [];
     task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
   }
+  api.timerHide();
+  hideFocusOverlay();
   clearInterval(timerInterval);
   timerInterval = null;
   activeTimerId = null;
   timerStart    = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
+  clearBreakTimer();
 }
 
 function cancelTimer() {
@@ -2933,6 +4270,7 @@ function cancelTimer() {
   timerInterval = null;
   activeTimerId = null;
   timerStart    = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
   clearBreakTimer();
   document.getElementById('timer-overlay').classList.remove('active');
 }
@@ -2960,7 +4298,9 @@ function onBreakDue() {
 function takeBreak() {
   // Save and fully stop the timer
   if (activeTimerId && timerStart) {
-    const elapsed = Math.floor(Date.now()/1000 - timerStart);
+    const elapsed = timerPaused
+      ? timerPausedElapsed
+      : Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
     const task = tasks.find(t => t.id === activeTimerId);
     if (task) {
       task.timeLogged = (task.timeLogged||0) + elapsed;
@@ -2969,12 +4309,14 @@ function takeBreak() {
     }
     saveTasks();
   }
-  // Close the timer window and clear state
+  // Close the timer window + focus overlay and clear state
   api.timerHide();
+  hideFocusOverlay();
   clearInterval(timerInterval);
   timerInterval = null;
   timerStart    = null;
   activeTimerId = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
   clearBreakTimer();
   // Restore window then show break panel
   api.restore();
@@ -3019,13 +4361,14 @@ function endBreak() {
 let whatNowTaskId = null;
 
 function whatNow() {
+  checkOnboardingItem('whatNow');
   const active = tasks.filter(t => !t.completed && t.status !== 'blocked' && t.status !== 'on-hold');
   if (!active.length) { showToast('No active tasks — add one to get started!'); return; }
   const t = todayStr();
   const pmap = { high:0, medium:1, low:2 };
   // Factor in mood: match energy level to today's mood
   const todayMood = getTodayMood();
-  const moodEnergyMap = { good: 'high', okay: 'medium', sad: 'low' };
+  const moodEnergyMap = { happy: 'high', neutral: 'medium', sad: 'low' };
   const preferredEnergy = moodEnergyMap[todayMood] || null;
   const emap = { high:0, medium:1, low:2 };
   const best = active.reduce((a, b) => {
@@ -3073,6 +4416,11 @@ function closeQuickAdd(e) {
 
 function quickAddKey(e) {
   if (e.key === 'Enter') {
+    if (isReadOnly()) {
+      showToast('This workspace is read-only');
+      document.getElementById('quick-add-overlay').classList.remove('open');
+      return;
+    }
     const title = e.target.value.trim();
     if (title) {
       pushUndo('Add task');
@@ -3091,15 +4439,36 @@ function quickAddKey(e) {
 }
 
 // ── Modals ─────────────────────────────────────────────────────────────────
+// Track focus before opening modals so we can restore it on close.
+const _modalPrevFocus = new Map();
+function openModal(overlayId) {
+  const el = document.getElementById(overlayId);
+  if (!el) return;
+  _modalPrevFocus.set(overlayId, document.activeElement);
+  el.classList.add('open');
+}
 function closeModal(overlayId) {
-  document.getElementById(overlayId).classList.remove('open');
+  const el = document.getElementById(overlayId);
+  if (!el) return;
+  el.classList.remove('open');
+  const prev = _modalPrevFocus.get(overlayId);
+  _modalPrevFocus.delete(overlayId);
+  if (prev && typeof prev.focus === 'function') {
+    try { prev.focus(); } catch {}
+  }
 }
 function closeModalOutside(e, overlayId) {
   if (e.target.id === overlayId) closeModal(overlayId);
 }
 function closeAllModals() {
+  // Special-case the confirm modal so its cancel callback fires
+  const confirmOverlay = document.getElementById('confirm-modal-overlay');
+  if (confirmOverlay && confirmOverlay.classList.contains('open')) {
+    closeConfirmModal();
+  }
   document.querySelectorAll('.modal-overlay').forEach(m => {
     if (m.id === 'ws-setup-modal-overlay') return;
+    if (m.id === 'confirm-modal-overlay') return; // already handled above
     m.classList.remove('open');
   });
   // Clean up any active inline edits
@@ -3140,6 +4509,9 @@ function applySettings() {
   if (dueFormGroup) dueFormGroup.style.display = s.dueEnabled !== false ? '' : 'none';
   const dueTimeFormGroup = document.getElementById('due-time-form-group');
   if (dueTimeFormGroup) dueTimeFormGroup.style.display = (s.dueEnabled !== false && s.dueTimeEnabled !== false) ? '' : 'none';
+  const overdueAlertFG = document.getElementById('overdue-alert-form-group');
+  if (overdueAlertFG) overdueAlertFG.style.display = (s.overdueAlertEnabled && s.overdueAlertMode === 'per-task') ? '' : 'none';
+  toggleDeferSidebarItem();
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
@@ -3155,45 +4527,9 @@ function applySettings() {
   // Recurrence form section
   const recurrenceSection = document.getElementById('recurrence-form-group');
   if (recurrenceSection) recurrenceSection.style.display = s.recurrenceEnabled !== false ? '' : 'none';
-  // Kanban sidebar item + feature settings sub-btn
+  // Kanban sidebar item
   const kanbanItem = document.querySelector('[data-view="kanban"]');
   if (kanbanItem) kanbanItem.style.display = s.kanbanEnabled !== false ? '' : 'none';
-  const kanbanSubBtn = document.querySelector('.feature-sub-btn[onclick*="kanban"]');
-  if (kanbanSubBtn) kanbanSubBtn.style.display = s.kanbanEnabled !== false ? '' : 'none';
-  const timerSubBtn2 = document.querySelector('.feature-sub-btn[onclick*="timer"]');
-  if (timerSubBtn2) timerSubBtn2.style.display = s.breakEnabled ? '' : 'none';
-  // Budget and Daily Summaries sub-tabs
-  const budgetSubBtn = document.querySelector('.feature-sub-btn[onclick*="budget"]');
-  if (budgetSubBtn) budgetSubBtn.style.display = s.budgetEnabled !== false ? '' : 'none';
-  const summariesSubBtn = document.querySelector('.feature-sub-btn[onclick*="summaries"]');
-  if (summariesSubBtn) summariesSubBtn.style.display = (s.sodEnabled !== false || s.eodEnabled !== false) ? '' : 'none';
-  if (!s.breakEnabled) {
-    const timerTab = document.getElementById('feature-tab-timer');
-    if (timerTab && timerTab.classList.contains('active')) {
-      switchFeatureTab('streak', document.querySelectorAll('.feature-sub-btn')[1]);
-    }
-  }
-  // If kanban sub-tab is active and kanban is disabled, switch to timer tab
-  if (s.kanbanEnabled === false) {
-    const kanbanTab = document.getElementById('feature-tab-kanban');
-    if (kanbanTab && kanbanTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
-    }
-  }
-  // If budget sub-tab is active and budget is disabled, switch to timer tab
-  if (s.budgetEnabled === false) {
-    const budgetTab = document.getElementById('feature-tab-budget');
-    if (budgetTab && budgetTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn:not([style*="none"])'));
-    }
-  }
-  // If summaries sub-tab is active and both are disabled, switch to timer tab
-  if (s.sodEnabled === false && s.eodEnabled === false) {
-    const summariesTab = document.getElementById('feature-tab-summaries');
-    if (summariesTab && summariesTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn:not([style*="none"])'));
-    }
-  }
   // If kanban is disabled and currently active, switch to list view
   if (s.kanbanEnabled === false && kanbanMode) {
     kanbanMode = false;
@@ -3209,12 +4545,24 @@ function applySettings() {
     renderTasks();
   }
   // Ideas and Habits toggles
+  const statsItem = document.getElementById('sidebar-stats');
+  if (statsItem) statsItem.style.display = s.statsEnabled !== false ? '' : 'none';
+  if (s.statsEnabled === false && statsMode) {
+    statsMode = false;
+    setView('all', document.querySelector('[data-view="all"]'));
+  }
   const ideasItem = document.querySelector('[data-view="ideas"]');
   if (ideasItem) ideasItem.style.display = s.ideasEnabled !== false ? '' : 'none';
   const habitsItem = document.getElementById('sidebar-habits-main');
   if (habitsItem) habitsItem.style.display = s.habitsEnabled !== false ? '' : 'none';
   const winsItem = document.querySelector('[data-view="wins"]');
   if (winsItem) winsItem.style.display = s.winsEnabled !== false ? '' : 'none';
+  const listsItem = document.getElementById('sidebar-lists');
+  if (listsItem) listsItem.style.display = s.listsEnabled !== false ? '' : 'none';
+  if (s.listsEnabled === false && listsMode) {
+    listsMode = false;
+    setView('all', document.querySelector('[data-view="all"]'));
+  }
   const budgetViewItem = document.getElementById('sidebar-budget-view');
   if (budgetViewItem) budgetViewItem.style.display = s.budgetEnabled !== false ? '' : 'none';
   const calendarViewItem = document.getElementById('sidebar-calendar-view');
@@ -3227,9 +4575,9 @@ function applySettings() {
     budgetViewMode = false;
     setView('all', document.querySelector('[data-view="all"]'));
   }
-  // Hide the entire TOOLS section if all four are disabled
+  // Hide the entire TOOLS section if all tools are disabled
   const toolsSection = document.getElementById('sidebar-tools-section');
-  if (toolsSection) toolsSection.style.display = (s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false) ? '' : 'none';
+  if (toolsSection) toolsSection.style.display = (s.statsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.listsEnabled !== false || s.budgetEnabled !== false || s.calendarEnabled !== false || s.kanbanEnabled !== false) ? '' : 'none';
   const wsDropdown = document.getElementById('workspace-dropdown');
   const wsTitle = document.getElementById('workspace-title');
   if (wsDropdown) wsDropdown.style.display = s.workspacesEnabled !== false ? '' : 'none';
@@ -3246,16 +4594,6 @@ function applySettings() {
     setView('all', document.querySelector('[data-view="all"]'));
   }
   // Show empty state in Feature Settings if no features with settings are enabled
-  const hasFeatureSettings = s.breakEnabled || s.streakEnabled !== false || s.kanbanEnabled !== false || s.budgetEnabled !== false || s.sodEnabled !== false || s.eodEnabled !== false;
-  const emptyState = document.getElementById('feature-settings-empty');
-  const featureSubNav = document.getElementById('settings-tab-feature-settings')?.querySelector('div[style*="flex"]');
-  if (emptyState) emptyState.style.display = hasFeatureSettings ? 'none' : 'block';
-  document.querySelectorAll('.feature-sub-btn').forEach(b => {
-    if (!hasFeatureSettings) b.closest('div') && (b.closest('div[style]').style.display = 'none');
-  });
-  document.querySelectorAll('.feature-sub-section').forEach(el => {
-    if (!hasFeatureSettings) el.style.display = 'none';
-  });
 }
 
 async function openSettings() {
@@ -3276,12 +4614,25 @@ async function openSettings() {
   document.getElementById('set-tags').checked               = s.tagsEnabled;
   document.getElementById('set-streak').checked             = s.streakEnabled;
   document.getElementById('set-estimates').checked          = s.estimatesEnabled;
-  if (document.getElementById('set-timer-enabled')) document.getElementById('set-timer-enabled').checked = s.timerEnabled !== false;
+  if (document.getElementById('set-timer-enabled'))      document.getElementById('set-timer-enabled').checked      = s.timerEnabled !== false;
+  if (document.getElementById('set-focus-mode-enabled')) document.getElementById('set-focus-mode-enabled').checked = !!s.focusModeEnabled;
   if (document.getElementById('set-due-enabled'))      document.getElementById('set-due-enabled').checked      = s.dueEnabled !== false;
   if (document.getElementById('set-due-time-enabled')) document.getElementById('set-due-time-enabled').checked = s.dueTimeEnabled !== false;
   document.getElementById('set-quickadd').checked           = s.quickAddEnabled;
   document.getElementById('set-whatnow').checked            = s.whatNowEnabled;
   document.getElementById('set-completion').checked         = s.completionDialog;
+  toggleCompletionDialogSub();
+  if (document.getElementById('set-tag-custom-colors'))     document.getElementById('set-tag-custom-colors').checked     = s.tagCustomColorsEnabled === true;
+  if (document.getElementById('tag-colors-section'))        document.getElementById('tag-colors-section').style.display  = s.tagCustomColorsEnabled ? '' : 'none';
+  if (s.tagCustomColorsEnabled) renderTagColorSettings();
+  if (document.getElementById('set-defer-enabled'))          document.getElementById('set-defer-enabled').checked          = s.deferEnabled === true;
+  if (document.getElementById('set-overdue-alert-enabled'))  document.getElementById('set-overdue-alert-enabled').checked  = s.overdueAlertEnabled === true;
+  if (document.getElementById('set-overdue-alert-mode'))     document.getElementById('set-overdue-alert-mode').value        = s.overdueAlertMode || 'all';
+  toggleOverdueAlertSub();
+  if (document.getElementById('set-celebration-enabled'))    document.getElementById('set-celebration-enabled').checked    = s.celebrationEnabled !== false;
+  if (document.getElementById('set-completion-dialog-high')) document.getElementById('set-completion-dialog-high').checked = s.completionDialogHigh !== false;
+  if (document.getElementById('set-completion-dialog-med'))  document.getElementById('set-completion-dialog-med').checked  = s.completionDialogMed  !== false;
+  if (document.getElementById('set-completion-dialog-low'))  document.getElementById('set-completion-dialog-low').checked  = s.completionDialogLow  === true;
   document.getElementById('set-sound-enabled').checked      = s.soundEnabled;
   document.getElementById('set-mood-enabled').checked        = s.moodEnabled;
   document.getElementById('set-changelog-enabled').checked   = s.changelogEnabled !== false;
@@ -3294,9 +4645,12 @@ async function openSettings() {
   if (document.getElementById('set-kanban-enabled'))    document.getElementById('set-kanban-enabled').checked    = s.kanbanEnabled !== false;
   if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
   if (document.getElementById('set-kanban-show-completed')) document.getElementById('set-kanban-show-completed').checked = s.kanbanShowCompleted === true;
+  toggleKanbanSub();
+  if (document.getElementById('set-stats-enabled'))     document.getElementById('set-stats-enabled').checked     = s.statsEnabled !== false;
   if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
   if (document.getElementById('set-wins-enabled'))      document.getElementById('set-wins-enabled').checked      = s.winsEnabled !== false;
+  if (document.getElementById('set-lists-enabled'))     document.getElementById('set-lists-enabled').checked     = s.listsEnabled !== false;
   if (document.getElementById('set-workspaces-enabled')) document.getElementById('set-workspaces-enabled').checked = s.workspacesEnabled !== false;
   if (document.getElementById('set-attachments-enabled')) document.getElementById('set-attachments-enabled').checked = s.attachmentsEnabled !== false;
   if (document.getElementById('set-calendar-enabled')) document.getElementById('set-calendar-enabled').checked = s.calendarEnabled !== false;
@@ -3305,6 +4659,7 @@ async function openSettings() {
   if (document.getElementById('set-budget-enabled'))  document.getElementById('set-budget-enabled').checked  = s.budgetEnabled !== false;
   if (document.getElementById('set-currency-symbol')) document.getElementById('set-currency-symbol').value   = s.currencySymbol || '£';
   if (document.getElementById('set-budget-group-tags')) document.getElementById('set-budget-group-tags').checked = s.budgetGroupByTags === true;
+  toggleBudgetSub();
   if (document.getElementById('set-sod-enabled'))         document.getElementById('set-sod-enabled').checked         = s.sodEnabled !== false;
   if (document.getElementById('set-sod-due-today'))       document.getElementById('set-sod-due-today').checked       = s.sodShowDueToday !== false;
   if (document.getElementById('set-sod-overdue'))         document.getElementById('set-sod-overdue').checked         = s.sodShowOverdue !== false;
@@ -3315,9 +4670,7 @@ async function openSettings() {
   if (document.getElementById('set-eod-tomorrow'))        document.getElementById('set-eod-tomorrow').checked        = s.eodShowTomorrow !== false;
   if (document.getElementById('set-eod-streak'))          document.getElementById('set-eod-streak').checked          = s.eodShowStreak !== false;
   toggleSodEodSettings();
-  // Show/hide timer feature settings based on break enabled
-  const timerSubBtn = document.querySelector('.feature-sub-btn[onclick*="timer"]');
-  if (timerSubBtn) timerSubBtn.style.display = s.breakEnabled ? '' : 'none';
+  toggleBreakFeatureTab();
   updateVacationUI();
   toggleStreakSettings();
   // Populate account info
@@ -3338,12 +4691,7 @@ async function openSettings() {
     if (connectRow)  connectRow.style.display   = 'none';
   }
   // Reset to first tab
-  switchSettingsTab('general', document.querySelector('.settings-nav-item'));
-  // Only switch to timer tab if break is enabled, otherwise go to streak
-  const firstFeatureBtn = s.breakEnabled
-    ? document.querySelector('.feature-sub-btn')
-    : document.querySelectorAll('.feature-sub-btn')[1];
-  if (firstFeatureBtn) switchFeatureTab(firstFeatureBtn.getAttribute('onclick').match(/'([^']+)'/)[1], firstFeatureBtn);
+  switchSettingsTab('task-org', document.querySelector('.settings-nav-item'));
   const soundPath = document.getElementById('sound-file-path');
   soundPath.textContent = s.soundFile ? s.soundFile.split(/[\\/]/).pop() : 'Default (chime)';
   soundPath.style.color = s.soundFile ? 'var(--text)' : 'var(--text3)';
@@ -3369,8 +4717,6 @@ function clearSoundFile() {
 function previewSound() {
   const wasEnabled = settings.soundEnabled;
   settings.soundEnabled = true;
-  // Temporarily use whatever file is currently selected in the UI
-  const soundPath = document.getElementById('sound-file-path').textContent;
   playBreakSound();
   settings.soundEnabled = wasEnabled;
 }
@@ -3414,20 +4760,9 @@ function cancelVacationMode() {
 }
 
 function toggleStreakSettings() {
-  const enabled = document.getElementById('set-streak') && document.getElementById('set-streak').checked;
+  const enabled = document.getElementById('set-streak')?.checked;
   const section = document.getElementById('streak-extra-settings');
   if (section) section.style.display = enabled ? '' : 'none';
-  // Also hide the Streak sub-nav button in Feature Settings
-  document.querySelectorAll('.feature-sub-btn').forEach(btn => {
-    if (btn.textContent.trim() === 'Streak') btn.style.display = enabled ? '' : 'none';
-  });
-  // If streak is being hidden and is currently active, switch to Timer tab
-  if (!enabled) {
-    const streakTab = document.getElementById('feature-tab-streak');
-    if (streakTab && streakTab.classList.contains('active')) {
-      switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
-    }
-  }
 }
 
 
@@ -3447,7 +4782,7 @@ async function submitContactForm() {
   if (feedback) feedback.textContent = '';
 
   try {
-    const res = await fetch('https://formspree.io/f/xwvrjnkd', {
+    const res = await fetch(FORMSPREE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ name, email, message })
@@ -3475,20 +4810,10 @@ function switchSettingsTab(tab, el) {
   if (el) el.classList.add('active');
   const panel = document.getElementById('settings-tab-' + tab);
   if (panel) panel.classList.add('active');
-  // Reset feature sub-nav when switching to feature settings
-  if (tab === 'feature-settings') switchFeatureTab('timer', document.querySelector('.feature-sub-btn'));
-}
-
-function switchFeatureTab(tab, el) {
-  document.querySelectorAll('.feature-sub-btn').forEach(i => i.classList.remove('active'));
-  document.querySelectorAll('.feature-sub-section').forEach(s => s.classList.remove('active'));
-  if (el) el.classList.add('active');
-  const panel = document.getElementById('feature-tab-' + tab);
-  if (panel) panel.classList.add('active');
 }
 
 // ── Recurring tasks ─────────────────────────────────────────────────────────
-function promptRecurringTask(task) {
+function promptRecurringTask(task, after = null) {
   const label = {
     daily: 'daily', weekly: 'weekly', monthly: 'monthly',
     custom: 'every ' + (task.recurrence.interval||1) + ' days',
@@ -3498,7 +4823,9 @@ function promptRecurringTask(task) {
     'Recurring Task',
     'This is a <strong>' + label + '</strong> task. Would you like to create the next occurrence?',
     'Create Next',
-    () => _createRecurrenceOccurrence(task)
+    () => { _createRecurrenceOccurrence(task); if (after) after(); },
+    false,
+    after // cancelCallback — also chain through if user cancels
   );
 }
 
@@ -3509,17 +4836,23 @@ function _createRecurrenceOccurrence(task) {
     desc: task.desc || '',
     priority: task.priority,
     due: calcNextDueDate(task),
+    dueTime: task.dueTime || '',
     tags: [...(task.tags||[])],
     completed: false,
     createdAt: new Date().toISOString(),
     completedAt: '',
     timeLogged: 0, timeSessions: [],
-    impact: '', outcome: '', deliverable: '',
+    impact: '', outcome: '', deliverable: task.deliverable || '',
     estimate: task.estimate || 0,
     status: 'not-started',
     energy: task.energy || 'medium',
     subtasks: [],
     recurrence: { ...task.recurrence },
+    budget: task.budget || 0,
+    spent: 0,
+    attachments: [...(task.attachments||[])],
+    hideUntilDays: task.hideUntilDays || 0,
+    overdueAlert: !!task.overdueAlert,
   };
   tasks.push(newTask);
   saveTasks();
@@ -3602,15 +4935,106 @@ function toggleSodEodSettings() {
 
 function toggleBreakFeatureTab() {
   const enabled = document.getElementById('set-break-enabled-general')?.checked;
-  const timerSubBtn = document.querySelector('.feature-sub-btn[onclick*="timer"]');
-  if (timerSubBtn) timerSubBtn.style.display = enabled ? '' : 'none';
-  if (!enabled) {
-    const timerTab = document.getElementById('feature-tab-timer');
-    if (timerTab && timerTab.classList.contains('active')) {
-      const nextBtn = document.querySelector('.feature-sub-btn:not([style*="none"])');
-      if (nextBtn) switchFeatureTab(nextBtn.getAttribute('onclick').match(/'([^']+)'/)[1], nextBtn);
-    }
+  const section = document.getElementById('break-sub-settings');
+  if (section) section.style.display = enabled ? '' : 'none';
+}
+
+function toggleCompletionDialogSub() {
+  const el = document.getElementById('set-completion');
+  const sub = document.getElementById('completion-dialog-priorities');
+  if (sub) sub.style.display = (el && el.checked) ? '' : 'none';
+}
+
+// ── Tag colour settings ───────────────────────────────────────────────────
+let _tagColorSettingsTags = [];
+
+function renderTagColorSettings() {
+  const el = document.getElementById('tag-colors-list');
+  if (!el) return;
+  _tagColorSettingsTags = [...new Set(tasks.flatMap(t => t.tags || []))].sort();
+  if (_tagColorSettingsTags.length === 0) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 0">No tags yet — add tags to tasks first.</div>';
+    return;
   }
+  el.innerHTML = _tagColorSettingsTags.map((tag, i) =>
+    `<div class="setting-row" style="padding:6px 0">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="tag-color-dot-${i}" style="width:10px;height:10px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>
+        <span class="setting-label">${esc(tag)}</span>
+      </div>
+      <input type="color" value="${getTagColor(tag)}" onchange="setTagColor(${i},this.value)"
+        aria-label="Color for tag ${esc(tag)}"
+        style="width:36px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px">
+    </div>`
+  ).join('');
+}
+
+function setTagColor(index, color) {
+  const tag = _tagColorSettingsTags[index];
+  if (!tag) return;
+  if (!settings.tagColors) settings.tagColors = {};
+  settings.tagColors[tag] = color;
+  const dot = document.getElementById(`tag-color-dot-${index}`);
+  if (dot) dot.style.background = color;
+  renderAll();
+}
+
+function toggleTagColorSection() {
+  const enabled = document.getElementById('set-tag-custom-colors')?.checked;
+  const section = document.getElementById('tag-colors-section');
+  if (section) section.style.display = enabled ? '' : 'none';
+  if (enabled) renderTagColorSettings();
+  renderAll();
+}
+
+// ── Overdue alerts ────────────────────────────────────────────────────────
+function checkOverdueAlerts() {
+  if (!settings.overdueAlertEnabled) return;
+  const t = todayStr();
+  // Only show once per day — match the start-of-day pattern
+  try {
+    if (localStorage.getItem('taskspark_overdue_alert_shown') === t) return;
+  } catch {}
+  let overdue = tasks.filter(task => !task.completed && !task.archived && task.due && task.due < t);
+  if (settings.overdueAlertMode === 'per-task') overdue = overdue.filter(task => task.overdueAlert);
+  if (!overdue.length) return;
+  const list = document.getElementById('overdue-alert-list');
+  if (!list) return;
+  list.innerHTML = overdue.map(task =>
+    `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="font-weight:600;color:var(--text)">${esc(task.title)}</div>
+      <div style="font-size:12px;color:var(--red);margin-top:2px">Due: ${fmtDate(task.due)}</div>
+    </div>`
+  ).join('');
+  document.getElementById('overdue-alert-overlay').classList.add('open');
+  try { localStorage.setItem('taskspark_overdue_alert_shown', t); } catch {}
+}
+
+function acknowledgeOverdueAlert() {
+  document.getElementById('overdue-alert-overlay').classList.remove('open');
+}
+
+function toggleOverdueAlertSub() {
+  const enabled = document.getElementById('set-overdue-alert-enabled')?.checked;
+  const sub = document.getElementById('overdue-alert-sub');
+  if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
+function toggleDeferSidebarItem() {
+  const el = document.getElementById('sidebar-deferred');
+  if (el) el.style.display = settings.deferEnabled ? '' : 'none';
+}
+
+function toggleKanbanSub() {
+  const enabled = document.getElementById('set-kanban-enabled')?.checked;
+  const sub = document.getElementById('kanban-sub-settings');
+  if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
+function toggleBudgetSub() {
+  const enabled = document.getElementById('set-budget-enabled')?.checked;
+  const sub = document.getElementById('budget-sub-settings');
+  if (sub) sub.style.display = enabled ? '' : 'none';
 }
 
 function toggleBreakInputs() {
@@ -3631,12 +5055,21 @@ function saveSettingsFromModal() {
   settings.tagsEnabled       = document.getElementById('set-tags').checked;
   settings.streakEnabled     = document.getElementById('set-streak').checked;
   settings.estimatesEnabled  = document.getElementById('set-estimates').checked;
-  if (document.getElementById('set-timer-enabled')) settings.timerEnabled = document.getElementById('set-timer-enabled').checked;
+  if (document.getElementById('set-timer-enabled'))      settings.timerEnabled     = document.getElementById('set-timer-enabled').checked;
+  if (document.getElementById('set-focus-mode-enabled')) settings.focusModeEnabled = document.getElementById('set-focus-mode-enabled').checked;
   if (document.getElementById('set-due-enabled'))     settings.dueEnabled     = document.getElementById('set-due-enabled').checked;
   if (document.getElementById('set-due-time-enabled')) settings.dueTimeEnabled = document.getElementById('set-due-time-enabled').checked;
   settings.quickAddEnabled   = document.getElementById('set-quickadd').checked;
   settings.whatNowEnabled    = document.getElementById('set-whatnow').checked;
   settings.completionDialog  = document.getElementById('set-completion').checked;
+  if (document.getElementById('set-tag-custom-colors'))    settings.tagCustomColorsEnabled = document.getElementById('set-tag-custom-colors').checked;
+  if (document.getElementById('set-defer-enabled'))         settings.deferEnabled           = document.getElementById('set-defer-enabled').checked;
+  if (document.getElementById('set-overdue-alert-enabled')) settings.overdueAlertEnabled    = document.getElementById('set-overdue-alert-enabled').checked;
+  if (document.getElementById('set-overdue-alert-mode'))    settings.overdueAlertMode       = document.getElementById('set-overdue-alert-mode').value;
+  if (document.getElementById('set-celebration-enabled'))    settings.celebrationEnabled    = document.getElementById('set-celebration-enabled').checked;
+  if (document.getElementById('set-completion-dialog-high')) settings.completionDialogHigh  = document.getElementById('set-completion-dialog-high').checked;
+  if (document.getElementById('set-completion-dialog-med'))  settings.completionDialogMed   = document.getElementById('set-completion-dialog-med').checked;
+  if (document.getElementById('set-completion-dialog-low'))  settings.completionDialogLow   = document.getElementById('set-completion-dialog-low').checked;
   settings.soundEnabled      = document.getElementById('set-sound-enabled').checked;
   settings.moodEnabled       = document.getElementById('set-mood-enabled').checked;
   settings.changelogEnabled  = document.getElementById('set-changelog-enabled').checked;
@@ -3650,9 +5083,11 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-kanban-enabled'))    settings.kanbanEnabled    = document.getElementById('set-kanban-enabled').checked;
   if (document.getElementById('set-kanban-group-tags')) settings.kanbanGroupByTags = document.getElementById('set-kanban-group-tags').checked;
   if (document.getElementById('set-kanban-show-completed')) settings.kanbanShowCompleted = document.getElementById('set-kanban-show-completed').checked;
+  if (document.getElementById('set-stats-enabled'))     settings.statsEnabled     = document.getElementById('set-stats-enabled').checked;
   if (document.getElementById('set-ideas-enabled'))     settings.ideasEnabled     = document.getElementById('set-ideas-enabled').checked;
   if (document.getElementById('set-habits-enabled'))    settings.habitsEnabled    = document.getElementById('set-habits-enabled').checked;
   if (document.getElementById('set-wins-enabled'))      settings.winsEnabled      = document.getElementById('set-wins-enabled').checked;
+  if (document.getElementById('set-lists-enabled'))     settings.listsEnabled     = document.getElementById('set-lists-enabled').checked;
   if (document.getElementById('set-workspaces-enabled')) settings.workspacesEnabled = document.getElementById('set-workspaces-enabled').checked;
   if (document.getElementById('set-attachments-enabled')) settings.attachmentsEnabled = document.getElementById('set-attachments-enabled').checked;
   if (document.getElementById('set-calendar-enabled')) settings.calendarEnabled = document.getElementById('set-calendar-enabled').checked;
@@ -3693,12 +5128,14 @@ function showHabitsView() {
   document.getElementById('kanban-container').style.display = 'none';
   document.getElementById('ideas-container').classList.remove('active');
   document.getElementById('wins-container').classList.remove('active');
+  const listsC = document.getElementById('lists-container');
+  if (listsC) listsC.classList.remove('active');
   const bvc = document.getElementById('budget-view-container');
   if (bvc) bvc.classList.remove('active');
   const calVC1 = document.getElementById('calendar-view-container');
   if (calVC1) { calVC1.classList.remove('active'); calVC1.style.display = 'none'; }
   document.getElementById('habits-container').classList.add('active');
-  kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+  kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
   // Update sidebar active state
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   const habitsBtn = document.getElementById('sidebar-habits-main');
@@ -3768,7 +5205,7 @@ function renderHabitCard(habit) {
     else if (isToday)  { cls += ' today-empty'; title = '○'; }
     else               { cls += ' missed'; title = '✕'; }
 
-    const onclick = (!isNA && !isFuture) ? `onclick="toggleHabitDay('${habit.id}','${ds}')"` : '';
+    const onclick = (!isNA && !isFuture) ? `onclick="toggleHabitDay('${escJs(habit.id)}','${escJs(ds)}')"` : '';
     const label = habitsViewDays <= 7 ? `<div class="habit-day-label">${DAY_NAMES[dow].slice(0,1)}</div>` : '';
 
     return `<div>
@@ -3799,8 +5236,8 @@ function renderHabitCard(habit) {
             </div>
           </div>
           <div class="habit-actions">
-            <button class="action-btn" onclick="openHabitModal('${habit.id}')" title="Edit">✎</button>
-            <button class="action-btn delete" onclick="deleteHabit('${habit.id}')" title="Delete">✕</button>
+            <button class="action-btn" onclick="openHabitModal('${escJs(habit.id)}')" title="Edit">✎</button>
+            <button class="action-btn delete" onclick="deleteHabit('${escJs(habit.id)}')" title="Delete">✕</button>
           </div>
         </div>
       </div>
@@ -3948,7 +5385,11 @@ function openHabitModal(id = null) {
   setTimeout(() => document.getElementById('habit-name').focus(), 50);
 }
 
+let _savingHabit = false;
 function saveHabit() {
+  if (_savingHabit) return;
+  _savingHabit = true;
+  setTimeout(() => { _savingHabit = false; }, 800);
   const name = document.getElementById('habit-name').value.trim();
   if (!name) { showToast('Please enter a habit name'); return; }
   const icon = document.getElementById('habit-icon').value.trim() || '🔄';
@@ -3971,7 +5412,7 @@ function saveHabit() {
 function deleteHabit(id) {
   const habit = habits.find(h => h.id === id);
   if (!habit) return;
-  showConfirmModal('Delete Habit', `Delete <strong>${esc(habit.name)}</strong>? This cannot be undone.`, 'Delete', () => {
+  showConfirmModal('Delete Habit', `Delete <strong>${habit.name}</strong>? This cannot be undone.`, 'Delete', () => {
     habits = habits.filter(h => h.id !== id);
     saveHabits();
     renderHabits();
@@ -3983,12 +5424,13 @@ function updateHabitsSidebar() {
 }
 
 async function saveHabits() {
-  api.saveConfig({ habits });
+  // Only persist to config when offline — online mode uses per-workspace Sheets as source of truth
+  if (offlineMode) api.saveConfig({ habits });
   if (!offlineMode && accessToken && spreadsheetId) {
     try {
       await ensureToken();
       await api.habitsSave({ accessToken, spreadsheetId, habits });
-    } catch (e) { console.error('Habits save error:', e); }
+    } catch (e) { console.error('Habits save error:', e); setSyncStatus('error', 'Habits sync failed'); }
   }
 }
 
@@ -4078,7 +5520,7 @@ function renderIdeaTags() {
   const area = document.getElementById('idea-tag-area');
   if (!area) return;
   const pills = ideaTags.map(t =>
-    `<span class="tag-pill" style="background:${getTagColor(t)}">${esc(t)}<button class="tag-pill-x" onclick="removeIdeaTag('${esc(t)}')">&times;</button></span>`
+    `<span class="tag-pill" style="background:${getTagColor(t)}">${esc(t)}<button class="tag-pill-x" onclick="removeIdeaTag('${escJs(t)}')">&times;</button></span>`
   ).join('');
   area.innerHTML = pills + `<input class="tag-text-input" id="idea-tag-input" placeholder="${ideaTags.length ? '' : 'Add tag…'}" onkeydown="handleIdeaTagKey(event)">`;
 }
@@ -4097,7 +5539,11 @@ function removeIdeaTag(tag) {
   renderIdeaTags();
 }
 
+let _savingIdea = false;
 function saveIdea() {
+  if (_savingIdea) return;
+  _savingIdea = true;
+  setTimeout(() => { _savingIdea = false; }, 800);
   const title = document.getElementById('idea-title').value.trim();
   if (!title) { showToast('Please enter a title'); return; }
   if (editingIdeaId) {
@@ -4113,7 +5559,7 @@ function saveIdea() {
 
 function deleteIdea(id) {
   const idea = ideas.find(i => i.id === id);
-  showConfirmModal('Delete Idea', idea ? `Delete <strong>${esc(idea.title)}</strong>? This cannot be undone.` : 'Delete this idea?', 'Delete', () => {
+  showConfirmModal('Delete Idea', idea ? `Delete <strong>${idea.title}</strong>? This cannot be undone.` : 'Delete this idea?', 'Delete', () => {
     ideas = ideas.filter(i => i.id !== id);
     saveIdeas();
     renderIdeas();
@@ -4144,10 +5590,10 @@ async function saveIdeas() {
     try {
       await ensureToken();
       await api.ideasSave({ accessToken, spreadsheetId, ideas });
-    } catch (e) { console.error('Ideas save error:', e); }
+    } catch (e) { console.error('Ideas save error:', e); setSyncStatus('error', 'Ideas sync failed'); }
   }
-  // Also keep a local copy in config
-  api.saveConfig({ ideas });
+  // Only persist to config when offline — online mode uses Sheets per-workspace
+  if (offlineMode) api.saveConfig({ ideas });
 }
 
 async function loadIdeas() {
@@ -4240,8 +5686,8 @@ function renderWins() {
           ${dateStr ? `<span class="badge wins-date-badge">📅 ${dateStr}</span>` : ''}
         </div>
         <div class="win-card-actions">
-          <button class="action-btn" onclick="openWinModal('${win.id}')" title="Edit">✎</button>
-          <button class="action-btn delete" onclick="deleteWin('${win.id}')" title="Delete">✕</button>
+          <button class="action-btn" onclick="openWinModal('${escJs(win.id)}')" title="Edit">✎</button>
+          <button class="action-btn delete" onclick="deleteWin('${escJs(win.id)}')" title="Delete">✕</button>
         </div>
       </div>`;
   }).join('');
@@ -4277,7 +5723,7 @@ function openWinModal(id = null) {
     document.getElementById('win-quote').value    = win.quote || '';
     document.getElementById('win-source').value   = win.source || '';
     document.getElementById('win-category').value = win.category || '';
-    document.getElementById('win-date').value     = win.date || '';
+    winSelectedDate = win.date || '';
     // Set mood
     document.querySelectorAll('.win-mood-btn').forEach(b => {
       b.classList.toggle('selected', b.dataset.mood === win.mood);
@@ -4286,13 +5732,14 @@ function openWinModal(id = null) {
     document.getElementById('win-quote').value    = '';
     document.getElementById('win-source').value   = '';
     document.getElementById('win-category').value = '';
-    document.getElementById('win-date').value     = todayStr();
+    winSelectedDate = todayStr();
     document.querySelectorAll('.win-mood-btn').forEach(b => b.classList.remove('selected'));
     // Default to 'proud'
     const defaultBtn = document.querySelector('.win-mood-btn[data-mood="proud"]');
     if (defaultBtn) defaultBtn.classList.add('selected');
   }
   document.getElementById('win-modal-overlay').classList.add('open');
+  refreshWinDateBtn();
   setTimeout(() => document.getElementById('win-quote').focus(), 50);
 }
 
@@ -4301,12 +5748,16 @@ function selectWinMood(btn) {
   btn.classList.add('selected');
 }
 
+let _savingWin = false;
 function saveWin() {
+  if (_savingWin) return;
+  _savingWin = true;
+  setTimeout(() => { _savingWin = false; }, 800);
   const quote = document.getElementById('win-quote').value.trim();
   if (!quote) { showToast('Please enter the win or feedback'); return; }
   const source   = document.getElementById('win-source').value.trim();
   const category = document.getElementById('win-category').value;
-  const date     = document.getElementById('win-date').value || todayStr();
+  const date     = winSelectedDate || todayStr();
   const moodBtn  = document.querySelector('.win-mood-btn.selected');
   const mood     = moodBtn ? moodBtn.dataset.mood : 'proud';
 
@@ -4346,16 +5797,17 @@ function addWinFromTask(taskTitle) {
   editingWinId = null;
   document.getElementById('win-modal-title').textContent = '⭐ Add a Win';
   document.getElementById('win-modal-overlay').classList.add('open');
+  refreshWinDateBtn();
   setTimeout(() => document.getElementById('win-quote').focus(), 50);
 }
 
 async function saveWins() {
-  api.saveConfig({ wins });
+  if (offlineMode) api.saveConfig({ wins });
   if (!offlineMode && accessToken && spreadsheetId) {
     try {
       await ensureToken();
       await api.winsSave({ accessToken, spreadsheetId, wins });
-    } catch (e) { console.error('Wins save error:', e); }
+    } catch (e) { console.error('Wins save error:', e); setSyncStatus('error', 'Wins sync failed'); }
   }
 }
 
@@ -4376,6 +5828,380 @@ async function loadWins() {
   const cntEl = document.getElementById('cnt-wins');
   if (cntEl) cntEl.textContent = wins.length;
 }
+
+// ── Lists ─────────────────────────────────────────────────────────────────
+
+function renderLists() {
+  const container = document.getElementById('lists-container');
+  if (!container) return;
+  const cntEl = document.getElementById('cnt-lists');
+  if (cntEl) cntEl.textContent = lists.length;
+
+  if (currentOpenListId !== null) {
+    const list = lists.find(l => l.id === currentOpenListId);
+    if (list) { renderListDetail(list, container); return; }
+    currentOpenListId = null;
+  }
+
+  if (!lists.length) {
+    container.innerHTML = `
+      <div class="lists-header">
+        <div></div>
+        <button class="btn-primary" onclick="openListModal()">+ New List</button>
+      </div>
+      <div class="lists-empty">
+        <div class="lists-empty-icon">☑</div>
+        <div class="lists-empty-text">No lists yet</div>
+        <div class="lists-empty-sub">Create a list to keep track of anything — shopping, reading, errands…</div>
+      </div>`;
+    return;
+  }
+
+  const cards = lists.map(list => {
+    const total     = list.items.length;
+    const done      = list.items.filter(i => i.done).length;
+    const remaining = total - done;
+    const previewItems = list.items.slice(0, 3);
+    const previewHtml = previewItems.length
+      ? previewItems.map(item => `
+          <div class="list-card-preview-item">
+            <span class="list-card-preview-dot${item.done ? ' done' : ''}"></span>
+            <span class="list-card-preview-text${item.done ? ' done' : ''}">${esc(item.text)}</span>
+          </div>`).join('') +
+        (list.items.length > 3 ? `<div class="list-card-preview-more">+${list.items.length - 3} more</div>` : '')
+      : `<div class="list-card-preview-empty">No items yet</div>`;
+    return `
+      <div class="list-card" onclick="openList(${list.id})">
+        <div class="list-card-name">${esc(list.name)}</div>
+        <div class="list-card-meta">${remaining} remaining · ${total} item${total !== 1 ? 's' : ''}</div>
+        <div class="list-card-preview">${previewHtml}</div>
+        <div class="list-card-actions" onclick="event.stopPropagation()">
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px" onclick="openListModal(${list.id})">Edit</button>
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red);border-color:var(--red)" onclick="deleteList(${list.id})">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="lists-header">
+      <div style="font-size:13px;color:var(--text3)">${lists.length} list${lists.length !== 1 ? 's' : ''}</div>
+      <button class="btn-primary" onclick="openListModal()">+ New List</button>
+    </div>
+    <div class="lists-grid">${cards}</div>`;
+}
+
+function openList(id) {
+  currentOpenListId = id;
+  renderLists();
+}
+
+function backToLists() {
+  currentOpenListId = null;
+  renderLists();
+}
+
+function _listItemRowHtml(listId, item) {
+  return `
+    <div class="list-item-row">
+      <input type="checkbox" class="list-item-check" ${item.done ? 'checked' : ''} onchange="toggleListItem(${listId},${item.id})">
+      <span class="list-item-text${item.done ? ' done' : ''}" id="list-item-text-${item.id}" ondblclick="startEditListItem(${listId},${item.id})" title="Double-click to edit">${esc(item.text)}</span>
+      <button class="list-item-del" onclick="deleteListItem(${listId},${item.id})" title="Remove">×</button>
+    </div>`;
+}
+
+function _listAddRowHtml(listId, categoryId) {
+  const safeId = categoryId === null ? 'null' : categoryId;
+  const placeholder = categoryId === null ? 'Add item…' : 'Add item to category…';
+  return `
+    <div class="list-add-item-row">
+      <input class="list-add-item-input" id="list-add-input-${safeId}" placeholder="${placeholder}" onkeydown="handleListItemKey(event,${listId},${categoryId})">
+      <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="addListItem(${listId},${categoryId})">Add</button>
+    </div>`;
+}
+
+function renderListDetail(list, container) {
+  const hasCategories = list.categories && list.categories.length > 0;
+  const total = list.items.length;
+  const done  = list.items.filter(i => i.done).length;
+
+  const header = `
+    <div class="list-detail-header">
+      <button class="list-back-btn" onclick="backToLists()">← Back</button>
+      <div class="list-detail-title">${esc(list.name)}</div>
+      <div style="font-size:12px;color:var(--text3)">${done}/${total} done</div>
+    </div>`;
+
+  if (!hasCategories) {
+    const itemsHtml = list.items.map(item => _listItemRowHtml(list.id, item)).join('') ||
+      '<div style="font-size:13px;color:var(--text3);padding:8px 0">No items yet — add one below</div>';
+    container.innerHTML = `
+      ${header}
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div class="list-category-block" style="flex:1">${itemsHtml}${_listAddRowHtml(list.id, null)}</div>
+        <div class="list-kanban-add-col" style="min-height:60px" onclick="openListCategoryModal(${list.id})">+ Add Category</div>
+      </div>`;
+    return;
+  }
+
+  // Kanban layout — General column + one column per category
+  const columns = [{ id: null, name: 'General' }, ...list.categories];
+  const columnsHtml = columns.map(col => {
+    const colId    = col.id;
+    const colItems = list.items.filter(i => (i.categoryId || null) === colId);
+    const cards    = colItems.map(item => `
+      <div class="list-kanban-card${item.done ? ' done' : ''}"
+        draggable="true"
+        data-item-id="${item.id}"
+        ondragstart="onListItemDragStart(event,${list.id},${item.id})"
+        ondragend="onListItemDragEnd(event)">
+        <div class="list-kanban-card-row">
+          <input type="checkbox" class="list-item-check" ${item.done ? 'checked' : ''} onchange="toggleListItem(${list.id},${item.id})">
+          <span class="list-item-text${item.done ? ' done' : ''}" id="list-item-text-${item.id}" ondblclick="startEditListItem(${list.id},${item.id})" title="Double-click to edit">${esc(item.text)}</span>
+          <button class="list-item-del" onclick="deleteListItem(${list.id},${item.id})">×</button>
+        </div>
+      </div>`).join('');
+
+    const removeBtn = colId !== null
+      ? `<button class="list-kanban-col-del" title="Remove category" onclick="deleteListCategory(${list.id},${colId})">×</button>`
+      : '';
+
+    return `
+      <div class="list-kanban-col"
+        ondragover="onListItemDragOver(event)"
+        ondragleave="onListItemDragLeave(event)"
+        ondrop="onListItemDrop(event,${list.id},${colId})">
+        <div class="list-kanban-col-header">
+          <span>${esc(col.name)}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="kanban-col-count">${colItems.length}</span>
+            ${removeBtn}
+          </div>
+        </div>
+        <div class="list-kanban-col-body">${cards}</div>
+        ${_listAddRowHtml(list.id, colId)}
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    ${header}
+    <div class="list-kanban">
+      ${columnsHtml}
+      <div class="list-kanban-add-col" onclick="openListCategoryModal(${list.id})">+ Add Category</div>
+    </div>`;
+}
+
+function openListModal(id = null) {
+  editingListId = id;
+  document.getElementById('list-modal-title').textContent = id ? '📋 Edit List' : '📋 New List';
+  const input = document.getElementById('list-name-input');
+  if (id) {
+    const list = lists.find(l => l.id === id);
+    input.value = list ? list.name : '';
+  } else {
+    input.value = '';
+  }
+  document.getElementById('list-modal-overlay').classList.add('open');
+  setTimeout(() => input.focus(), 50);
+}
+
+let _savingList = false;
+function saveList() {
+  if (_savingList) return;
+  _savingList = true;
+  setTimeout(() => { _savingList = false; }, 800);
+  const name = document.getElementById('list-name-input').value.trim();
+  if (!name) { showToast('Please enter a name'); return; }
+  if (editingListId) {
+    const list = lists.find(l => l.id === editingListId);
+    if (list) list.name = name;
+  } else {
+    lists.push({ id: Date.now(), name, createdAt: new Date().toISOString(), categories: [], items: [] });
+  }
+  closeModal('list-modal-overlay');
+  saveLists();
+  renderLists();
+}
+
+function deleteList(id) {
+  const list = lists.find(l => l.id === id);
+  showConfirmModal(
+    'Delete List',
+    list ? `Delete <strong>${esc(list.name)}</strong> and all its items? This cannot be undone.` : 'Delete this list?',
+    'Delete',
+    () => {
+      lists = lists.filter(l => l.id !== id);
+      if (currentOpenListId === id) currentOpenListId = null;
+      saveLists();
+      renderLists();
+    },
+    true
+  );
+}
+
+function addListItem(listId, categoryId) {
+  const safeId  = categoryId === null ? 'null' : categoryId;
+  const input   = document.getElementById(`list-add-input-${safeId}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items.push({ id: Date.now(), text, done: false, categoryId: categoryId || null });
+  saveLists();
+  renderLists();
+  setTimeout(() => {
+    const refocused = document.getElementById(`list-add-input-${safeId}`);
+    if (refocused) refocused.focus();
+  }, 0);
+}
+
+function handleListItemKey(e, listId, categoryId) {
+  if (e.key === 'Enter') { e.preventDefault(); addListItem(listId, categoryId); }
+}
+
+function toggleListItem(listId, itemId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (!item) return;
+  item.done = !item.done;
+  saveLists();
+  renderLists();
+}
+
+function deleteListItem(listId, itemId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items = list.items.filter(i => i.id !== itemId);
+  saveLists();
+  renderLists();
+}
+
+function openListCategoryModal(listId) {
+  _listCategoryTargetId = listId;
+  const input = document.getElementById('list-category-name-input');
+  input.value = '';
+  document.getElementById('list-category-modal-overlay').classList.add('open');
+  setTimeout(() => input.focus(), 50);
+}
+
+function saveListCategory() {
+  const name = document.getElementById('list-category-name-input').value.trim();
+  if (!name) { showToast('Please enter a category name'); return; }
+  const list = lists.find(l => l.id === _listCategoryTargetId);
+  if (!list) return;
+  list.categories.push({ id: Date.now(), name });
+  closeModal('list-category-modal-overlay');
+  saveLists();
+  renderLists();
+}
+
+function deleteListCategory(listId, catId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items.forEach(i => { if (i.categoryId === catId) i.categoryId = null; });
+  list.categories = list.categories.filter(c => c.id !== catId);
+  saveLists();
+  renderLists();
+}
+
+function onListItemDragStart(e, listId, itemId) {
+  _listDragListId = listId;
+  _listDragItemId = itemId;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => {
+    const card = e.target.closest('.list-kanban-card');
+    if (card) card.classList.add('dragging');
+  }, 0);
+}
+
+function onListItemDragEnd(e) {
+  document.querySelectorAll('.list-kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
+  document.querySelectorAll('.list-kanban-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+  _listDragItemId = null;
+  _listDragListId = null;
+}
+
+function onListItemDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onListItemDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onListItemDrop(e, listId, categoryId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!_listDragItemId || _listDragListId !== listId) return;
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === _listDragItemId);
+  if (!item) return;
+  item.categoryId = categoryId || null;
+  saveLists();
+  renderLists();
+}
+
+function startEditListItem(listId, itemId) {
+  const span = document.getElementById(`list-item-text-${itemId}`);
+  if (!span) return;
+  const currentText = span.textContent;
+  const input = document.createElement('input');
+  input.value = currentText;
+  input.style.cssText = 'flex:1;background:var(--surface2);border:1px solid var(--accent);border-radius:6px;padding:2px 6px;font-size:13px;color:var(--text);outline:none;width:100%';
+  input.onkeydown = e => {
+    if (e.key === 'Enter')  { e.preventDefault(); saveEditListItem(listId, itemId, input.value.trim()); }
+    if (e.key === 'Escape') { renderLists(); }
+  };
+  input.onblur = () => saveEditListItem(listId, itemId, input.value.trim());
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+function saveEditListItem(listId, itemId, newText) {
+  if (!newText) { renderLists(); return; }
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (!item || item.text === newText) { renderLists(); return; }
+  item.text = newText;
+  saveLists();
+  renderLists();
+}
+
+async function saveLists() {
+  if (offlineMode) api.saveConfig({ lists });
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      await api.listsSave({ accessToken, spreadsheetId, lists });
+    } catch (e) { console.error('Lists save error:', e); setSyncStatus('error', 'Lists sync failed'); }
+  }
+}
+
+async function loadLists() {
+  lists = [];
+  if (!offlineMode && accessToken && spreadsheetId) {
+    try {
+      await ensureToken();
+      const remote = await api.listsLoad({ accessToken, spreadsheetId });
+      if (remote) lists = remote;
+    } catch (e) {
+      console.error('Lists load error:', e);
+      try { const cfg = await api.loadConfig(); lists = cfg && cfg.lists ? cfg.lists : []; } catch {}
+    }
+  } else {
+    try { const cfg = await api.loadConfig(); lists = cfg && cfg.lists ? cfg.lists : []; } catch { lists = []; }
+  }
+  const cntEl = document.getElementById('cnt-lists');
+  if (cntEl) cntEl.textContent = lists.length;
+}
+
+// ── End Lists ─────────────────────────────────────────────────────────────
 
 function openArchiveModal() {
   document.getElementById('archive-modal-overlay').classList.add('open');
@@ -4593,7 +6419,7 @@ function parseTemplateCSV(csv, anchorDate, extraTag) {
       ? subtaskRaw.split('|').map(s => s.trim()).filter(Boolean).map((s, si) => ({
           id: Date.now() + i * 1000 + si,
           title: s,
-          completed: false
+          done: false
         }))
       : [];
 
@@ -4711,9 +6537,8 @@ function openMoodModal() {
   document.getElementById('mood-modal-overlay').classList.add('open');
 }
 
-function closeMoodBanner() {}
-
 function selectMood(mood) {
+  checkOnboardingItem('mood');
   highlightMoodBtn(mood);
   saveTodayMood(mood);
   const savedText = document.getElementById('mood-saved-text');
@@ -4727,7 +6552,7 @@ function updateMoodSidebarBtn() {
   if (!btn) return;
   const mood = getTodayMood();
   if (mood) {
-    const icons = { sad: '😔', okay: '😐', good: '😊' };
+    const icons = { sad: '😔', neutral: '😐', happy: '😊' };
     btn.textContent = `${icons[mood] || '♥'} \u00a0You're feeling ${mood === 'sad' ? 'not great' : mood} today`;
   } else {
     btn.innerHTML = '\u2665 \u00a0How are you feeling?';
@@ -4903,17 +6728,30 @@ function showEndOfDayModal() {
 
 let cachedRelease = null;
 
+// Cache the GitHub release for 1 hour in localStorage to avoid hitting the
+// 60-req/h anonymous API limit when both checkWhatsNew and loadChangelogContent
+// run in the same session.
+const _RELEASE_CACHE_KEY = 'taskspark_release_cache';
+const _RELEASE_CACHE_TTL = 60 * 60 * 1000;
+async function _fetchLatestRelease() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(_RELEASE_CACHE_KEY) || 'null');
+    if (cached && Date.now() - cached.t < _RELEASE_CACHE_TTL) return cached.r;
+  } catch {}
+  const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
+  const release = await res.json();
+  try { localStorage.setItem(_RELEASE_CACHE_KEY, JSON.stringify({ t: Date.now(), r: release })); } catch {}
+  return release;
+}
+
 async function checkWhatsNew(currentVersion) {
   try {
     const cfg = await api.loadConfig();
     const lastSeen = cfg && cfg.lastSeenVersion;
-    if (lastSeen === currentVersion) return; // already seen this version — don't show modal
-    // Fetch changelog from GitHub
-    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
-    const release = await res.json();
+    if (lastSeen === currentVersion) return;
+    const release = await _fetchLatestRelease();
     if (!release || !release.tag_name) return;
     cachedRelease = release;
-    // Show modal after a short delay so app finishes loading first
     setTimeout(() => showWhatsNew(currentVersion, release), 1500);
   } catch (e) {
     console.warn('Could not fetch changelog:', e);
@@ -4955,10 +6793,9 @@ async function loadChangelogContent() {
       return;
     }
     el.textContent = 'Loading…';
-    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
-    const release = await res.json();
+    const release = await _fetchLatestRelease();
     cachedRelease = release;
-    el.textContent = release.body || 'No changelog available.';
+    el.textContent = (release && release.body) || 'No changelog available.';
   } catch (e) {
     el.textContent = 'Could not load changelog.';
   }
@@ -4969,7 +6806,93 @@ function updateChangelogSidebarBtn() {
   if (btn) btn.style.display = settings.changelogEnabled !== false ? '' : 'none';
 }
 
-// ── Tutorial ─────────────────────────────────────────────────────────────────
+// ── Onboarding ───────────────────────────────────────────────────────────────
+function startOnboarding() {
+  const modal = document.getElementById('onboarding-modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeOnboardingModal() {
+  const modal = document.getElementById('onboarding-modal');
+  if (modal) modal.classList.remove('open');
+  api.saveConfig({ onboardingComplete: true, onboardingChecklist });
+  renderGettingStartedCard();
+}
+
+function applyOnboardingPreset(preset) {
+  if (preset === 'custom') { applyCustomPreset(); } else { applyPreset(preset); }
+  closeOnboardingModal();
+}
+
+function checkOnboardingItem(key) {
+  if (!onboardingChecklist.hasOwnProperty(key)) return;
+  if (onboardingChecklist.dismissed || onboardingChecklist[key]) return;
+  onboardingChecklist[key] = true;
+  api.saveConfig({ onboardingChecklist });
+  renderGettingStartedCard();
+}
+
+function dismissGettingStarted() {
+  onboardingChecklist.dismissed = true;
+  api.saveConfig({ onboardingChecklist });
+  const card = document.getElementById('getting-started-card');
+  if (card) card.remove();
+}
+
+function renderGettingStartedCard() {
+  if (onboardingChecklist.dismissed) return;
+  const container = document.getElementById('task-list-container');
+  const taskList  = document.getElementById('task-list');
+  if (!container || !taskList) return;
+
+  const items = [
+    { key: 'addTask',      label: 'Add your first task',  hint: '',                               action: 'openTaskModal()' },
+    { key: 'completeTask', label: 'Complete a task',       hint: 'Check off any task on your list', action: null },
+    { key: 'whatNow',      label: 'Try "What Now?"',       hint: '',                               action: 'whatNow()' },
+    { key: 'mood',         label: "Set today's mood",      hint: '',                               action: 'openMoodModal()' },
+  ];
+
+  const doneCount = items.filter(i => onboardingChecklist[i.key]).length;
+  if (doneCount === items.length) {
+    const card = document.getElementById('getting-started-card');
+    if (card) card.remove();
+    return;
+  }
+
+  const pct = Math.round(doneCount / items.length * 100);
+  const itemsHtml = items.map(i => {
+    const done = onboardingChecklist[i.key];
+    const hint = (!done && i.hint) ? `<span style="font-size:11px;color:var(--text3);margin-left:4px">${i.hint}</span>` : '';
+    const clickAttr = (!done && i.action) ? `onclick="${i.action}"` : '';
+    return `<div class="gs-item${done ? ' done' : ''}" ${clickAttr}>
+      <div class="gs-check">${done ? '✓' : ''}</div>
+      <span>${i.label}</span>${hint}
+    </div>`;
+  }).join('');
+
+  const html = `
+    <div class="gs-header">
+      <div>
+        <div class="gs-title">Get started</div>
+        <div class="gs-sub">${doneCount} of ${items.length} complete</div>
+      </div>
+      <button class="gs-dismiss" onclick="dismissGettingStarted()" title="Dismiss">✕</button>
+    </div>
+    <div class="gs-progress"><div class="gs-progress-fill" style="width:${pct}%"></div></div>
+    <div class="gs-items">${itemsHtml}</div>`;
+
+  let card = document.getElementById('getting-started-card');
+  if (card) {
+    card.innerHTML = html;
+  } else {
+    card = document.createElement('div');
+    card.id = 'getting-started-card';
+    card.innerHTML = html;
+    container.insertBefore(card, taskList);
+  }
+}
+
+// ── Tutorial (legacy — kept for reference) ────────────────────────────────────
 const TUTORIAL_STEPS = [
   {
     target: null,
@@ -5129,16 +7052,54 @@ function endTutorial() {
 let _confirmCallback = null;
 let _cancelCallback = null;
 
+// Build the confirm-modal body safely: HTML-escape everything, then narrowly
+// re-allow <strong>, </strong>, <em>, </em>, <br>. The previous version
+// re-decoded any "&lt;tag&gt;" sequence, which meant attacker-influenced text
+// could smuggle attributes onto the allowed tags. This regex matches only the
+// exact tag forms with no attributes, so even hostile input can't escape.
+function sanitizeConfirmBody(str) {
+  const el = document.createElement('div');
+  el.textContent = String(str == null ? '' : str);
+  return el.innerHTML
+    .replace(/&lt;strong&gt;/g,  '<strong>')
+    .replace(/&lt;\/strong&gt;/g,'</strong>')
+    .replace(/&lt;em&gt;/g,      '<em>')
+    .replace(/&lt;\/em&gt;/g,    '</em>')
+    .replace(/&lt;br\s*\/?&gt;/g,'<br>');
+}
+
+let _confirmKeyHandler = null;
+let _confirmPrevFocus = null;
 function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false, cancelCallback = null) {
   _confirmCallback = callback;
   _cancelCallback = cancelCallback;
+  _confirmPrevFocus = document.activeElement;
   document.getElementById('confirm-modal-title').textContent = title;
-  document.getElementById('confirm-modal-body').innerHTML = bodyHtml;
+  document.getElementById('confirm-modal-body').innerHTML = sanitizeConfirmBody(bodyHtml);
   const okBtn = document.getElementById('confirm-modal-ok');
   okBtn.textContent = okLabel || 'Confirm';
   okBtn.style.background = danger ? 'var(--red)' : '';
   okBtn.style.borderColor = danger ? 'var(--red)' : '';
   document.getElementById('confirm-modal-overlay').classList.add('open');
+  // Autofocus the primary action; press Enter to confirm, Escape to cancel
+  setTimeout(() => okBtn.focus(), 0);
+  if (_confirmKeyHandler) document.removeEventListener('keydown', _confirmKeyHandler, true);
+  _confirmKeyHandler = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmModalOk(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeConfirmModal(); }
+  };
+  document.addEventListener('keydown', _confirmKeyHandler, true);
+}
+
+function _detachConfirmKeyHandler() {
+  if (_confirmKeyHandler) {
+    document.removeEventListener('keydown', _confirmKeyHandler, true);
+    _confirmKeyHandler = null;
+  }
+  if (_confirmPrevFocus && typeof _confirmPrevFocus.focus === 'function') {
+    try { _confirmPrevFocus.focus(); } catch {}
+  }
+  _confirmPrevFocus = null;
 }
 
 function closeConfirmModal() {
@@ -5146,6 +7107,7 @@ function closeConfirmModal() {
   _confirmCallback = null;
   _cancelCallback = null;
   document.getElementById('confirm-modal-overlay').classList.remove('open');
+  _detachConfirmKeyHandler();
   if (cb) cb();
 }
 
@@ -5154,6 +7116,7 @@ function confirmModalOk() {
   _confirmCallback = null;
   _cancelCallback = null;
   document.getElementById('confirm-modal-overlay').classList.remove('open');
+  _detachConfirmKeyHandler();
   if (cb) cb();
 }
 
@@ -5190,42 +7153,61 @@ async function resolveWorkspaceConflict(driveData) {
 }
 
 async function prefetchAllWorkspaces() {
-  // Silently fetch all non-active workspaces in the background after startup
   const others = workspaces.filter(w => w.id !== activeWorkspaceId);
-  for (const ws of others) {
+  if (!others.length) return;
+  await ensureToken();
+  await Promise.all(others.map(async ws => {
     try {
-      await ensureToken();
-      const [wsTasks, wsHabits, wsIdeas, wsWins] = await Promise.all([
+      const [wsTasks, wsHabits, wsIdeas, wsWins, wsLists, wsEvents] = await Promise.all([
         api.sheetsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.habitsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.ideasLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.winsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+        api.listsLoad ? api.listsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []) : Promise.resolve([]),
+        api.eventsLoad ? api.eventsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []) : Promise.resolve([]),
       ]);
-      _wsCache[ws.id] = {
+      _wsCacheSet(ws.id, {
         tasks: wsTasks || [],
         habits: wsHabits || [],
         ideas: wsIdeas || [],
         wins: wsWins || [],
-      };
+        lists: wsLists || [],
+        calEvents: wsEvents || [],
+      });
     } catch (e) {
       console.warn(`[prefetch] Failed for workspace ${ws.name}:`, e.message);
     }
-  }
+  }));
 }
 
 
 function setWorkspaceSwitching(name) {
   const btn = document.getElementById('workspace-dropdown-btn');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:ws-spin .6s linear infinite;flex-shrink:0;margin-right:8px"></span><span style="flex:1;color:var(--text2)">Switching to ${esc(name)}…</span>`;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:ws-spin .6s linear infinite;flex-shrink:0;margin-right:8px"></span><span style="flex:1;color:var(--text2)">Switching to ${esc(name)}…</span>`;
+  }
+  // Show a centered placeholder in the main area so the user doesn't see
+  // a flash of "All clear!" while data is being fetched
+  const main = document.getElementById('main');
+  if (main && !document.getElementById('ws-switch-overlay')) {
+    const overlay = document.createElement('div');
+    overlay.id = 'ws-switch-overlay';
+    overlay.style.cssText = 'position:absolute;inset:0;background:var(--bg);z-index:50;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px';
+    overlay.innerHTML = `<span style="display:inline-block;width:34px;height:34px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:ws-spin .6s linear infinite"></span><div style="color:var(--text2);font-size:13px">Loading <strong>${esc(name)}</strong>…</div>`;
+    main.style.position = main.style.position || 'relative';
+    main.appendChild(overlay);
+  }
 }
 
 function clearWorkspaceSwitching() {
   const btn = document.getElementById('workspace-dropdown-btn');
-  if (!btn) return;
-  btn.disabled = false;
-  renderWorkspaceDropdown();
+  if (btn) {
+    btn.disabled = false;
+    renderWorkspaceDropdown();
+  }
+  const overlay = document.getElementById('ws-switch-overlay');
+  if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
 }
 
 function getActiveWorkspace() {
@@ -5293,7 +7275,7 @@ function renderWorkspaceDropdown() {
     const c = WORKSPACE_COLOURS.find(x => x.id === w.colour) || WORKSPACE_COLOURS[0];
     const isActive = w.id === activeWorkspaceId;
     const sharedIcon = w.shared ? `<span style="font-size:11px;color:var(--text3);margin-right:4px" title="Shared workspace">⇄</span>` : '';
-    return `<div class="ws-menu-item${isActive ? ' ws-active' : ''}" onclick="switchWorkspace('${w.id}')">
+    return `<div class="ws-menu-item${isActive ? ' ws-active' : ''}" onclick="switchWorkspace('${escJs(w.id)}')">
       <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.hex};margin-right:8px;flex-shrink:0"></span>
       <span style="flex:1">${esc(w.name)}</span>
       ${sharedIcon}
@@ -5333,15 +7315,18 @@ async function switchWorkspace(id) {
 
   try {
     // Snapshot current data into cache before leaving
-    _wsCache[activeWorkspaceId] = {
+    _wsCacheSet(activeWorkspaceId, {
       tasks: [...tasks],
       habits: [...habits],
       ideas: [...ideas],
       wins: [...wins],
-    };
+      lists: [...lists],
+      calEvents: [...calEvents],
+    });
 
     activeWorkspaceId = id;
     spreadsheetId = target.spreadsheetId;
+    currentOpenListId = null;
 
     // Apply per-workspace settings if they exist
     if (target.settings) {
@@ -5355,10 +7340,12 @@ async function switchWorkspace(id) {
 
     // If we have pre-fetched data, show instantly then sync in background
     if (_wsCache[id]) {
-      tasks   = _wsCache[id].tasks   || [];
-      habits  = _wsCache[id].habits  || [];
-      ideas   = _wsCache[id].ideas   || [];
-      wins    = _wsCache[id].wins    || [];
+      tasks    = _wsCache[id].tasks    || [];
+      habits   = _wsCache[id].habits   || [];
+      ideas    = _wsCache[id].ideas    || [];
+      wins     = _wsCache[id].wins     || [];
+      lists    = _wsCache[id].lists    || [];
+      calEvents= _wsCache[id].calEvents|| [];
       renderAll();
       updateHabitsSidebar();
       const cntIdeas = document.getElementById('cnt-ideas');
@@ -5367,21 +7354,23 @@ async function switchWorkspace(id) {
       if (cntWins) cntWins.textContent = wins.length;
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
-      // Background sync to pick up any remote changes
+      // Background sync to pick up any remote changes. Use refreshFromSheets
+      // so we don't reload from the (now-stale) local cache and flash an
+      // empty list before the Sheets response arrives.
       setTimeout(async () => {
-        await api.saveCache([]);
-        await connectToSheets();
-        await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-        _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+        await refreshFromSheets();
+        await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists(), loadCalEvents()]);
+        renderAll();
+        _wsCacheSet(id, { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists], calEvents: [...calEvents] });
       }, 500);
     } else {
       // No cache yet — load fresh
-      tasks = []; habits = []; ideas = []; wins = [];
+      tasks = []; habits = []; ideas = []; wins = []; calEvents = []; lists = [];
       await api.saveCache([]);
       renderAll();
       await connectToSheets();
-      await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+      await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists(), loadCalEvents()]);
+      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists], calEvents: [...calEvents] };
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
     }
@@ -5692,8 +7681,8 @@ function renderManageWorkspacesList() {
         ${shareNudge}
       </div>
       <div class="ws-manage-actions">
-        <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openRenameWorkspace('${w.id}')">Rename</button>
-        ${workspaces.length > 1 ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="promptDeleteWorkspace('${w.id}')">${w.shared ? 'Remove' : 'Delete'}</button>` : ''}
+        <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openRenameWorkspace('${escJs(w.id)}')">Rename</button>
+        ${workspaces.length > 1 ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="promptDeleteWorkspace('${escJs(w.id)}')">${w.shared ? 'Remove' : 'Delete'}</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -5715,7 +7704,10 @@ function openRenameWorkspace(id) {
     if (e.key === 'Enter') confirmRename(id, inp.value);
     if (e.key === 'Escape') { renderManageWorkspacesList(); }
   };
-  inp.onblur = () => { setTimeout(() => confirmRename(id, inp.value), 150); };
+  // Save synchronously on blur. setTimeout caused a race with the Delete button
+  // on the same row — clicks within the delay would delete then attempt rename
+  // on a workspace that no longer exists.
+  inp.onblur = () => confirmRename(id, inp.value);
 }
 
 function confirmRename(id, value) {
@@ -5811,6 +7803,10 @@ const saveTasksDebounced  = debounce(() => saveTasks(), 1500);
 const saveHabitsDebounced = debounce(() => saveHabits(), 2000);
 const saveIdeasDebounced  = debounce(() => saveIdeas(), 2000);
 const saveWinsDebounced   = debounce(() => saveWins(), 2000);
+const saveListsDebounced  = debounce(() => saveLists(), 2000);
+
+// Debounced search — avoids re-filtering+re-rendering on every keystroke
+const searchInputDebounced = debounce(() => renderTasks(), 150);
 
 // Debounced render — collapses rapid successive renderAll calls
 let renderPending = false;
@@ -5834,8 +7830,13 @@ async function startOfflineMode() {
   await api.saveConfig({ offlineMode: true });
   document.getElementById('offline-confirm-screen').classList.remove('active');
   showApp();
-  loadOfflineTasks();
-  setTimeout(startTutorial, 1000);
+  await loadOfflineTasks();
+  // Don't re-show onboarding/tutorial if the user already completed it
+  let cfg = null;
+  try { cfg = await api.loadConfig(); } catch {}
+  if (!cfg || (!cfg.onboardingComplete && !cfg.tutorialComplete)) {
+    setTimeout(startOnboarding, 800);
+  }
 }
 
 async function loadOfflineTasks() {
@@ -5845,7 +7846,9 @@ async function loadOfflineTasks() {
   setSyncStatus('offline');
   const btn = document.getElementById('connect-google-btn');
   if (btn) btn.style.display = '';
+  if (tasks.length > 0) checkOnboardingItem('addTask');
   renderAll();
+  renderGettingStartedCard();
 }
 
 async function connectGoogle() {
@@ -5913,9 +7916,14 @@ api.onTimerStopped((elapsed) => {
   // Restore main window
   if (wasSnoozed) {
     setTimeout(showBreakPanel, 200);
-  } else {
+  } else if (timerDidMinimize) {
     api.restore();
   }
+  timerDidMinimize = false;
 });
 
-init();
+init().catch(e => {
+  console.error('Init failed:', e);
+  hideLoadingScreen();
+  showAuth();
+});

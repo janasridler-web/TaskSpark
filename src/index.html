@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googleapis.com https://lh3.googleusercontent.com; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://api.github.com https://login.microsoftonline.com https://graph.microsoft.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TaskSpark</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -216,6 +217,14 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-checkbox:hover{border-color:var(--accent);background:var(--accent-l)}
 .task-checkbox.checked{background:var(--accent);border-color:var(--accent);color:#fff}
 
+@keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
+.task-card.celebrating{animation:card-pop .45s ease-out}
+.task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important;animation-iteration-count:1 !important;scroll-behavior:auto !important}
+}
+
 .task-body{flex:1;padding:14px 10px 14px 10px;min-width:0}
 .task-title{font-size:15px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:3px}
 .task-desc{font-size:13px;color:var(--text3);margin-bottom:6px;line-height:1.5}
@@ -241,9 +250,9 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-actions{display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:4px;padding:10px 10px;opacity:0;transition:opacity .15s;flex-shrink:0}
 .task-card:hover .task-actions{opacity:1}
-.action-btn{width:30px;height:30px;border-radius:7px;border:none;background:transparent;
+.action-btn{width:32px;height:32px;border-radius:7px;border:none;background:transparent;
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;
-  color:var(--text3);transition:all .15s}
+  color:var(--text3);transition:all .15s;min-width:32px;min-height:32px}
 .action-btn:hover{background:var(--surface2);color:var(--text)}
 .action-btn.timer{background:var(--accent-l);color:var(--accent)}
 .action-btn.timer:hover{background:var(--accent);color:#fff}
@@ -438,6 +447,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .settings-nav-item{padding:9px 16px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-radius:var(--radius);margin:0 6px;transition:all .15s;white-space:nowrap}
 .settings-nav-item:hover{background:var(--surface2);color:var(--text)}
 .settings-nav-item.active{background:var(--accent-l);color:var(--accent);font-weight:600}
+.settings-nav-secondary{font-size:12px;color:var(--text3) !important;padding:7px 16px}
 .settings-panel{flex:1;overflow-y:auto;padding:0 24px 16px 24px;min-width:0;max-height:480px}
 .settings-panel-section{display:none}
 .settings-panel-section.active{display:block}
@@ -447,6 +457,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .setting-row:last-child{border-bottom:none}
 .setting-label{font-size:14px;font-weight:500;color:var(--text)}
 .setting-desc{font-size:12px;color:var(--text3);margin-top:2px}
+.setting-sub-group{background:var(--surface2);border-radius:8px;padding:4px 12px;margin:4px 0 6px}
+.setting-sub-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 0 2px}
+.setting-row-sub{padding:5px 0;border-bottom:none}
+.setting-row-sub .setting-label{font-size:13px}
 .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
 .toggle-slider{position:absolute;inset:0;background:var(--border2);border-radius:24px;cursor:pointer;transition:background .2s}
@@ -517,6 +531,30 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .tutorial-desc{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:20px}
 .tutorial-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .tutorial-progress{font-size:12px;color:var(--text3)}
+
+/* ── Onboarding welcome modal ── */
+#onboarding-modal .modal { max-width: 460px; }
+/* ── Getting started card ── */
+#getting-started-card{background:var(--surface);border:1.5px solid var(--border);
+  border-radius:var(--radius);padding:16px 18px 14px;margin-bottom:16px}
+.gs-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.gs-title{font-size:14px;font-weight:700;color:var(--text)}
+.gs-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.gs-dismiss{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;
+  padding:0;line-height:1;opacity:.6;transition:opacity .15s}
+.gs-dismiss:hover{opacity:1}
+.gs-progress{height:3px;background:var(--border);border-radius:2px;margin-bottom:12px}
+.gs-progress-fill{height:3px;background:var(--accent);border-radius:2px;transition:width .4s}
+.gs-items{display:flex;flex-direction:column;gap:2px}
+.gs-item{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);
+  padding:7px 8px;border-radius:6px;transition:background .1s;cursor:pointer}
+.gs-item:hover:not(.done){background:var(--surface2)}
+.gs-item.done{color:var(--text3);cursor:default}
+.gs-item.done span{text-decoration:line-through}
+.gs-check{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;
+  color:transparent;transition:all .2s}
+.gs-item.done .gs-check{background:var(--accent);border-color:var(--accent);color:#fff}
 
 /* -- Offline mode -- */
 #offline-confirm-screen{position:fixed;inset:0;z-index:1100;background:var(--bg);
@@ -612,6 +650,71 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .idea-empty-icon{font-size:40px;margin-bottom:12px}
 .idea-empty-text{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px}
 .idea-empty-sub{font-size:13px}
+
+/* -- Lists -- */
+#lists-container{flex:1;overflow-y:auto;padding:20px 24px;display:none}
+#lists-container.active{display:block}
+#lists-container::-webkit-scrollbar{width:5px}
+#lists-container::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.lists-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.lists-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.list-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;display:flex;flex-direction:column;gap:10px;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.list-card:hover{box-shadow:var(--shadow-lg);border-color:var(--border2)}
+.list-card-name{font-size:14px;font-weight:700;color:var(--text);line-height:1.4}
+.list-card-meta{font-size:12px;color:var(--text3);margin-top:-4px}
+.list-card-preview{display:flex;flex-direction:column;gap:5px;padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);min-height:54px}
+.list-card-preview-item{display:flex;align-items:center;gap:7px}
+.list-card-preview-dot{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--border2);flex-shrink:0}
+.list-card-preview-dot.done{background:var(--accent);border-color:var(--accent)}
+.list-card-preview-text{font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.list-card-preview-text.done{text-decoration:line-through;color:var(--text3)}
+.list-card-preview-more{font-size:11px;color:var(--text3);font-style:italic;padding-left:19px}
+.list-card-preview-empty{font-size:12px;color:var(--text3);font-style:italic}
+.list-card-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:2px}
+.list-detail-wrap{max-width:680px}
+.list-detail-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.list-back-btn{display:flex;align-items:center;gap:4px;background:none;border:1px solid var(--border);border-radius:var(--radius);padding:6px 12px;cursor:pointer;font-size:12px;color:var(--text2);transition:background .15s}
+.list-back-btn:hover{background:var(--surface2)}
+.list-detail-title{font-size:17px;font-weight:700;color:var(--text);flex:1}
+/* Vertical layout (no categories) */
+.list-category-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:12px}
+.list-item-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
+.list-item-row:last-of-type{border-bottom:none}
+.list-item-check{width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:var(--accent)}
+.list-item-text{flex:1;font-size:13px;color:var(--text);line-height:1.4;cursor:text}
+.list-item-text.done{text-decoration:line-through;color:var(--text3)}
+.list-item-del{background:none;border:none;cursor:pointer;font-size:16px;color:var(--text3);padding:0 2px;line-height:1;opacity:0;transition:opacity .1s}
+.list-item-row:hover .list-item-del,.list-kanban-card:hover .list-item-del{opacity:1}
+.list-item-del:hover{color:var(--red)}
+.list-add-item-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.list-add-item-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:7px 10px;font-size:13px;color:var(--text);outline:none}
+.list-add-item-input:focus{border-color:var(--accent)}
+.list-add-category-btn{background:none;border:1px dashed var(--border2);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--text3);cursor:pointer;width:100%;margin-top:4px;text-align:center;transition:border-color .15s,color .15s}
+.list-add-category-btn:hover{border-color:var(--accent);color:var(--accent)}
+/* Kanban layout (with categories) */
+.list-kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;align-items:flex-start}
+.list-kanban::-webkit-scrollbar{height:5px}
+.list-kanban::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.list-kanban-col{flex:1;min-width:200px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-lg);display:flex;flex-direction:column;max-height:calc(100vh - 220px)}
+.list-kanban-col.drag-over{background:var(--accent-l);border-color:var(--accent)}
+.list-kanban-col-header{padding:10px 14px;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between}
+.list-kanban-col-del{background:none;border:none;cursor:pointer;font-size:15px;color:var(--text3);padding:0 2px;line-height:1}
+.list-kanban-col-del:hover{color:var(--red)}
+.list-kanban-col-body{padding:8px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px}
+.list-kanban-col-body::-webkit-scrollbar{width:3px}
+.list-kanban-col-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.list-kanban-col .list-add-item-row{padding:8px;border-top:1px solid var(--border);margin-top:0}
+.list-kanban-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;cursor:grab;transition:box-shadow .15s,opacity .15s}
+.list-kanban-card:hover{border-color:var(--border2);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.list-kanban-card.dragging{opacity:.4;cursor:grabbing}
+.list-kanban-card.done .list-item-text{text-decoration:line-through;color:var(--text3)}
+.list-kanban-card-row{display:flex;align-items:center;gap:8px}
+.list-kanban-add-col{flex-shrink:0;width:160px;background:none;border:1px dashed var(--border2);border-radius:var(--radius-lg);cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:80px;transition:border-color .15s,color .15s;color:var(--text3);font-size:12px}
+.list-kanban-add-col:hover{border-color:var(--accent);color:var(--accent)}
+.lists-empty{text-align:center;padding:60px 20px;color:var(--text3)}
+.lists-empty-icon{font-size:40px;margin-bottom:12px}
+.lists-empty-text{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.lists-empty-sub{font-size:13px}
 
 /* -- Wins Board -- */
 #wins-container{flex:1;overflow-y:auto;padding:20px 24px;display:none}
@@ -732,6 +835,151 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .budget-summary-value{font-size:18px;font-weight:700;color:var(--text)}
 .budget-summary-value.over{color:var(--red)}
 .budget-empty{text-align:center;padding:32px 16px;color:var(--text3);font-size:13px}
+
+/* ── Stats View ──────────────────────────────────────────────────────────── */
+#stats-container{display:none;flex:1;overflow-y:auto}
+#stats-container.active{display:block}
+.stats-page{padding:20px 28px 40px;width:100%;box-sizing:border-box}
+.stats-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.stats-page-title{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.stats-page-subtitle{color:var(--text2);font-size:13px;margin-top:4px}
+.stats-range-picker{display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:3px}
+.stats-range-btn{padding:6px 13px;font-size:13px;border:none;background:transparent;color:var(--text2);cursor:pointer;border-radius:6px;font-family:inherit;font-weight:500;transition:background .15s,color .15s}
+.stats-range-btn:hover{background:var(--surface2);color:var(--text)}
+.stats-range-btn.active{background:var(--text);color:#fff}
+.stats-date-banner{font-size:13px;color:var(--text2);margin-bottom:16px}
+.stats-kpi-row{display:grid;gap:12px;margin-bottom:20px}
+.stats-kpi-cols-2{grid-template-columns:repeat(2,1fr);max-width:600px}
+.stats-kpi-cols-3{grid-template-columns:repeat(3,1fr)}
+.stats-kpi-cols-4{grid-template-columns:repeat(4,1fr)}
+.stats-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+.stats-kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);font-weight:700;margin-bottom:8px}
+.stats-kpi-value{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1;font-variant-numeric:tabular-nums}
+.stats-kpi-unit{font-size:14px;font-weight:500;color:var(--text2);margin-left:2px}
+.stats-kpi-delta{margin-top:8px;font-size:12px;color:var(--text2)}
+.stats-kpi-delta.up{color:var(--accent)}
+.stats-kpi-delta.down{color:var(--amber)}
+.stats-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+.stats-grid-wide{grid-template-columns:1fr 1fr}
+.stats-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}
+.stats-card-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.stats-card-title{font-size:14px;font-weight:600;letter-spacing:-.1px}
+.stats-card-hint{font-size:12px;color:var(--text3)}
+.stats-chart-placeholder{height:180px;background:var(--surface2);border-radius:8px;border:1px dashed var(--border2)}
+.stats-section-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);font-weight:700;margin-bottom:12px}
+.stats-footnote{text-align:center;color:var(--text3);font-size:12px;margin-top:24px;padding:16px;font-style:italic}
+.stats-empty-msg{padding:28px 16px;text-align:center;color:var(--text3);font-size:13px;font-style:italic}
+/* Welcome state */
+.stats-welcome-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:32px;margin-bottom:20px;display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center}
+.stats-welcome-title{font-size:19px;font-weight:700;letter-spacing:-.3px;margin-bottom:12px}
+.stats-welcome-body{color:var(--text2);font-size:14px;line-height:1.6;margin-bottom:20px}
+.stats-welcome-progress{background:var(--surface2);border-radius:8px;padding:14px 16px;font-size:13px}
+.stats-welcome-progress-row{display:flex;justify-content:space-between;margin-bottom:8px;color:var(--text2)}
+.stats-welcome-progress-count{color:var(--accent);font-weight:600}
+.stats-progress-track{height:6px;background:var(--border2);border-radius:3px;overflow:hidden}
+.stats-progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .4s}
+.stats-welcome-visual{background:linear-gradient(135deg,var(--accent-l),var(--surface2));border-radius:8px;padding:28px;display:flex;flex-direction:column;gap:8px;justify-content:center;min-height:160px}
+.stats-preview-bar{height:10px;border-radius:2px;background:var(--accent)}
+.stats-preview-label{margin-top:12px;font-size:11px;color:var(--accent);font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.stats-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stats-tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px}
+.stats-tile-label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);font-weight:700;margin-bottom:8px}
+.stats-tile-value{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1}
+.stats-tile-unit{font-size:14px;font-weight:500;color:var(--text2);margin-left:2px}
+.stats-tile-delta{margin-top:8px;font-size:12px;color:var(--text2)}
+.stats-coming-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px}
+.stats-coming-title{font-size:14px;font-weight:600;margin-bottom:16px}
+.stats-coming-list{display:grid;grid-template-columns:1fr 1fr;gap:0 32px}
+.stats-coming-item{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.stats-coming-item:last-child,.stats-coming-item:nth-last-child(2):nth-child(odd){border-bottom:none}
+.stats-coming-when{font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.stats-coming-what{color:var(--text2)}
+/* Daily layout */
+.stats-strip-track{position:relative;height:50px;background:var(--surface2);border-radius:6px;overflow:hidden;margin-bottom:4px}
+.stats-strip-session{position:absolute;top:8px;height:14px;background:var(--accent);border-radius:3px;opacity:.75}
+.stats-strip-dot{position:absolute;top:32px;width:8px;height:8px;background:var(--accent);border:2px solid var(--surface);border-radius:50%;transform:translateX(-50%)}
+.stats-strip-now{position:absolute;top:0;bottom:0;width:2px;background:var(--amber);z-index:2}
+.stats-strip-hours{display:grid;grid-template-columns:repeat(24,1fr);font-size:9px;color:var(--text3);margin-bottom:4px;text-align:center}
+.stats-strip-legend{display:flex;gap:16px;margin-top:14px;font-size:11px;color:var(--text2);align-items:center}
+.stats-strip-legend-swatch{width:14px;height:8px;border-radius:2px;background:var(--accent);opacity:.75}
+.stats-strip-legend-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.stats-strip-legend-item{display:flex;align-items:center;gap:6px}
+.stats-focus-big{font-size:36px;font-weight:700;letter-spacing:-1px;color:var(--accent);line-height:1;text-align:center}
+.stats-focus-big-label{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px;text-align:center;margin-bottom:16px}
+.stats-stat-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+.stats-stat-row:last-child{border-bottom:none}
+.stats-stat-label{color:var(--text2)}
+.stats-stat-value{font-weight:600;font-variant-numeric:tabular-nums}
+.stats-task-list{display:flex;flex-direction:column}
+.stats-task-item{display:grid;grid-template-columns:18px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center;font-size:13px}
+.stats-task-item:last-child{border-bottom:none}
+.stats-task-check{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--accent);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0}
+.stats-task-check.open{background:transparent;border-color:var(--border2)}
+.stats-task-check.running{background:#fff;border-color:var(--amber);position:relative}
+[data-theme="dark"] .stats-task-check.running{background:var(--surface2)}
+.stats-task-check.running::after{content:'';width:6px;height:6px;background:var(--amber);border-radius:50%;animation:stats-pulse 1.5s ease-in-out infinite;position:absolute}
+@keyframes stats-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.stats-task-title{line-height:1.4}
+.stats-task-title.done{color:var(--text2);text-decoration:line-through;text-decoration-color:var(--text3)}
+.stats-task-tag{font-size:10px;color:var(--text2);background:var(--surface2);padding:1px 6px;border-radius:3px;font-weight:500;margin-left:4px;display:inline-block}
+.stats-task-time{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats-hour-chart{display:flex;align-items:flex-end;gap:2px;height:130px;border-bottom:1px solid var(--border);padding-bottom:2px}
+.stats-hour-bar{flex:1;background:var(--accent);border-radius:2px 2px 0 0;min-height:2px;opacity:.8}
+.stats-hour-bar.now{background:var(--amber);opacity:1}
+.stats-hour-bar.empty{background:var(--surface2);opacity:1;min-height:3px}
+.stats-hour-labels{display:grid;grid-template-columns:repeat(24,1fr);margin-top:6px;font-size:9px;color:var(--text3);text-align:center}
+/* Streak panel */
+.stats-streak-big{font-size:48px;font-weight:700;letter-spacing:-1.5px;color:var(--accent);line-height:1;text-align:center}
+.stats-streak-label{font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-top:6px;text-align:center;margin-bottom:16px}
+/* DOW bars */
+.stats-dow-bars{display:flex;flex-direction:column;gap:10px}
+.stats-dow-row{display:grid;grid-template-columns:40px 1fr 36px;align-items:center;gap:10px;font-size:12px}
+.stats-dow-label{color:var(--text2);font-weight:500}
+.stats-dow-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.stats-dow-fill{height:100%;background:var(--accent);border-radius:4px}
+.stats-dow-val{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+/* Tag rows */
+.stats-tag-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:10px 0;font-size:13px;border-bottom:1px solid var(--border)}
+.stats-tag-row:last-child{border-bottom:none}
+.stats-tag-name{font-weight:500}
+.stats-tag-name.untagged{color:var(--text3);font-style:italic}
+.stats-tag-time{color:var(--text2);font-variant-numeric:tabular-nums;font-weight:600}
+/* Heatmap */
+.stats-heatmap{display:grid;grid-template-columns:32px repeat(24,1fr);gap:2px;font-size:10px;color:var(--text3)}
+.stats-hm-label{display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-weight:500}
+.stats-hm-cell{aspect-ratio:1;border-radius:2px;background:var(--surface2)}
+.stats-hm-cell[data-v="1"]{background:color-mix(in srgb,var(--accent) 25%,var(--surface2))}
+.stats-hm-cell[data-v="2"]{background:color-mix(in srgb,var(--accent) 50%,var(--surface2))}
+.stats-hm-cell[data-v="3"]{background:color-mix(in srgb,var(--accent) 75%,var(--surface2))}
+.stats-hm-cell[data-v="4"]{background:var(--accent)}
+/* Estimate breakdown */
+.stats-estimate-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:6px;background:var(--surface2)}
+.stats-estimate-bar-early{background:var(--amber);opacity:.5}
+.stats-estimate-bar-on{background:var(--accent)}
+.stats-estimate-bar-over{background:var(--amber)}
+.stats-export-btn{padding:6px 14px;border:1.5px solid var(--border);border-radius:var(--radius);background:none;color:var(--text2);font-size:12px;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;transition:border-color .15s,color .15s}
+.stats-export-btn:hover{border-color:var(--accent);color:var(--accent)}
+.stats-empty-range{padding:12px 16px;margin-bottom:16px;background:var(--surface2);border-radius:8px;font-size:13px;color:var(--text2);text-align:center}
+.stats-print-tasks{display:none}
+.stats-print-tasks-header{font-size:15px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--border)}
+.stats-print-group{margin-bottom:14px}
+.stats-print-group-date{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;padding:5px 0;border-bottom:1px solid var(--border)}
+.stats-print-task-row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border2);gap:12px}
+.stats-print-task-title{flex:1;color:var(--text)}
+.stats-print-task-time{color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:11px}
+
+@media print {
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
+  body,html{background:white !important;height:auto !important;overflow:visible !important}
+  #sidebar,#sync-bar,#toolbar,#stats-bar,.stats-export-btn,.stats-range-picker{display:none !important}
+  #main{padding:0 !important;overflow:visible !important;display:block !important}
+  #stats-container,#stats-container.active{display:block !important;overflow:visible !important;height:auto !important}
+  .stats-page{padding:12px 20px !important}
+  .stats-card,.stats-grid,.stats-grid-wide,.stats-kpi-row{page-break-inside:avoid;break-inside:avoid}
+  .stats-card svg{height:auto !important}
+  .stats-print-tasks{display:block !important;margin-top:40px;border-top:2px solid #ccc;padding-top:24px}
+  .stats-print-group{page-break-inside:avoid;break-inside:avoid}
+}
 
 /* ── Calendar View ───────────────────────────────────────────────────────── */
 #calendar-view-container{display:none;flex:1;flex-direction:column;overflow:hidden}
@@ -889,6 +1137,49 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   border-radius:var(--radius);font-size:13px;font-family:'Outfit',sans-serif;font-weight:600;
   cursor:pointer;transition:background .15s}
 .bp-btn-focus:hover{background:#444;color:#fff}
+
+/* ── Focus overlay (in-app full-viewport focus mode) ───────────────────────── */
+#focus-overlay{position:fixed;inset:0;background:#0f0e0d;color:#ede9e3;z-index:820;
+  display:none;flex-direction:column;font-family:'Outfit',sans-serif;user-select:none}
+#focus-overlay.active{display:flex;animation:fadeIn .25s ease}
+.focus-header{position:absolute;top:20px;left:24px;font-size:11px;color:#2d2a26;
+  font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.focus-main{flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:80px 48px 0}
+.focus-label{font-size:11px;color:#d97706;font-weight:600;letter-spacing:3px;
+  text-transform:uppercase;margin-bottom:20px}
+.focus-title{font-size:36px;font-weight:700;color:#ede9e3;text-align:center;
+  line-height:1.2;max-width:800px;margin-bottom:12px}
+.focus-desc{font-size:15px;color:#6a6358;text-align:center;max-width:600px;
+  line-height:1.5;margin-bottom:28px}
+.focus-subtasks{display:flex;flex-direction:column;gap:6px;max-width:480px;
+  width:100%;margin-bottom:48px}
+.focus-sub-row{display:flex;align-items:center;gap:12px;cursor:pointer;
+  padding:8px 12px;border-radius:8px;transition:background .15s}
+.focus-sub-row:hover{background:#1a1814}
+.focus-sub-check{width:18px;height:18px;border-radius:4px;border:1.5px solid #3d3830;
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;
+  font-weight:700;color:#fff;transition:background .15s,border-color .15s}
+.focus-sub-check.done{background:#2d6a4f;border-color:#2d6a4f}
+.focus-sub-text{font-size:14px;color:#a09888}
+.focus-sub-text.done{color:#3d3830;text-decoration:line-through}
+.focus-footer{display:flex;flex-direction:column;align-items:center;
+  padding:0 0 52px;gap:16px}
+.focus-time{font-size:72px;font-weight:700;color:#fff;font-family:var(--font-mono);
+  letter-spacing:4px;line-height:1;transition:color .2s}
+.focus-time.paused{color:#3d3830}
+.focus-paused-label{font-size:11px;color:#6a6358;letter-spacing:2px;
+  text-transform:uppercase;height:16px}
+.focus-controls{display:flex;gap:12px}
+.focus-btn{border:none;font-size:14px;font-weight:700;padding:12px 28px;
+  border-radius:10px;cursor:pointer;font-family:'Outfit',sans-serif;
+  transition:background .15s}
+.focus-pause{background:#1a1814;color:#a09888}
+.focus-pause:hover{background:#252220}
+.focus-pause.paused{background:#2d6a4f;color:#fff}
+.focus-pause.paused:hover{background:#1b4d38}
+.focus-stop{background:#c0392b;color:#fff}
+.focus-stop:hover{background:#9b2c2c}
 
 /* ── Quick add ─────────────────────────────────────────────────────────────── */
 #quick-add-overlay{position:fixed;inset:0;z-index:700;display:none;
@@ -1119,22 +1410,25 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       </div>
 
       <div class="sidebar-divider"></div>
-      <div class="sidebar-section-label">Views</div>
+      <div class="sidebar-section-label">Tasks</div>
       <div class="sidebar-item active" data-view="all" onclick="setView('all',this)"><span class="si-icon">☰</span>All Tasks<span class="si-count" id="cnt-all">0</span></div>
-      <div class="sidebar-item" data-view="calendar-view" id="sidebar-calendar-view" onclick="setView('calendar-view',this)"><span class="si-icon">▦</span>Calendar</div>
-      <div class="sidebar-item" data-view="kanban" onclick="setView('kanban',this)"><span class="si-icon">⊞</span>Kanban</div>
       <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon">◷</span>Due Today<span class="si-count" id="cnt-today">0</span></div>
       <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon">!</span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
+      <div class="sidebar-item" data-view="deferred" id="sidebar-deferred" onclick="setView('deferred',this)" style="display:none"><span class="si-icon">◷</span>Deferred<span class="si-count" id="cnt-deferred">0</span></div>
       <div class="sidebar-item" data-view="completed" onclick="setView('completed',this)"><span class="si-icon">✓</span>Completed<span class="si-count" id="cnt-completed">0</span></div>
       <div class="sidebar-item" data-view="archived" onclick="setView('archived',this)"><span class="si-icon" style="color:var(--text3)">◫</span>Archived<span class="si-count" id="cnt-archived">0</span></div>
 
       <div id="sidebar-tools-section">
       <div class="sidebar-divider"></div>
-      <div class="sidebar-section-label">TOOLS</div>
+      <div class="sidebar-section-label" id="sidebar-tools-section-label">Tools</div>
+      <div class="sidebar-item" data-view="stats" id="sidebar-stats" onclick="setView('stats',this)"><span class="si-icon">▲</span>Stats</div>
       <div class="sidebar-item" data-view="ideas" onclick="setView('ideas',this)"><span class="si-icon">❋</span>Ideas<span class="si-count" id="cnt-ideas">0</span></div>
       <div class="sidebar-item" onclick="showHabitsView()" id="sidebar-habits-main"><span class="si-icon">⊕</span>Habit Tracker</div>
       <div class="sidebar-item" data-view="wins" onclick="setView('wins',this)"><span class="si-icon">✪</span>Wins Board<span class="si-count" id="cnt-wins">0</span></div>
       <div class="sidebar-item" data-view="budget-view" id="sidebar-budget-view" onclick="setView('budget-view',this)"><span class="si-icon">$</span>Budget View</div>
+      <div class="sidebar-item" data-view="calendar-view" id="sidebar-calendar-view" onclick="setView('calendar-view',this)"><span class="si-icon">▦</span>Calendar</div>
+      <div class="sidebar-item" data-view="kanban" onclick="setView('kanban',this)"><span class="si-icon">⊞</span>Kanban</div>
+      <div class="sidebar-item" data-view="lists" id="sidebar-lists" onclick="setView('lists',this)"><span class="si-icon">☑</span>Lists<span class="si-count" id="cnt-lists">0</span></div>
       </div>
 
       <div class="sidebar-divider"></div>
@@ -1189,7 +1483,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <div id="view-title">All Tasks</div>
       <span id="workspace-title" style="display:none"></span>
       <span id="ws-readonly-badge" style="display:none;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--surface2);color:var(--amber);border:1px solid var(--amber);margin-right:4px">⇄ View only</span>
-      <input id="search-input" type="text" placeholder="Search tasks…" oninput="renderTasks()" style="-webkit-app-region:no-drag">
+      <input id="search-input" type="text" placeholder="Search tasks…" oninput="searchInputDebounced()" style="-webkit-app-region:no-drag">
       <select id="sort-select" onchange="onSortChange()">
         <option value="created">Newest first</option>
         <option value="due">Due date</option>
@@ -1208,7 +1502,9 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div id="habits-container"></div>
     <div id="wins-container"></div>
     <div id="budget-view-container"></div>
+    <div id="stats-container"></div>
     <div id="calendar-view-container"></div>
+    <div id="lists-container"></div>
     <div id="task-list-container">
       <div id="archive-bulk-bar" style="display:none;padding:8px 0 12px;display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:13px;color:var(--text2)">Select tasks to restore</span>
@@ -1236,6 +1532,25 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   </div>
   <div class="timer-time" id="timer-time">00:00</div>
   <button class="timer-stop-btn" onclick="stopTimer()">■ &nbsp;Stop Timer</button>
+</div>
+
+<!-- Focus overlay (in-app focus mode) -->
+<div id="focus-overlay">
+  <div class="focus-header">TaskSpark</div>
+  <div class="focus-main">
+    <div class="focus-label">Focusing on</div>
+    <div class="focus-title" id="focus-title"></div>
+    <div class="focus-desc" id="focus-desc"></div>
+    <div class="focus-subtasks" id="focus-subtasks"></div>
+  </div>
+  <div class="focus-footer">
+    <div class="focus-time" id="focus-time">00:00</div>
+    <div class="focus-paused-label" id="focus-paused-label"></div>
+    <div class="focus-controls">
+      <button class="focus-btn focus-pause" id="focus-pause-btn" onclick="toggleFocusPause()">‖ Pause</button>
+      <button class="focus-btn focus-stop" onclick="stopTimer()">■ Stop</button>
+    </div>
+  </div>
 </div>
 
 <!-- Break prompt -->
@@ -1295,6 +1610,16 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
           <button type="button" id="tm-due-time-clear" onclick="clearDueTime()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:none;color:var(--text3);font-size:12px;cursor:pointer;white-space:nowrap" title="Clear time">✕ Clear</button>
         </div>
       </div>
+    </div>
+    <div class="form-group" id="hide-until-form-group" style="display:none">
+      <label class="form-label">Hide until <span style="font-weight:400;color:var(--text3)">(days before due date)</span></label>
+      <input class="form-input" id="tm-hide-until" type="number" min="1" placeholder="e.g. 3">
+    </div>
+    <div class="form-group" id="overdue-alert-form-group" style="display:none">
+      <label class="form-label" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="tm-overdue-alert" style="width:16px;height:16px;accent-color:var(--accent)">
+        Flag for overdue alert
+      </label>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -1440,45 +1765,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   </div>
 </div>
 
-<!-- Calendar Event Modal -->
-<div class="modal-overlay" id="cal-event-modal-overlay" onclick="closeModalOutside(event,'cal-event-modal-overlay')">
-  <div class="modal" id="cal-event-modal">
-    <div class="modal-title" id="cal-event-modal-title">New Event</div>
-    <div class="form-group">
-      <label class="form-label">Title *</label>
-      <input class="form-input" id="cem-title" placeholder="Event name">
-    </div>
-    <div class="form-group">
-      <label class="form-label">
-        <span style="display:flex;align-items:center;gap:10px">All Day
-          <label class="toggle-switch" style="margin:0"><input type="checkbox" id="cem-allday" onchange="toggleCalEventAllDay()"><span class="toggle-slider"></span></label>
-        </span>
-      </label>
-    </div>
-    <div class="form-row" id="cem-time-row">
-      <div class="form-group">
-        <label class="form-label">Start</label>
-        <input class="form-input" id="cem-start" type="datetime-local">
-      </div>
-      <div class="form-group">
-        <label class="form-label">End</label>
-        <input class="form-input" id="cem-end" type="datetime-local">
-      </div>
-    </div>
-    <div class="form-row" id="cem-date-row" style="display:none">
-      <div class="form-group">
-        <label class="form-label">Date</label>
-        <input class="form-input" id="cem-date" type="date">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal('cal-event-modal-overlay')">Cancel</button>
-      <button class="btn-secondary" id="cem-delete-btn" onclick="deleteCalEvent()" style="display:none;color:var(--red);border-color:var(--red)">Delete</button>
-      <button class="btn-primary" onclick="saveCalEvent()">Save Event</button>
-    </div>
-  </div>
-</div>
-
 <!-- Completion modal -->
 <div class="modal-overlay" id="completion-modal-overlay">
   <div class="modal modal-sm" id="completion-modal">
@@ -1507,8 +1793,23 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <input class="form-input" id="cm-spent" type="number" min="0" step="0.01" placeholder="0.00" style="color:var(--text)">
     </div>
     <div class="modal-footer">
+      <button class="btn-secondary" onclick="cancelCompletion()">Cancel</button>
       <button class="btn-secondary" onclick="saveCompletion(true)">Skip</button>
       <button class="btn-primary" onclick="saveCompletion(false)">Save & Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Overdue alert modal -->
+<div class="modal-overlay" id="overdue-alert-overlay">
+  <div class="modal modal-sm" id="overdue-alert-modal">
+    <div style="background:var(--red);margin:-28px -28px 20px;padding:18px 24px;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+      <div style="font-size:18px;font-weight:700;color:#fff">⚠ Overdue Tasks</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.7);margin-top:3px">These tasks need your attention</div>
+    </div>
+    <div id="overdue-alert-list" style="max-height:320px;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="acknowledgeOverdueAlert()">Acknowledge</button>
     </div>
   </div>
 </div>
@@ -1537,21 +1838,24 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div class="settings-modal-inner">
       <!-- Left nav -->
       <div class="settings-nav">
-        <div class="settings-nav-item active" onclick="switchSettingsTab('general',this)">General</div>
-        <div class="settings-nav-item" onclick="switchSettingsTab('feature-settings',this)">Feature Settings</div>
+        <div class="settings-nav-item active" onclick="switchSettingsTab('task-org',this)">Task Organisation</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('focus',this)">Focus &amp; Productivity</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('wellbeing',this)">Wellbeing</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('tools',this)">Tools</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('daily-flow',this)">Daily Flow</div>
         <div class="settings-nav-item" onclick="switchSettingsTab('appearance',this)">Appearance</div>
-        <div class="settings-nav-item" onclick="switchSettingsTab('onboarding',this)">Onboarding</div>
         <div class="settings-nav-item" onclick="switchSettingsTab('account',this)">Account &amp; Data</div>
-        <div class="settings-nav-item" onclick="switchSettingsTab('changelog',this)">Changelog</div>
-        <div class="settings-nav-item" onclick="switchSettingsTab('contact',this)">Contact Us</div>
+        <div style="height:1px;background:var(--border);margin:8px 6px 4px"></div>
+        <div class="settings-nav-item settings-nav-secondary" onclick="switchSettingsTab('changelog',this)">What's New</div>
+        <div class="settings-nav-item settings-nav-secondary" onclick="switchSettingsTab('contact',this)">Contact Us</div>
       </div>
       <!-- Right panel -->
       <div class="settings-panel">
 
-        <!-- GENERAL -->
-        <div class="settings-panel-section active" id="settings-tab-general">
+        <!-- TASK ORGANISATION -->
+        <div class="settings-panel-section active" id="settings-tab-task-org">
           <div class="settings-section" style="margin-top:16px">
-            <div class="settings-section-title">Task Organisation</div>
+            <div class="settings-section-title">Task Fields</div>
             <div class="setting-row">
               <div><div class="setting-label">Tags</div><div class="setting-desc">Tag tasks and filter by tag in the sidebar</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-tags"><span class="toggle-slider"></span></label>
@@ -1559,6 +1863,36 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Task status</div><div class="setting-desc">Track status on tasks (Not Started, In Progress, Blocked, etc.)</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-status-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Due Date</div><div class="setting-desc">Set due dates on tasks with calendar picker</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-due-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Due Time</div><div class="setting-desc">Add a specific time alongside the due date</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-due-time-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Defer tasks</div><div class="setting-desc">Hide a task until a set number of days before its due date</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-defer-enabled" onchange="saveSettings();toggleDeferSidebarItem();renderAll()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Overdue task alerts</div><div class="setting-desc">Show a blocking warning when tasks become overdue</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-overdue-alert-enabled" onchange="toggleOverdueAlertSub()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-sub-group" id="overdue-alert-sub" style="display:none">
+              <div class="setting-sub-label">Alert me for</div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Alert mode</div></div>
+                <select id="set-overdue-alert-mode" class="form-input" style="width:auto;font-size:12px;padding:4px 8px;height:auto">
+                  <option value="all">All overdue tasks</option>
+                  <option value="per-task">Flagged tasks only</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-energy-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Subtasks</div><div class="setting-desc">Break tasks into smaller checkable steps</div></div>
@@ -1569,50 +1903,46 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <label class="toggle-switch"><input type="checkbox" id="set-recurrence-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-label">Due Date</div><div class="setting-desc">Set due dates on tasks with calendar picker</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-due-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Attachments</div><div class="setting-desc">Attach files or links to tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-attachments-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-label">Due Time</div><div class="setting-desc">Add a specific time alongside the due date</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-due-time-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Celebration animation</div><div class="setting-desc">Play a pop animation when a task is completed</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-celebration-enabled" onchange="saveSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Completion dialog</div><div class="setting-desc">Ask for impact, outcome and deliverable when completing a task</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-completion" onchange="toggleCompletionDialogSub()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-sub-group" id="completion-dialog-priorities">
+              <div class="setting-sub-label">Show dialog for:</div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">High priority</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-completion-dialog-high"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Medium priority</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-completion-dialog-med"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Low priority</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-completion-dialog-low"><span class="toggle-slider"></span></label>
+              </div>
             </div>
           </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Focus &amp; Productivity</div>
+        </div>
+
+        <!-- FOCUS & PRODUCTIVITY -->
+        <div class="settings-panel-section" id="settings-tab-focus">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Smart Features</div>
             <div class="setting-row">
               <div><div class="setting-label">What Now? button</div><div class="setting-desc">Smart task picker that suggests what to focus on</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-whatnow"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-energy-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Daily mood check-in</div><div class="setting-desc">Show the "How are you feeling?" button in the sidebar</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-mood-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a changelog button in the sidebar</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Completion dialog</div><div class="setting-desc">Ask for impact, outcome and deliverable when completing a task</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-completion"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
               <div><div class="setting-label">Quick Add (Ctrl+Space)</div><div class="setting-desc">Instantly capture a task with a keyboard shortcut</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-quickadd"><span class="toggle-slider"></span></label>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Time &amp; Wellbeing</div>
-            <div class="setting-row">
-              <div><div class="setting-label">Break reminders</div><div class="setting-desc">Prompt to take a break after working for a set time</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-break-enabled-general" onchange="toggleBreakFeatureTab()"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Streak tracker</div><div class="setting-desc">Track consecutive days of completing tasks</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-streak" onchange="toggleStreakSettings()"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Time estimates</div><div class="setting-desc">Set estimated time on tasks and compare with actual</div></div>
@@ -1623,86 +1953,21 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <label class="toggle-switch"><input type="checkbox" id="set-timer-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-label">Budget tracking</div><div class="setting-desc">Set a budget on tasks and track how much was spent</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Open focus view when timer starts</div><div class="setting-desc">Replace the timer overlay with a fullscreen focus view showing the task, subtasks and timer</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-focus-mode-enabled" onchange="saveSettings()"><span class="toggle-slider"></span></label>
             </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-title">Views</div>
+            <div class="settings-section-title">Break Reminders</div>
             <div class="setting-row">
-              <div><div class="setting-label">Kanban view</div><div class="setting-desc">View tasks as a Kanban board grouped by tag and status</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Break reminders</div><div class="setting-desc">Prompt to take a break after working for a set time</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-break-enabled-general" onchange="toggleBreakFeatureTab()"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Calendar view</div><div class="setting-desc">View tasks and events on a monthly or weekly calendar</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-calendar-enabled"><span class="toggle-slider"></span></label>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Daily Summaries</div>
-            <div class="setting-row">
-              <div><div class="setting-label">Start of day summary</div><div class="setting-desc">Show a morning summary when you first open the app each day</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-sod-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">End of day summary</div><div class="setting-desc">Show an end of day summary at a set time</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-eod-enabled"><span class="toggle-slider"></span></label>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Tools</div>
-            <div class="setting-row">
-              <div><div class="setting-label">Ideas</div><div class="setting-desc">Capture thoughts and turn them into tasks</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-ideas-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Habit Tracker</div><div class="setting-desc">Track daily habits with a visual streak grid</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-habits-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Wins Board</div><div class="setting-desc">Capture praise and achievements to revisit when you need a boost</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-wins-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Attachments</div><div class="setting-desc">Attach files or links to tasks</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-attachments-enabled"><span class="toggle-slider"></span></label>
-            </div>
-
-
-            <div class="setting-row">
-              <div><div class="setting-label">Workspaces</div><div class="setting-desc">Separate areas for different parts of your life, each with their own Google Sheet</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-workspaces-enabled"><span class="toggle-slider"></span></label>
-            </div>
-          </div>
-        </div>
-
-        <!-- FEATURE SETTINGS -->
-        <div class="settings-panel-section" id="settings-tab-feature-settings">
-          <!-- Empty state when no features with settings are enabled -->
-          <div id="feature-settings-empty" style="display:none;padding:40px 0;text-align:center">
-            <div style="font-size:28px;margin-bottom:12px">⚙</div>
-            <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">No feature settings available</div>
-            <div style="font-size:13px;color:var(--text3);line-height:1.6">Turn on Break reminders, Streak tracker or Kanban<br>in General to access their settings here.</div>
-          </div>
-          <!-- Feature sub-nav -->
-          <div style="display:flex;gap:6px;flex-wrap:wrap;padding:14px 0 10px;border-bottom:1px solid var(--border);margin-bottom:14px">
-            <button class="feature-sub-btn active" onclick="switchFeatureTab('timer',this)">Timer &amp; Breaks</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('streak',this)">Streak</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('kanban',this)">Kanban</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('budget',this)">Budget</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('summaries',this)">Daily Summaries</button>
-          </div>
-          <!-- Timer & Breaks -->
-          <div class="feature-sub-section active" id="feature-tab-timer">
-            <div class="settings-section">
-              <div class="settings-section-title">Break Timer</div>
+            <div id="break-sub-settings">
               <div class="break-timing-row" id="break-timing-row">
                 <div class="break-timing-item"><label>Work before break (minutes)</label><input type="number" id="set-break-interval" min="1" max="120" value="30"></div>
                 <div class="break-timing-item"><label>Break duration (minutes)</label><input type="number" id="set-break-duration" min="1" max="60" value="5"></div>
               </div>
-            </div>
-            <div class="settings-section">
-              <div class="settings-section-title">Break Sound</div>
               <div class="setting-row">
                 <div><div class="setting-label">Play sound on break</div><div class="setting-desc">Play a chime when the break prompt appears</div></div>
                 <label class="toggle-switch"><input type="checkbox" id="set-sound-enabled"><span class="toggle-slider"></span></label>
@@ -1715,12 +1980,26 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               </div>
             </div>
           </div>
-          <!-- Streak -->
-          <div class="feature-sub-section" id="feature-tab-streak">
-            <div class="settings-section" id="streak-extra-settings" style="margin-top:4px">
-              <div class="settings-section-title">Streak Settings</div>
+        </div>
+
+        <!-- WELLBEING -->
+        <div class="settings-panel-section" id="settings-tab-wellbeing">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Mood</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Daily mood check-in</div><div class="setting-desc">Show the "How are you feeling?" button in the sidebar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-mood-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Streak</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Streak tracker</div><div class="setting-desc">Track consecutive days of completing tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-streak" onchange="toggleStreakSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="streak-extra-settings">
               <div class="setting-row">
-                <div><div class="setting-label">Include weekends</div><div class="setting-desc">Count Saturday and Sunday towards your streak</div></div>
+                <div><div class="setting-label">Include weekends</div><div class="setting-desc">Count Saturday and Sunday towards your streak and stats</div></div>
                 <label class="toggle-switch"><input type="checkbox" id="set-streak-weekends"><span class="toggle-slider"></span></label>
               </div>
               <div class="setting-row">
@@ -1742,12 +2021,42 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               </div>
             </div>
           </div>
-          <!-- Kanban -->
-          <div class="feature-sub-section" id="feature-tab-kanban">
-            <div class="settings-section" style="margin-top:4px">
-              <div class="settings-section-title">Kanban Settings</div>
+        </div>
+
+        <!-- TOOLS -->
+        <div class="settings-panel-section" id="settings-tab-tools">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Tracking &amp; Insights</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Stats</div><div class="setting-desc">View completion and time tracking stats across all your tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-stats-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Ideas</div><div class="setting-desc">Capture thoughts and turn them into tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-ideas-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Habit Tracker</div><div class="setting-desc">Track daily habits with a visual streak grid</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-habits-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Wins Board</div><div class="setting-desc">Capture praise and achievements to revisit when you need a boost</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-wins-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Lists</div><div class="setting-desc">Create and manage checklists for anything — shopping, reading, errands</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-lists-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Kanban</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Kanban view</div><div class="setting-desc">View tasks as a Kanban board grouped by tag and status</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled" onchange="toggleKanbanSub()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="kanban-sub-settings">
               <div class="setting-row">
-                <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board. Turn off to see all tasks in a single board</div></div>
+                <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board</div></div>
                 <label class="toggle-switch"><input type="checkbox" id="set-kanban-group-tags"><span class="toggle-slider"></span></label>
               </div>
               <div class="setting-row">
@@ -1756,58 +2065,74 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               </div>
             </div>
           </div>
-          <!-- Budget -->
-          <div class="feature-sub-section" id="feature-tab-budget">
-            <div class="settings-section" style="margin-top:4px">
-              <div class="settings-section-title">Currency</div>
+          <div class="settings-section">
+            <div class="settings-section-title">Budget Tracking</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Budget tracking</div><div class="setting-desc">Set a budget on tasks and track how much was spent</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled" onchange="toggleBudgetSub()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="budget-sub-settings">
               <div class="setting-row">
                 <div><div class="setting-label">Currency symbol</div><div class="setting-desc">Shown next to budget and spent amounts</div></div>
                 <input type="text" id="set-currency-symbol" maxlength="3" style="width:56px;border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;text-align:center">
               </div>
-            </div>
-            <div class="settings-section">
-              <div class="settings-section-title">Budget View</div>
               <div class="setting-row">
                 <div><div class="setting-label">Group by tags</div><div class="setting-desc">Split the Budget View into sections by tag, each with its own summary</div></div>
                 <label class="toggle-switch"><input type="checkbox" id="set-budget-group-tags"><span class="toggle-slider"></span></label>
               </div>
             </div>
           </div>
-          <!-- Daily Summaries -->
-          <div class="feature-sub-section" id="feature-tab-summaries">
-            <div class="settings-section" style="margin-top:4px">
-              <div class="settings-section-title">Start of Day</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show tasks due today</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-sod-due-today"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show overdue tasks</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-sod-overdue"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Include mood check-in</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-sod-mood"><span class="toggle-slider"></span></label>
-              </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Calendar</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Calendar view</div><div class="setting-desc">View tasks and events on a monthly or weekly calendar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-calendar-enabled"><span class="toggle-slider"></span></label>
             </div>
-            <div class="settings-section">
-              <div class="settings-section-title">End of Day</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Time</div><div class="setting-desc">When to show the end of day summary</div></div>
-                <input type="time" id="set-eod-time" style="border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:13px;background:var(--surface);color:var(--text);font-family:inherit">
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show tasks completed today</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-eod-completed"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show tasks due tomorrow</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-eod-tomorrow"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show streak &amp; motivation</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-eod-streak"><span class="toggle-slider"></span></label>
-              </div>
+          </div>
+        </div>
+
+        <!-- DAILY FLOW -->
+        <div class="settings-panel-section" id="settings-tab-daily-flow">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Start of Day</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Start of day summary</div><div class="setting-desc">Show a morning summary when you first open the app each day</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show tasks due today</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-due-today"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show overdue tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-overdue"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Include mood check-in</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-mood"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">End of Day</div>
+            <div class="setting-row">
+              <div><div class="setting-label">End of day summary</div><div class="setting-desc">Show an end of day summary at a set time</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Time</div><div class="setting-desc">When to show the end of day summary</div></div>
+              <input type="time" id="set-eod-time" style="border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:13px;background:var(--surface);color:var(--text);font-family:inherit">
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show tasks completed today</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-completed"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show tasks due tomorrow</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-tomorrow"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show streak &amp; motivation</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-streak"><span class="toggle-slider"></span></label>
             </div>
           </div>
         </div>
@@ -1833,16 +2158,19 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               </div>
               <div id="colour-theme-name" style="font-size:12px;color:var(--text3);margin-top:-4px"></div>
             </div>
-          </div>
-        </div>
-
-        <!-- ONBOARDING -->
-        <div class="settings-panel-section" id="settings-tab-onboarding">
-          <div class="settings-section" style="margin-top:16px">
-            <div class="settings-section-title">Onboarding</div>
             <div class="setting-row">
-              <div><div class="setting-label">Replay tutorial</div><div class="setting-desc">Walk through the feature tour again</div></div>
-              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startTutorial,150)" style="font-size:12px;padding:6px 14px">Replay</button>
+              <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a What's New button in the sidebar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Tag Colours</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Custom tag colours</div><div class="setting-desc">Choose a colour for each of your tags instead of using the auto-assigned palette</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-tag-custom-colors" onchange="toggleTagColorSection()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="tag-colors-section" style="display:none">
+              <div id="tag-colors-list"></div>
             </div>
           </div>
         </div>
@@ -1873,6 +2201,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               </div>
               <button class="btn-secondary" id="outlook-settings-btn" onclick="toggleOutlookFromSettings()" style="font-size:12px;padding:6px 12px">Connect</button>
             </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Workspaces</div><div class="setting-desc">Separate areas for different parts of your life, each with their own Google Sheet</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-workspaces-enabled"><span class="toggle-slider"></span></label>
+            </div>
           </div>
           <div class="settings-section">
             <div class="settings-section-title">Data</div>
@@ -1890,9 +2222,16 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(openArchiveModal,150)" style="font-size:12px;padding:6px 12px">Archive</button>
             </div>
           </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Onboarding</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Replay tutorial</div><div class="setting-desc">Walk through the getting started checklist again</div></div>
+              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startOnboarding,150)" style="font-size:12px;padding:6px 14px">Replay</button>
+            </div>
+          </div>
         </div>
 
-        <!-- CHANGELOG -->
+        <!-- WHAT'S NEW -->
         <div class="settings-panel-section" id="settings-tab-changelog">
           <div class="settings-section" style="margin-top:16px">
             <div class="settings-section-title">What's New</div>
@@ -1900,6 +2239,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
           </div>
         </div>
 
+        <!-- CONTACT US -->
         <div class="settings-panel-section" id="settings-tab-contact">
           <div class="settings-section" style="margin-top:16px">
             <div class="settings-section-title">Contact Us</div>
@@ -2156,7 +2496,12 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       </div>
       <div class="form-group">
         <label class="form-label">Date</label>
-        <input type="date" class="form-input" id="win-date">
+        <div style="position:relative">
+          <button class="date-picker-btn" id="win-date-btn" onclick="toggleWinCalendar()">
+            <span>📅</span><span id="win-date-label">Pick a date</span>
+          </button>
+          <div class="calendar-popup" id="win-calendar-popup" style="display:none"></div>
+        </div>
       </div>
     </div>
     <div class="form-group">
@@ -2172,6 +2517,36 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('win-modal-overlay')">Cancel</button>
       <button class="btn-primary" onclick="saveWin()">Save Win</button>
+    </div>
+  </div>
+</div>
+
+<!-- List modal -->
+<div class="modal-overlay" id="list-modal-overlay" onclick="closeModalOutside(event,'list-modal-overlay')">
+  <div class="modal modal-sm">
+    <div class="modal-title" id="list-modal-title">📋 New List</div>
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input type="text" class="form-input" id="list-name-input" placeholder="e.g. Shopping, Books to read…" onkeydown="if(event.key==='Enter')saveList()">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('list-modal-overlay')">Cancel</button>
+      <button class="btn-primary" onclick="saveList()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- List category modal -->
+<div class="modal-overlay" id="list-category-modal-overlay" onclick="closeModalOutside(event,'list-category-modal-overlay')">
+  <div class="modal modal-sm">
+    <div class="modal-title">📁 New Category</div>
+    <div class="form-group">
+      <label class="form-label">Category name</label>
+      <input type="text" class="form-input" id="list-category-name-input" placeholder="e.g. Fruit, Frozen, Work…" onkeydown="if(event.key==='Enter')saveListCategory()">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal('list-category-modal-overlay')">Cancel</button>
+      <button class="btn-primary" onclick="saveListCategory()">Add Category</button>
     </div>
   </div>
 </div>
@@ -2308,6 +2683,35 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
         <div style="font-weight:700;color:var(--text);margin-bottom:3px">Custom</div>
         <div style="font-size:12px;color:var(--text3)">Decide what matters to you. Opens Settings so you can choose.</div>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Onboarding welcome modal -->
+<div class="modal-overlay" id="onboarding-modal">
+  <div class="modal" style="max-width:460px">
+    <div style="text-align:center;padding:4px 0 22px">
+      <div style="font-size:32px;margin-bottom:12px">⚡</div>
+      <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px">Welcome to TaskSpark</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.6">Designed to reduce decision fatigue and help you start, focus, and finish.</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px">How much do you want to start with?</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%" onclick="applyOnboardingPreset('basic')">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">Keep it simple</div>
+        <div style="font-size:12px;color:var(--text3)">Just tasks, streak and smart suggestions. Add features as you go.</div>
+      </button>
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%;border-color:var(--accent);background:var(--accent-l)" onclick="applyOnboardingPreset('full')">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:3px">Full setup</div>
+        <div style="font-size:12px;color:var(--text3)">Timer, estimates, habits, ideas board and more — everything on.</div>
+      </button>
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%" onclick="applyOnboardingPreset('custom')">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">I'll choose</div>
+        <div style="font-size:12px;color:var(--text3)">Opens Settings so you can pick exactly what you want.</div>
+      </button>
+    </div>
+    <div style="text-align:center;margin-top:14px">
+      <button style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:'Outfit',sans-serif;padding:4px 8px" onclick="closeOnboardingModal()">Skip for now</button>
     </div>
   </div>
 </div>
