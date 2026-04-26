@@ -1321,8 +1321,6 @@ function renderAll() {
   updateCounts();
   updateTagSidebar();
   updateStreak();
-  // Seed "addTask" if user already has tasks (carried over from a prior session)
-  if (tasks && tasks.length > 0) checkOnboardingItem('addTask');
   renderGettingStartedCard();
 }
 
