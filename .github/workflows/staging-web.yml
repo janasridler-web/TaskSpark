@@ -1,0 +1,52 @@
+name: Deploy Web Companion to Staging
+
+on:
+  push:
+    branches:
+      - claude/rebuild-web-companion-v4-3MuP2
+    paths:
+      - 'web/**'
+      - '.github/workflows/staging-web.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: staging-web-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Inject OAuth credentials
+        run: |
+          sed -i "s/YOUR_GOOGLE_CLIENT_ID_HERE/${{ secrets.WEB_GOOGLE_CLIENT_ID }}/g" web/oauth-config.js
+          sed -i "s/YOUR_GOOGLE_CLIENT_SECRET_HERE/${{ secrets.WEB_GOOGLE_CLIENT_SECRET }}/g" web/oauth-config.js
+
+      - name: Normalise remote dir
+        id: normalise
+        run: |
+          DIR="${{ secrets.STAGING_FTP_REMOTE_DIR }}"
+          if [ -z "$DIR" ]; then DIR="./"; fi
+          case "$DIR" in
+            */) ;;
+            *) DIR="${DIR}/" ;;
+          esac
+          echo "remote_dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to staging via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.STAGING_FTP_SERVER }}
+          username: ${{ secrets.STAGING_FTP_USERNAME }}
+          password: ${{ secrets.STAGING_FTP_PASSWORD }}
+          local-dir: ./web/
+          server-dir: ${{ steps.normalise.outputs.remote_dir }}
+          exclude: |
+            **/cgi-bin/**
+
+      - name: Done
+        run: echo "Staging deploy finished — check https://staging.taskspark.tech"
