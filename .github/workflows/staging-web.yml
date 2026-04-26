@@ -51,6 +51,11 @@ jobs:
           password: ${{ secrets.STAGING_FTP_PASSWORD }}
           local-dir: ./web/
           server-dir: ${{ steps.normalise.outputs.remote_dir }}
+          # Fresh state file forces a full re-upload on next deploy
+          # to recover from a desynced state. Future deploys reuse it
+          # for normal incremental syncing.
+          state-name: '.deploy-state.json'
+          log-level: verbose
           exclude: |
             **/cgi-bin/**
 
