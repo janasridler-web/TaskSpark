@@ -66,4 +66,4 @@ jobs:
             **/error_log
 
       - name: Done
-        run: echo "Staging deploy finished — check https://staging.taskspark.tech"
+        run: echo "Staging deploy finished. Open https://staging.taskspark.tech in incognito to bypass any cached SW."
