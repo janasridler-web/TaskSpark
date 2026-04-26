@@ -289,14 +289,19 @@ ipcMain.handle('timer-hide', async () => {
 
 ipcMain.handle('focus-show', async (_, { taskId, taskName, taskDesc, subtasks, baseLogged }) => {
   if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
-  const display = _getActiveDisplay();
-  const { x, y, width, height } = display.bounds;
+  let bounds;
+  const wasMaximized = mainWindow && !mainWindow.isDestroyed() && mainWindow.isMaximized();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    bounds = mainWindow.getBounds();
+  } else {
+    bounds = _getActiveDisplay().bounds;
+  }
   focusWindow = new BrowserWindow({
-    width, height, x, y,
+    width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y,
     frame: false, resizable: false, skipTaskbar: false,
     webPreferences: { preload: path.join(__dirname, 'focus-preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  focusWindow.maximize();
+  if (wasMaximized) focusWindow.maximize();
   focusWindow.loadFile(path.join(__dirname, 'focus.html'));
   focusWindow.webContents.once('did-finish-load', () => {
     focusWindow.webContents.send('focus-start', { taskId, taskName, taskDesc, subtasks, baseLogged });
