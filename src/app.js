@@ -4084,13 +4084,7 @@ function toggleTimer(id) {
 
   if (settings.focusModeEnabled) {
     timerDidMinimize = false;
-    api.focusShow({
-      taskId:     task.id,
-      taskName:   task.title,
-      taskDesc:   task.desc || '',
-      subtasks:   task.subtasks || [],
-      baseLogged: task.timeLogged || 0,
-    });
+    showFocusOverlay(task);
   } else {
     timerDidMinimize = true;
     api.timerShow({
@@ -4114,6 +4108,7 @@ function pauseTimer() {
   clearInterval(timerInterval);
   // Only reset the break countdown — task time is preserved
   clearBreakTimer();
+  updateFocusPauseUI();
 }
 
 function resumeTimer() {
@@ -4125,6 +4120,7 @@ function resumeTimer() {
   timerInterval = setInterval(tickTimer, 1000);
   // Restart break countdown from zero (fresh work session after pause)
   scheduleBreak();
+  updateFocusPauseUI();
 }
 
 function tickTimer() {
@@ -4137,13 +4133,93 @@ function tickTimer() {
   const total   = base + elapsed;
   const badge = document.getElementById(`time-badge-${activeTimerId}`);
   if (badge) badge.textContent = `◷ ${fmtSecs(total)}`;
+  updateFocusTime(total);
 }
 
 function stopTimer() {
   api.timerHide();
-  api.focusHide();
+  hideFocusOverlay();
   clearInterval(timerInterval); timerInterval = null;
   clearBreakTimer();
+}
+
+// ── Focus overlay (in-app focus mode) ──────────────────────────────────────
+function showFocusOverlay(task) {
+  document.getElementById('focus-title').textContent = task.title;
+  const descEl = document.getElementById('focus-desc');
+  descEl.textContent = task.desc || '';
+  descEl.style.display = task.desc ? '' : 'none';
+  renderFocusSubtasks(task.id);
+  updateFocusTime(task.timeLogged || 0);
+  updateFocusPauseUI();
+  document.getElementById('focus-overlay').classList.add('active');
+}
+
+function hideFocusOverlay() {
+  document.getElementById('focus-overlay').classList.remove('active');
+}
+
+function isFocusOverlayActive() {
+  const el = document.getElementById('focus-overlay');
+  return !!(el && el.classList.contains('active'));
+}
+
+function renderFocusSubtasks(taskId) {
+  const task = tasks.find(t => t.id === taskId);
+  const el = document.getElementById('focus-subtasks');
+  if (!task || !task.subtasks || !task.subtasks.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  el.style.display = 'flex';
+  el.innerHTML = task.subtasks.map((s, i) => `
+    <div class="focus-sub-row" onclick="toggleFocusSubtask(${task.id}, ${i})">
+      <div class="focus-sub-check ${s.done ? 'done' : ''}">${s.done ? '✓' : ''}</div>
+      <div class="focus-sub-text ${s.done ? 'done' : ''}">${esc(s.title)}</div>
+    </div>
+  `).join('');
+}
+
+function toggleFocusSubtask(taskId, index) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task || !task.subtasks || !task.subtasks[index]) return;
+  task.subtasks[index].done = !task.subtasks[index].done;
+  saveTasks();
+  renderAll();
+  renderFocusSubtasks(taskId);
+}
+
+function updateFocusTime(totalSecs) {
+  if (!isFocusOverlayActive()) return;
+  const t = Math.max(0, Math.floor(totalSecs || 0));
+  const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('focus-time').textContent =
+    h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function updateFocusPauseUI() {
+  if (!isFocusOverlayActive()) return;
+  const btn   = document.getElementById('focus-pause-btn');
+  const time  = document.getElementById('focus-time');
+  const label = document.getElementById('focus-paused-label');
+  if (timerPaused) {
+    btn.textContent = '▶ Resume';
+    btn.classList.add('paused');
+    time.classList.add('paused');
+    label.textContent = 'Paused';
+  } else {
+    btn.textContent = '‖ Pause';
+    btn.classList.remove('paused');
+    time.classList.remove('paused');
+    label.textContent = '';
+  }
+}
+
+function toggleFocusPause() {
+  if (timerPaused) resumeTimer();
+  else             pauseTimer();
 }
 
 function stopTimerSave() {
@@ -4158,7 +4234,7 @@ function stopTimerSave() {
     task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
   }
   api.timerHide();
-  api.focusHide();
+  hideFocusOverlay();
   clearInterval(timerInterval);
   timerInterval = null;
   activeTimerId = null;
@@ -4211,9 +4287,9 @@ function takeBreak() {
     }
     saveTasks();
   }
-  // Close the timer + focus windows and clear state
+  // Close the timer window + focus overlay and clear state
   api.timerHide();
-  api.focusHide();
+  hideFocusOverlay();
   clearInterval(timerInterval);
   timerInterval = null;
   timerStart    = null;
@@ -7797,14 +7873,6 @@ api.onGlobalQuickAdd((data) => {
     openQuickAdd(fromBackground);
   }
 });
-api.onFocusSubtaskToggled(({ taskId, index }) => {
-  const task = tasks.find(t => t.id === taskId);
-  if (!task || !task.subtasks || !task.subtasks[index]) return;
-  task.subtasks[index].done = !task.subtasks[index].done;
-  saveTasks();
-  renderAll();
-});
-
 api.onTimerStopped((elapsed) => {
   const wasSnoozed = breakSnoozed;
   // Save elapsed time to task

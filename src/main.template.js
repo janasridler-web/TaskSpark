@@ -73,7 +73,6 @@ function saveCache(tasks) {
 let mainWindow;
 let timerWindow       = null;
 let breakPromptWindow = null;
-let focusWindow       = null;
 
 function getWindowState() {
   return loadConfig()?.windowState || null;
@@ -287,40 +286,6 @@ ipcMain.handle('timer-hide', async () => {
   return true;
 });
 
-ipcMain.handle('focus-show', async (_, { taskId, taskName, taskDesc, subtasks, baseLogged }) => {
-  if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
-  let bounds;
-  const wasMaximized = mainWindow && !mainWindow.isDestroyed() && mainWindow.isMaximized();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    bounds = mainWindow.getBounds();
-  } else {
-    bounds = _getActiveDisplay().bounds;
-  }
-  focusWindow = new BrowserWindow({
-    width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y,
-    frame: false, resizable: false, skipTaskbar: false,
-    webPreferences: { preload: path.join(__dirname, 'focus-preload.js'), contextIsolation: true, nodeIntegration: false },
-  });
-  if (wasMaximized) focusWindow.maximize();
-  focusWindow.loadFile(path.join(__dirname, 'focus.html'));
-  focusWindow.webContents.once('did-finish-load', () => {
-    focusWindow.webContents.send('focus-start', { taskId, taskName, taskDesc, subtasks, baseLogged });
-  });
-  focusWindow.on('closed', () => { focusWindow = null; });
-  focusWindow.on('blur', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-  return true;
-});
-
-ipcMain.handle('focus-hide', async () => {
-  if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
-  return true;
-});
-
 ipcMain.handle('timer-pause', async () => {
   if (timerWindow) timerWindow.webContents.send('timer-paused');
   return true;
@@ -334,23 +299,16 @@ ipcMain.handle('timer-resume', async () => {
 ipcMain.on('timer-stop', (_, elapsed) => {
   if (mainWindow) mainWindow.webContents.send('timer-stopped', elapsed);
   if (timerWindow) { try { timerWindow.close(); } catch {} timerWindow = null; }
-  if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
 });
 
 ipcMain.on('timer-pause-request', () => {
   if (mainWindow) mainWindow.webContents.send('timer-pause-request');
   if (timerWindow) timerWindow.webContents.send('timer-paused');
-  if (focusWindow) focusWindow.webContents.send('focus-paused');
 });
 
 ipcMain.on('timer-resume-request', () => {
   if (mainWindow) mainWindow.webContents.send('timer-resume-request');
   if (timerWindow) timerWindow.webContents.send('timer-resumed');
-  if (focusWindow) focusWindow.webContents.send('focus-resumed');
-});
-
-ipcMain.on('focus-subtask-toggle', (_, data) => {
-  if (mainWindow) mainWindow.webContents.send('focus-subtask-toggled', data);
 });
 
 // ── Break prompt window ───────────────────────────────────────────────────────
