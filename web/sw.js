@@ -16,8 +16,18 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
+  // Tolerant precache: a single missing asset shouldn't fail the whole
+  // install. Each file is attempted individually; failures warn only.
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then(cache =>
+      Promise.all(
+        ASSETS.map(asset =>
+          cache.add(asset).catch(err =>
+            console.warn('[sw] precache failed for', asset, err)
+          )
+        )
+      )
+    )
   );
   self.skipWaiting();
 });

@@ -57,6 +57,10 @@ jobs:
           # for normal incremental syncing.
           state-name: '.deploy-state.json'
           log-level: verbose
+          # assets/ is excluded for the same reason production excludes it —
+          # files there have historical ownership the FTP user can't
+          # overwrite. Update them manually via cPanel File Manager when
+          # they need to change.
           exclude: |
             **/cgi-bin/**
             **/.well-known/**
@@ -64,6 +68,7 @@ jobs:
             **/.htpasswds/**
             **/.htaccess
             **/error_log
+            **/assets/**
 
       - name: Done
         run: echo "Staging deploy finished. Open https://staging.taskspark.tech in incognito to bypass any cached SW."
