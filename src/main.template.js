@@ -12,21 +12,61 @@ const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
 const CACHE_PATH  = path.join(app.getPath('userData'), 'tasks_cache.json');
 const WORKSPACES_PATH = path.join(app.getPath('userData'), 'workspaces.json');
 
+// In-memory config cache so we don't hit disk on every read.
+let _configCache = null;
+let _configCacheLoaded = false;
 function loadConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch { return null; }
+  if (_configCacheLoaded) return _configCache ? { ..._configCache } : null;
+  try {
+    _configCache = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    _configCacheLoaded = true;
+    return { ..._configCache };
+  } catch {
+    _configCache = null;
+    _configCacheLoaded = true;
+    return null;
+  }
+}
+// Debounced async write — coalesces bursts of saves (e.g. window-resize)
+let _configWriteTimer = null;
+let _configDirty = false;
+function _flushConfig() {
+  _configWriteTimer = null;
+  if (!_configDirty) return;
+  _configDirty = false;
+  const data = _configCache || {};
+  fs.promises.writeFile(CONFIG_PATH, JSON.stringify(data, null, 2))
+    .catch(e => console.warn('[saveConfig] write failed:', e.message));
 }
 function saveConfig(data) {
   const existing = loadConfig() || {};
   const merged = { ...existing, ...data };
-  // Remove keys explicitly set to null so they don't persist
   Object.keys(merged).forEach(k => { if (merged[k] === null) delete merged[k]; });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(merged, null, 2));
+  _configCache = merged;
+  _configCacheLoaded = true;
+  _configDirty = true;
+  if (_configWriteTimer) clearTimeout(_configWriteTimer);
+  _configWriteTimer = setTimeout(_flushConfig, 250);
+}
+function saveConfigSync() {
+  // Used on quit so window state is on disk before exit
+  if (_configWriteTimer) { clearTimeout(_configWriteTimer); _configWriteTimer = null; }
+  if (!_configDirty || !_configCache) return;
+  _configDirty = false;
+  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(_configCache, null, 2)); }
+  catch (e) { console.warn('[saveConfigSync] write failed:', e.message); }
 }
 function loadCache() {
   try { return JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8')); } catch { return []; }
 }
 function saveCache(tasks) {
-  try { fs.writeFileSync(CACHE_PATH, JSON.stringify(tasks, null, 2)); } catch {} 
+  try {
+    fs.writeFileSync(CACHE_PATH, JSON.stringify(tasks, null, 2));
+    return { ok: true };
+  } catch (e) {
+    console.warn('[saveCache] write failed:', e.message);
+    return { ok: false, error: e.message };
+  }
 }
 
 // ── Windows ───────────────────────────────────────────────────────────────────
@@ -39,13 +79,19 @@ function getWindowState() {
   return loadConfig()?.windowState || null;
 }
 
+let _winStateTimer = null;
 function saveWindowState() {
-  try {
-    const isMaximized = mainWindow.isMaximized();
-    const existing = loadConfig() || {};
-    const bounds = isMaximized ? (existing.windowState?.bounds || { width: 1080, height: 720 }) : mainWindow.getBounds();
-    saveConfig({ windowState: { isMaximized, bounds } });
-  } catch {}
+  // Debounce — resize/move fire many times per second while dragging
+  if (_winStateTimer) clearTimeout(_winStateTimer);
+  _winStateTimer = setTimeout(() => {
+    _winStateTimer = null;
+    try {
+      const isMaximized = mainWindow.isMaximized();
+      const existing = loadConfig() || {};
+      const bounds = isMaximized ? (existing.windowState?.bounds || { width: 1080, height: 720 }) : mainWindow.getBounds();
+      saveConfig({ windowState: { isMaximized, bounds } });
+    } catch {}
+  }, 400);
 }
 
 function createWindow() {
@@ -70,8 +116,25 @@ function createWindow() {
   if (savedState?.isMaximized) mainWindow.maximize();
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  // Only allow opening http/https/mailto in the user's default browser.
+  // Block file:, javascript:, custom-scheme handlers (vscode://, etc.) that
+  // would let an HTML-injection vector spawn arbitrary apps.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url); return { action: 'deny' };
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'https:' || u.protocol === 'http:' || u.protocol === 'mailto:') {
+        shell.openExternal(url);
+      }
+    } catch {}
+    return { action: 'deny' };
+  });
+  // Refuse navigation away from the bundled HTML — an injected <a href> or
+  // location.href cannot escape the app's own files.
+  mainWindow.webContents.on('will-navigate', (e, navUrl) => {
+    const expectedPrefix = 'file://' + path.join(__dirname, 'index.html').replace(/\\/g, '/');
+    if (!navUrl.startsWith(expectedPrefix)) {
+      e.preventDefault();
+    }
   });
 
   mainWindow.webContents.on('context-menu', (_e, params) => {
@@ -103,23 +166,42 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  // Register global Ctrl+Space shortcut for Quick Add
-  globalShortcut.register('CommandOrControl+Space', () => {
+  // Register global Quick Add shortcut. Try Ctrl+Space first; fall back to
+  // Ctrl+Shift+Space if the OS already uses Ctrl+Space (Spotlight, IME).
+  const quickAddHandler = () => {
     if (mainWindow) {
       const wasFocused = mainWindow.isFocused() && mainWindow.isVisible() && !mainWindow.isMinimized();
       mainWindow.show();
       mainWindow.focus();
       mainWindow.webContents.send('global-quick-add', { wasFocused });
     }
-  });
-  // Check for updates after a short delay
+  };
+  let registered = false;
+  try { registered = globalShortcut.register('CommandOrControl+Space', quickAddHandler); } catch {}
+  if (!registered) {
+    try { globalShortcut.register('CommandOrControl+Shift+Space', quickAddHandler); } catch {}
+  }
+  // Throttled update checks: skip if we already checked in the last 6 hours
   setTimeout(() => {
-    autoUpdater.checkForUpdatesAndNotify();
+    const cfg = loadConfig() || {};
+    const last = cfg.lastUpdateCheck || 0;
+    if (Date.now() - last > 6 * 60 * 60 * 1000) {
+      saveConfig({ lastUpdateCheck: Date.now() });
+      autoUpdater.checkForUpdatesAndNotify();
+    }
   }, 3000);
+  // Re-check periodically while app is running
+  setInterval(() => {
+    saveConfig({ lastUpdateCheck: Date.now() });
+    autoUpdater.checkForUpdatesAndNotify();
+  }, 6 * 60 * 60 * 1000);
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('will-quit', () => { globalShortcut.unregisterAll(); });
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  saveConfigSync();
+});
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
@@ -276,10 +358,24 @@ ipcMain.on('break-choice', (_, choice) => {
 });
 
 // ── Config / cache IPC ────────────────────────────────────────────────────────
+const MAX_IPC_BYTES = 5 * 1024 * 1024; // 5 MB cap on persisted blobs
+function _withinSizeLimit(value) {
+  try { return JSON.stringify(value).length <= MAX_IPC_BYTES; }
+  catch { return false; }
+}
 ipcMain.handle('config-load', () => loadConfig());
-ipcMain.handle('config-save', (_, data) => { saveConfig(data); return true; });
+ipcMain.handle('config-save', (_, data) => {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return false;
+  if (!_withinSizeLimit(data)) return false;
+  saveConfig(data);
+  return true;
+});
 ipcMain.handle('cache-load', () => loadCache());
-ipcMain.handle('cache-save', (_, tasks) => { saveCache(tasks); return true; });
+ipcMain.handle('cache-save', (_, tasks) => {
+  if (!Array.isArray(tasks)) return { ok: false, error: 'expected array' };
+  if (!_withinSizeLimit(tasks)) return { ok: false, error: 'payload too large' };
+  return saveCache(tasks);
+});
 ipcMain.handle('get-version', () => app.getVersion());
 
 // ── Sound file picker ─────────────────────────────────────────────────────────
@@ -302,18 +398,33 @@ ipcMain.handle('pick-attachment-file', async () => {
   return result.filePaths[0];
 });
 
+// File-attachment whitelist. Extensions outside this set, dangerous extensions,
+// and UNC paths are refused. This prevents a poisoned shared-Sheet attachment
+// row from one-click launching cmd.exe / a .bat / a .lnk / a remote SMB binary.
+const SAFE_ATTACHMENT_EXTS = new Set([
+  '.pdf','.png','.jpg','.jpeg','.gif','.webp','.bmp','.svg',
+  '.txt','.md','.csv','.tsv','.json','.xml','.yaml','.yml','.log',
+  '.docx','.doc','.xlsx','.xls','.pptx','.ppt','.odt','.ods','.odp','.rtf',
+  '.mp3','.mp4','.wav','.m4a','.ogg','.webm','.mov','.avi',
+  '.zip','.7z','.tar','.gz'
+]);
+const DANGEROUS_EXT_RE = /\.(exe|bat|cmd|com|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|msi|scr|lnk|pif|reg|hta|cpl|jar|app|sh|deb|rpm|dmg)$/i;
+
 ipcMain.handle('open-attachment', async (_, pathOrUrl) => {
   if (!pathOrUrl || typeof pathOrUrl !== 'string') return;
   if (/^https?:\/\//i.test(pathOrUrl)) {
-    // Only allow http/https URLs — block javascript: and other schemes
     shell.openExternal(pathOrUrl);
-  } else {
-    // For local files, resolve the path and verify it exists before opening
-    const resolved = path.resolve(pathOrUrl);
-    if (fs.existsSync(resolved)) {
-      shell.openPath(resolved);
-    }
+    return;
   }
+  // Local file: validate path & extension
+  const resolved = path.resolve(pathOrUrl);
+  // Refuse UNC and weird extended paths
+  if (resolved.startsWith('\\\\') || resolved.startsWith('//')) return;
+  if (DANGEROUS_EXT_RE.test(resolved)) return;
+  const ext = path.extname(resolved).toLowerCase();
+  if (!SAFE_ATTACHMENT_EXTS.has(ext)) return;
+  if (!fs.existsSync(resolved)) return;
+  shell.openPath(resolved);
 });
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────
@@ -335,28 +446,36 @@ const OAUTH_SCOPES = [
   'openid', 'email', 'profile',
 ].join(' ');
 
+// Per-flow PKCE + state, stored on the closure so the callback can verify
+let _googleOauthState = null;
+let _googleOauthVerifier = null;
+
 ipcMain.handle('oauth-start', async () => {
   if (oauthServer) { try { oauthServer.close(); } catch {} oauthServer = null; }
+
+  const crypto = require('crypto');
+  _googleOauthState    = crypto.randomBytes(32).toString('base64url');
+  _googleOauthVerifier = crypto.randomBytes(64).toString('base64url');
+  const codeChallenge  = crypto.createHash('sha256').update(_googleOauthVerifier).digest('base64url');
+  const expectedState  = _googleOauthState;
 
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const parsed = url.parse(req.url, true);
       if (parsed.pathname !== '/callback') return;
-      const code = parsed.query.code;
+      const code  = parsed.query.code;
       const error = parsed.query.error;
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(`<html><body style="font-family:sans-serif;display:flex;align-items:center;
-        justify-content:center;height:100vh;background:#0d1f14;color:white;margin:0">
-        <div style="text-align:center">
-          <div style="font-size:52px;margin-bottom:12px">${error ? '✕' : '✓'}</div>
-          <h2 style="margin:0 0 8px">${error ? 'Sign-in cancelled' : 'Connected!'}</h2>
-          <p style="color:#6a9e80;margin:0">You can close this tab and return to TaskSpark.</p>
-        </div></body></html>`);
-      // Save port before closing server
-      const port = server.address() ? server.address().port : null;
+      const state = parsed.query.state;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      // Static HTML — never interpolate query params into the response page
+      const ok = !error && state === expectedState;
+      res.end(ok
+        ? '<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1f14;color:white;margin:0"><div style="text-align:center"><div style="font-size:52px;margin-bottom:12px">OK</div><h2 style="margin:0 0 8px">Connected!</h2><p style="color:#6a9e80;margin:0">You can close this tab and return to TaskSpark.</p></div></body></html>'
+        : '<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#1f0d0d;color:white;margin:0"><div style="text-align:center"><div style="font-size:52px;margin-bottom:12px">x</div><h2 style="margin:0 0 8px">Sign-in cancelled</h2><p style="color:#a87070;margin:0">You can close this tab and return to TaskSpark.</p></div></body></html>');
       server.close(); oauthServer = null;
-      if (error) { reject(new Error(`OAuth error: ${error}`)); return; }
-      mainWindow.webContents.send('oauth-code', { code });  // resolve already called in listen callback
+      if (error) { reject(new Error('OAuth error')); return; }
+      if (state !== expectedState) { reject(new Error('OAuth state mismatch')); return; }
+      mainWindow.webContents.send('oauth-code', { code });
     });
 
     server.listen(0, '127.0.0.1', () => {
@@ -370,6 +489,9 @@ ipcMain.handle('oauth-start', async () => {
       authUrl.searchParams.set('scope', OAUTH_SCOPES);
       authUrl.searchParams.set('access_type', 'offline');
       authUrl.searchParams.set('prompt', 'consent');
+      authUrl.searchParams.set('state', expectedState);
+      authUrl.searchParams.set('code_challenge', codeChallenge);
+      authUrl.searchParams.set('code_challenge_method', 'S256');
       shell.openExternal(authUrl.toString());
       resolve({ waiting: true, redirectUri });
     });
@@ -379,10 +501,15 @@ ipcMain.handle('oauth-start', async () => {
 
 ipcMain.handle('oauth-exchange', async (_, { code, redirectUri }) => {
   return new Promise((resolve, reject) => {
-    const body = new URLSearchParams({
+    const params = {
       code, client_id: APP_CLIENT_ID, client_secret: APP_CLIENT_SECRET,
       redirect_uri: redirectUri, grant_type: 'authorization_code',
-    }).toString();
+    };
+    if (_googleOauthVerifier) params.code_verifier = _googleOauthVerifier;
+    const body = new URLSearchParams(params).toString();
+    // Clear the verifier after one use
+    _googleOauthVerifier = null;
+    _googleOauthState = null;
     const req = https.request({
       hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
@@ -422,10 +549,11 @@ let outlookOauthServer = null;
 
 ipcMain.handle('outlook-start', async () => {
   if (outlookOauthServer) { try { outlookOauthServer.close(); } catch {} outlookOauthServer = null; }
-  // Generate PKCE code verifier and challenge
+  // Generate PKCE code verifier + challenge AND a state token
   const crypto = require('crypto');
-  const codeVerifier = crypto.randomBytes(64).toString('base64url');
+  const codeVerifier  = crypto.randomBytes(64).toString('base64url');
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+  const expectedState = crypto.randomBytes(32).toString('base64url');
 
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -433,17 +561,16 @@ ipcMain.handle('outlook-start', async () => {
       if (parsed.pathname !== '/') return;
       const code  = parsed.query.code;
       const error = parsed.query.error;
+      const state = parsed.query.state;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(`<html><body style="font-family:sans-serif;display:flex;align-items:center;
-        justify-content:center;height:100vh;background:#0a0a1a;color:white;margin:0">
-        <div style="text-align:center">
-          <div style="font-size:52px;margin-bottom:12px">${error ? 'x' : 'OK'}</div>
-          <h2 style="margin:0 0 8px">${error ? 'Connection cancelled' : 'Outlook Connected!'}</h2>
-          <p style="color:#6a9e80;margin:0">You can close this tab and return to TaskSpark.</p>
-        </div></body></html>`);
+      const ok = !error && state === expectedState;
+      res.end(ok
+        ? '<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#0a0a1a;color:white;margin:0"><div style="text-align:center"><div style="font-size:52px;margin-bottom:12px">OK</div><h2 style="margin:0 0 8px">Outlook Connected!</h2><p style="color:#6a9e80;margin:0">You can close this tab and return to TaskSpark.</p></div></body></html>'
+        : '<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#1f0d0d;color:white;margin:0"><div style="text-align:center"><div style="font-size:52px;margin-bottom:12px">x</div><h2 style="margin:0 0 8px">Connection cancelled</h2><p style="color:#a87070;margin:0">You can close this tab and return to TaskSpark.</p></div></body></html>');
       const port = server.address() ? server.address().port : 0;
       server.close(); outlookOauthServer = null;
-      if (error) { reject(new Error('Outlook auth error: ' + error)); return; }
+      if (error) { reject(new Error('Outlook auth error')); return; }
+      if (state !== expectedState) { reject(new Error('OAuth state mismatch')); return; }
       resolve({ code, redirectUri: `http://127.0.0.1:${port}/`, codeVerifier });
     });
     server.listen(0, '127.0.0.1', () => {
@@ -456,6 +583,7 @@ ipcMain.handle('outlook-start', async () => {
       authUrl.searchParams.set('scope',                 OUTLOOK_SCOPES);
       authUrl.searchParams.set('response_mode',         'query');
       authUrl.searchParams.set('prompt',                'select_account');
+      authUrl.searchParams.set('state',                 expectedState);
       authUrl.searchParams.set('code_challenge',        codeChallenge);
       authUrl.searchParams.set('code_challenge_method', 'S256');
       shell.openExternal(authUrl.toString());
@@ -533,7 +661,7 @@ ipcMain.handle('drive-find-sheet', async (_, { accessToken }) => {
     const query = encodeURIComponent("name='TaskSpark' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false");
     const req = https.request({
       hostname: 'www.googleapis.com',
-      path: `/drive/v3/files?q=${query}&fields=files(id,name)`,
+      path: `/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`,
       method: 'GET',
       headers: { 'Authorization': `Bearer ${accessToken}` },
     }, (res) => {
@@ -710,7 +838,7 @@ ipcMain.handle('habits-save', async (_, { accessToken, spreadsheetId, habits }) 
   }
   const clearFrom = habits.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Habits!A${clearFrom}:F10000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Habits!A${clearFrom}:F100000`)}:clear`,
     accessToken, {});
   return true;
 });
@@ -740,7 +868,7 @@ ipcMain.handle('ideas-save', async (_, { accessToken, spreadsheetId, ideas }) =>
   }
   const clearFrom = ideas.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Ideas!A${clearFrom}:E10000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Ideas!A${clearFrom}:E100000`)}:clear`,
     accessToken, {});
   return true;
 });
@@ -771,7 +899,7 @@ ipcMain.handle('lists-save', async (_, { accessToken, spreadsheetId, lists }) =>
   }
   const clearFrom = lists.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Lists!A${clearFrom}:E10000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Lists!A${clearFrom}:E100000`)}:clear`,
     accessToken, {});
   return true;
 });
@@ -802,7 +930,7 @@ ipcMain.handle('wins-save', async (_, { accessToken, spreadsheetId, wins }) => {
   }
   const clearFrom = wins.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Wins!A${clearFrom}:G10000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Wins!A${clearFrom}:G100000`)}:clear`,
     accessToken, {});
   return true;
 });
@@ -832,7 +960,7 @@ ipcMain.handle('events-save', async (_, { accessToken, spreadsheetId, events }) 
   }
   const clearFrom = events.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Events!A${clearFrom}:I10000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Events!A${clearFrom}:I100000`)}:clear`,
     accessToken, {});
   return true;
 });
@@ -944,7 +1072,7 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
   // Clear only rows beyond the written data — safe even if this fails (stale rows, not blank sheet)
   const clearFrom = tasks.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:AA10000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:AA100000`)}:clear`,
     accessToken, {});
   return true;
 });
@@ -956,8 +1084,16 @@ ipcMain.handle('workspaces-load', () => {
 });
 
 ipcMain.handle('workspaces-save', (_, data) => {
-  fs.writeFileSync(WORKSPACES_PATH, JSON.stringify(data, null, 2));
-  return true;
+  // Allow null (clearing) or an object with workspaces array; reject anything else
+  if (data !== null && (typeof data !== 'object' || Array.isArray(data))) return false;
+  if (data && !_withinSizeLimit(data)) return false;
+  try {
+    fs.writeFileSync(WORKSPACES_PATH, JSON.stringify(data, null, 2));
+    return true;
+  } catch (e) {
+    console.warn('[workspaces-save] write failed:', e.message);
+    return false;
+  }
 });
 
 ipcMain.handle('drive-create-sheet-named', async (_, { accessToken, name }) => {
@@ -987,14 +1123,28 @@ ipcMain.handle('drive-create-sheet-named', async (_, { accessToken, name }) => {
 // Renders HTML to PDF via a hidden Electron window, then uploads to Google Drive.
 ipcMain.handle('drive-upload-pdf', async (_, { accessToken, title, html }) => {
   const os = require('os');
-  const tmpPath = path.join(os.tmpdir(), `ts_stats_${Date.now()}.html`);
-  fs.writeFileSync(tmpPath, html, 'utf8');
+  const cryptoMod = require('crypto');
+  // Random filename so other local processes can't predict the path while it exists
+  const tmpPath = path.join(os.tmpdir(), `ts_stats_${cryptoMod.randomBytes(16).toString('hex')}.html`);
+  // Inject a strict CSP and prepend it inside the page's <head>
+  const safeHtml = String(html || '').replace(/<head[^>]*>/i, m => m + "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;\">");
+  fs.writeFileSync(tmpPath, safeHtml, { mode: 0o600 });
 
   let win;
   let pdfBuffer;
   try {
-    win = new BrowserWindow({ show: false, width: 1280, height: 1600, webPreferences: { nodeIntegration: false, contextIsolation: true } });
-    // Race against a timeout so pending external resources don't hang forever
+    win = new BrowserWindow({
+      show: false,
+      width: 1280,
+      height: 1600,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        webSecurity: true,
+        javascript: false, // Stats HTML is purely visual — no need to run scripts
+      },
+    });
     await Promise.race([
       win.loadFile(tmpPath),
       new Promise(resolve => setTimeout(resolve, 12000)),
@@ -1094,18 +1244,24 @@ async function findOrCreateConfigSheet(accessToken) {
 }
 
 // ── Google Picker — opens in default browser, result returned via local HTTP ──
+// Each invocation uses a fresh random port AND a per-session secret token, so
+// other browser tabs / local processes can't trigger /picker-result.
 let pickerServer = null;
 ipcMain.handle('show-config-picker', async (_, { accessToken, clientId }) => {
   return new Promise((resolve) => {
-    // Close any existing picker server
     if (pickerServer) { try { pickerServer.close(); } catch {} pickerServer = null; }
 
-    const port = 45783;
+    const cryptoMod = require('crypto');
+    const sessionSecret = cryptoMod.randomBytes(32).toString('base64url');
 
     pickerServer = http.createServer((req, res) => {
       const parsed = url.parse(req.url, true);
+      const port = pickerServer && pickerServer.address() ? pickerServer.address().port : 0;
 
-      if (parsed.pathname === '/picker') {
+      // Reject anything that doesn't carry the session secret
+      const checkSecret = () => parsed.query && parsed.query.t === sessionSecret;
+
+      if (parsed.pathname === '/picker' && checkSecret()) {
         // Serve the picker HTML page
         const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1147,8 +1303,9 @@ ipcMain.handle('show-config-picker', async (_, { accessToken, clientId }) => {
   <div id="status"></div>
   <script src="https://apis.google.com/js/api.js"></script>
   <script>
-    const accessToken = '${accessToken}';
-    const clientId = '${clientId}';
+    const accessToken = ${JSON.stringify(accessToken)};
+    const clientId = ${JSON.stringify(clientId)};
+    const sessionSecret = ${JSON.stringify(sessionSecret)};
     document.getElementById('btn-open-picker').addEventListener('click', () => {
       document.getElementById('status').textContent = 'Loading Drive Picker...';
       gapi.load('picker', () => {
@@ -1162,7 +1319,7 @@ ipcMain.handle('show-config-picker', async (_, { accessToken, clientId }) => {
             if (data.action === google.picker.Action.PICKED) {
               const fileId = data.docs[0].id;
               document.getElementById('status').textContent = 'Connecting...';
-              fetch('http://localhost:${port}/picker-result?fileId=' + fileId);
+              fetch('http://127.0.0.1:${port}/picker-result?t=' + encodeURIComponent(sessionSecret) + '&fileId=' + encodeURIComponent(fileId));
               document.getElementById('status').textContent = 'Done! You can close this tab and return to TaskSpark.';
               document.getElementById('picker-container').style.display = 'none';
             } else if (data.action === google.picker.Action.CANCEL) {
@@ -1174,18 +1331,18 @@ ipcMain.handle('show-config-picker', async (_, { accessToken, clientId }) => {
       });
     });
     document.getElementById('btn-cancel').addEventListener('click', () => {
-      fetch('http://localhost:${port}/picker-result?cancelled=1');
+      fetch('http://127.0.0.1:${port}/picker-result?t=' + encodeURIComponent(sessionSecret) + '&cancelled=1');
       document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Segoe UI,sans-serif;color:#aaa;">You can close this tab and return to TaskSpark.</div>';
     });
   </script>
 </body>
 </html>`;
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
         return;
       }
 
-      if (parsed.pathname === '/picker-result') {
+      if (parsed.pathname === '/picker-result' && checkSecret()) {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('OK');
         if (pickerServer) { try { pickerServer.close(); } catch {} pickerServer = null; }
@@ -1200,8 +1357,9 @@ ipcMain.handle('show-config-picker', async (_, { accessToken, clientId }) => {
       res.writeHead(404); res.end();
     });
 
-    pickerServer.listen(port, '127.0.0.1', () => {
-      shell.openExternal(`http://localhost:${port}/picker`);
+    pickerServer.listen(0, '127.0.0.1', () => {
+      const port = pickerServer.address().port;
+      shell.openExternal(`http://127.0.0.1:${port}/picker?t=${encodeURIComponent(sessionSecret)}`);
     });
 
     pickerServer.on('error', () => {

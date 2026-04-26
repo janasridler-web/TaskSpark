@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googleapis.com https://lh3.googleusercontent.com; connect-src 'self' https://www.googleapis.com https://oauth2.googleapis.com https://api.github.com https://login.microsoftonline.com https://graph.microsoft.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TaskSpark</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -220,6 +221,9 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 @keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
 .task-card.celebrating{animation:card-pop .45s ease-out}
 .task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important;animation-iteration-count:1 !important;scroll-behavior:auto !important}
+}
 
 .task-body{flex:1;padding:14px 10px 14px 10px;min-width:0}
 .task-title{font-size:15px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:3px}
@@ -246,9 +250,9 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-actions{display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:4px;padding:10px 10px;opacity:0;transition:opacity .15s;flex-shrink:0}
 .task-card:hover .task-actions{opacity:1}
-.action-btn{width:30px;height:30px;border-radius:7px;border:none;background:transparent;
+.action-btn{width:32px;height:32px;border-radius:7px;border:none;background:transparent;
   cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;
-  color:var(--text3);transition:all .15s}
+  color:var(--text3);transition:all .15s;min-width:32px;min-height:32px}
 .action-btn:hover{background:var(--surface2);color:var(--text)}
 .action-btn.timer{background:var(--accent-l);color:var(--accent)}
 .action-btn.timer:hover{background:var(--accent);color:#fff}
@@ -1436,7 +1440,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <div id="view-title">All Tasks</div>
       <span id="workspace-title" style="display:none"></span>
       <span id="ws-readonly-badge" style="display:none;font-size:11px;padding:2px 8px;border-radius:4px;background:var(--surface2);color:var(--amber);border:1px solid var(--amber);margin-right:4px">⇄ View only</span>
-      <input id="search-input" type="text" placeholder="Search tasks…" oninput="renderTasks()" style="-webkit-app-region:no-drag">
+      <input id="search-input" type="text" placeholder="Search tasks…" oninput="searchInputDebounced()" style="-webkit-app-region:no-drag">
       <select id="sort-select" onchange="onSortChange()">
         <option value="created">Newest first</option>
         <option value="due">Due date</option>
@@ -1694,45 +1698,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('cal-event-modal-overlay')">Cancel</button>
       <button class="btn-secondary" id="cev-delete-btn" style="display:none;color:var(--red);border-color:var(--red)" onclick="deleteCalEvent()">Delete</button>
-      <button class="btn-primary" onclick="saveCalEvent()">Save Event</button>
-    </div>
-  </div>
-</div>
-
-<!-- Calendar Event Modal -->
-<div class="modal-overlay" id="cal-event-modal-overlay" onclick="closeModalOutside(event,'cal-event-modal-overlay')">
-  <div class="modal" id="cal-event-modal">
-    <div class="modal-title" id="cal-event-modal-title">New Event</div>
-    <div class="form-group">
-      <label class="form-label">Title *</label>
-      <input class="form-input" id="cem-title" placeholder="Event name">
-    </div>
-    <div class="form-group">
-      <label class="form-label">
-        <span style="display:flex;align-items:center;gap:10px">All Day
-          <label class="toggle-switch" style="margin:0"><input type="checkbox" id="cem-allday" onchange="toggleCalEventAllDay()"><span class="toggle-slider"></span></label>
-        </span>
-      </label>
-    </div>
-    <div class="form-row" id="cem-time-row">
-      <div class="form-group">
-        <label class="form-label">Start</label>
-        <input class="form-input" id="cem-start" type="datetime-local">
-      </div>
-      <div class="form-group">
-        <label class="form-label">End</label>
-        <input class="form-input" id="cem-end" type="datetime-local">
-      </div>
-    </div>
-    <div class="form-row" id="cem-date-row" style="display:none">
-      <div class="form-group">
-        <label class="form-label">Date</label>
-        <input class="form-input" id="cem-date" type="date">
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn-secondary" onclick="closeModal('cal-event-modal-overlay')">Cancel</button>
-      <button class="btn-secondary" id="cem-delete-btn" onclick="deleteCalEvent()" style="display:none;color:var(--red);border-color:var(--red)">Delete</button>
       <button class="btn-primary" onclick="saveCalEvent()">Save Event</button>
     </div>
   </div>

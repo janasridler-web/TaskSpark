@@ -31,15 +31,18 @@
     "files": [
       "src/**/*",
       "assets/**/*",
-      "node_modules/**/*"
+      "!**/test/**",
+      "!**/tests/**",
+      "!**/*.md",
+      "!**/*.map"
     ]
   },
   "devDependencies": {
     "electron": "^34.0.0",
-    "electron-builder": "^24.0.0"
+    "electron-builder": "^25.0.0"
   },
   "dependencies": {
-    "electron-updater": "^6.1.7"
+    "electron-updater": "^6.6.2"
   },
   "author": {
     "name": "Jana Sridler",

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -110,6 +111,7 @@
   let timerInterval = null;
   let startTime     = null;
   let baseLogged    = 0;
+  let originalBase  = 0; // task.timeLogged at session start — never changes; used to compute elapsed on stop
   let isPaused      = false;
   let displayTotal  = 0; // tracks display time so it freezes correctly on pause
   let pausedAt      = 0; // displayTotal at the moment of pause
@@ -117,7 +119,8 @@
   window.timerAPI.onStart((data) => {
     document.getElementById('task-name').textContent =
       data.taskName.length > 28 ? data.taskName.slice(0, 26) + '…' : data.taskName;
-    baseLogged = data.baseLogged || 0;
+    baseLogged   = data.baseLogged || 0;
+    originalBase = data.baseLogged || 0;
     startTime  = Date.now() / 1000;
     isPaused   = false;
     pausedAt   = 0;
@@ -175,8 +178,9 @@
   function stopTimer() {
     clearInterval(timerInterval);
     timerInterval = null;
-    // Calculate correct elapsed — displayTotal already tracks paused time correctly
-    const elapsed = displayTotal - baseLogged;
+    // Compute against originalBase (set once at session start) — baseLogged was
+    // overwritten on each resume, so subtracting it would lose pre-pause time.
+    const elapsed = displayTotal - originalBase;
     window.timerAPI.stop(elapsed);
   }
 </script>

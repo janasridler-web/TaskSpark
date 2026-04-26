@@ -172,19 +172,30 @@ let settings = { ...DEFAULT_SETTINGS };
 function getBreakIntervalMs() { return settings.breakIntervalMins * 60 * 1000; }
 function getBreakDurationS()  { return settings.breakDurationMins * 60; }
 
+// Pre-create the audio elements once and reuse them — avoids re-decoding the
+// MP3 on every break and avoids leaking Audio objects.
+const _breakAudioDefault = new Audio('../assets/break-chime.mp3');
+_breakAudioDefault.volume = 0.75;
+let _breakAudioCustomSrc = null;
+let _breakAudioCustom = null;
 function playBreakSound() {
   if (!settings.soundEnabled) return;
-  const src = settings.soundFile
-    ? `file:///${settings.soundFile.replace(/\\/g, '/')}`
-    : '../assets/break-chime.mp3';
-  const audio = new Audio(src);
-  audio.volume = 0.75;
-  audio.play().catch(() => {
-    if (!settings.soundFile) return;
-    const fallback = new Audio('../assets/break-chime.mp3');
-    fallback.volume = 0.75;
-    fallback.play().catch(() => {});
-  });
+  if (settings.soundFile) {
+    const src = `file:///${settings.soundFile.replace(/\\/g, '/')}`;
+    if (src !== _breakAudioCustomSrc) {
+      _breakAudioCustomSrc = src;
+      _breakAudioCustom = new Audio(src);
+      _breakAudioCustom.volume = 0.75;
+    }
+    try { _breakAudioCustom.currentTime = 0; } catch {}
+    _breakAudioCustom.play().catch(() => {
+      try { _breakAudioDefault.currentTime = 0; } catch {}
+      _breakAudioDefault.play().catch(() => {});
+    });
+  } else {
+    try { _breakAudioDefault.currentTime = 0; } catch {}
+    _breakAudioDefault.play().catch(() => {});
+  }
 }
 
 
@@ -236,7 +247,10 @@ function dueStatus(due) {
 }
 
 function getTagColor(tag) {
-  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) return settings.tagColors[tag];
+  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) {
+    const v = settings.tagColors[tag];
+    if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
+  }
   if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
   return tagColorMap[tag];
 }
@@ -252,6 +266,33 @@ function isDeferred(task) {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Escape a string for safe use inside a single-quoted JS literal in an inline
+// HTML event handler (e.g. onclick="fn('${escJs(value)}')"). The browser
+// HTML-decodes attributes once before treating them as JS, so esc() alone is
+// not enough — single quotes inside JS strings would terminate the literal.
+function escJs(s) {
+  return String(s)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/"/g,'\\"')
+    .replace(/</g,'\\x3c')
+    .replace(/>/g,'\\x3e')
+    .replace(/\r/g,'\\r')
+    .replace(/\n/g,'\\n');
+}
+
+// Validate a user-supplied URL — only allow http/https/mailto. Returns the URL
+// if safe, or empty string if not (callers should hide the link in that case).
+function safeUrl(u) {
+  if (!u) return '';
+  try {
+    const p = new URL(u, location.href).protocol.toLowerCase();
+    return (p === 'http:' || p === 'https:' || p === 'mailto:') ? u : '';
+  } catch {
+    return '';
+  }
 }
 
 // ── Collapsible sidebar sections ───────────────────────────────────────────
@@ -270,11 +311,28 @@ function toggleSection(name) {
   }
 }
 
+let _lastSyncErrorAt = 0;
 function setSyncStatus(state, msg = '') {
   const lbl = document.getElementById('sync-lbl');
-  if (state === 'ok') { lbl.textContent = '● Synced'; lbl.style.color = 'var(--accent)'; }
-  else if (state === 'offline') { lbl.textContent = '○ Offline'; lbl.style.color = 'var(--text3)'; }
-  // error and syncing states are silently ignored
+  if (!lbl) return;
+  if (state === 'ok') {
+    lbl.textContent = '● Synced'; lbl.style.color = 'var(--accent)';
+    lbl.title = '';
+  } else if (state === 'offline') {
+    lbl.textContent = '○ Offline'; lbl.style.color = 'var(--text3)';
+    lbl.title = '';
+  } else if (state === 'syncing') {
+    lbl.textContent = '… Syncing'; lbl.style.color = 'var(--text3)';
+  } else if (state === 'error') {
+    lbl.textContent = '⚠ Sync error'; lbl.style.color = 'var(--red)';
+    lbl.title = msg || 'Last sync failed — will retry';
+    // Throttle error toasts so a save-on-every-keystroke loop can't spam
+    const now = Date.now();
+    if (now - _lastSyncErrorAt > 30000) {
+      _lastSyncErrorAt = now;
+      showToast('⚠ Sync failed' + (msg ? ` — ${msg}` : ''));
+    }
+  }
   const btn = document.getElementById('open-sheet-btn');
   if (btn) btn.style.display = spreadsheetId ? '' : 'none';
 }
@@ -397,7 +455,7 @@ async function init() {
         renderWorkspaceDropdown();
         updateWorkspaceTitle();
         await connectToSheets();
-        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
+        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
         if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
@@ -411,14 +469,14 @@ async function init() {
       renderWorkspaceDropdown();
       updateWorkspaceTitle();
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
       if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 800);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
   } else if (cfg && cfg.offlineMode) {
     offlineMode = true;
     showApp();
-    loadOfflineTasks();
+    await loadOfflineTasks();
     await loadIdeas();
     await loadHabits();
     await loadWins();
@@ -451,24 +509,29 @@ async function init() {
   checkStartOfDay();
   // Schedule end of day notification
   scheduleEod();
-  // Midnight: refresh views and fire overdue alerts when date rolls over
-  let _lastDateStr = todayStr();
-  setInterval(() => {
-    const d = todayStr();
-    if (d !== _lastDateStr) { _lastDateStr = d; renderAll(); checkOverdueAlerts(); }
-  }, 60000);
+  // Midnight: refresh views and fire overdue alerts when date rolls over.
+  // One-shot setTimeout to ms-until-midnight; reschedule from inside the handler.
+  function _scheduleMidnight() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setDate(now.getDate() + 1);
+    next.setHours(0, 0, 30, 0); // 30s past to avoid race conditions
+    const ms = next.getTime() - now.getTime();
+    setTimeout(() => {
+      try { renderAll(); checkOverdueAlerts(); } catch (e) { console.warn('midnight tick error', e); }
+      _scheduleMidnight();
+    }, Math.max(60000, ms));
+  }
+  _scheduleMidnight();
 }
 
 
 function hideLoadingScreen() {
   const el = document.getElementById('loading-screen');
   if (!el) return;
-  const elapsed = Date.now() - (window._appStartTime || Date.now());
-  const remaining = Math.max(0, 3000 - elapsed);
-  setTimeout(() => {
-    el.classList.add('fade-out');
-    setTimeout(() => el.classList.add('hidden'), 380);
-  }, remaining);
+  // Fade out as soon as the app is ready — no artificial minimum
+  el.classList.add('fade-out');
+  setTimeout(() => el.classList.add('hidden'), 380);
 }
 
 function showAuth() {
@@ -552,8 +615,16 @@ api.onOauthCode(async ({ code }) => {
         }
       } catch (e) { console.warn('[onOauthCode] workspace load failed:', e.message); }
 
+      // B33: re-apply workspace settings after sign-in (parity with init())
+      if (workspaces.length) {
+        const active = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+        if (active && active.settings) {
+          settings = { ...DEFAULT_SETTINGS, ...active.settings };
+          applySettings();
+        }
+      }
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
 
       // Show workspace setup modal if no workspaces configured yet
       if (workspaces.length === 0) {
@@ -602,9 +673,22 @@ async function ensureToken() {
       accessToken = tokens.access_token;
       tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
       await api.saveConfig({ accessToken, tokenExpiry });
+      return;
     }
+    // Refresh-token revoked or expired: surface to user and force re-auth
+    if (tokens.error === 'invalid_grant') {
+      await api.saveConfig({ accessToken: null, refreshToken: null, tokenExpiry: 0 });
+      accessToken = null; refreshToken = null; tokenExpiry = 0;
+      showToast('Sign-in expired — please sign in again');
+      throw new Error('invalid_grant');
+    }
+    throw new Error(tokens.error_description || tokens.error || 'No access token returned');
   } catch (e) {
     console.warn('Token refresh failed:', e);
+    if (e.message === 'invalid_grant') {
+      // Re-throw so the caller can stop trying to use a dead token
+      throw e;
+    }
   }
 }
 
@@ -692,9 +776,14 @@ async function refreshFromSheets() {
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
 
+let _cacheSaveErrorShown = false;
 async function saveTasks() {
   _lastTasksHTML = ''; // Invalidate render cache
-  await api.saveCache(tasks);
+  const cacheResult = await api.saveCache(tasks);
+  if (cacheResult && cacheResult.ok === false && !_cacheSaveErrorShown) {
+    _cacheSaveErrorShown = true;
+    showToast('⚠ Could not save offline cache — disk may be full');
+  }
   if (offlineMode) { setSyncStatus('offline'); return; }
   const activeWs = getActiveWorkspace();
   if (activeWs && activeWs.readOnly) { setSyncStatus('ok'); return; }
@@ -723,7 +812,11 @@ function sampleTasks() {
 
 // ── Undo ───────────────────────────────────────────────────────────────────
 function pushUndo(desc) {
-  undoStack.push({ desc, snapshot: JSON.parse(JSON.stringify(tasks)) });
+  // structuredClone is faster than JSON round-trip and preserves Dates/Maps
+  const snapshot = (typeof structuredClone === 'function')
+    ? structuredClone(tasks)
+    : JSON.parse(JSON.stringify(tasks));
+  undoStack.push({ desc, snapshot });
   if (undoStack.length > 20) undoStack.shift();
 }
 
@@ -764,16 +857,25 @@ document.getElementById('main')?.addEventListener('click', e => {
   }
 });
 
+function _isTypingTarget(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); return; }
+  // Ctrl+Z: don't hijack the user's text-input undo
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    if (_isTypingTarget(document.activeElement)) return;
+    e.preventDefault(); undo(); return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key === ' ') { e.preventDefault(); if (settings.quickAddEnabled && !document.getElementById('quick-add-overlay').classList.contains('open')) openQuickAdd(); return; }
   if (e.key === 'Escape') {
     closeAllModals();
     document.getElementById('quick-add-overlay').classList.remove('open');
   }
-  if (e.key === 'n' && !e.ctrlKey && !e.metaKey &&
-      document.activeElement.tagName !== 'INPUT' &&
-      document.activeElement.tagName !== 'TEXTAREA') {
+  if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !_isTypingTarget(document.activeElement)) {
     openTaskModal();
   }
 });
@@ -853,7 +955,10 @@ function renderTasks() {
   if (!filtered.length) {
     const msg = currentView === 'completed' ? 'No completed tasks yet' : 'All clear!';
     const sub = currentView === 'completed' ? 'Complete a task to see it here' : 'Add a new task to get started';
-    const html = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
+    const cta = currentView === 'completed' || isReadOnly()
+      ? ''
+      : '<button class="btn-primary" style="margin-top:16px" onclick="openTaskModal()">+ New Task</button>';
+    const html = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div>${cta}</div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
     return;
@@ -899,14 +1004,15 @@ function taskCardHTML(task) {
     const sym = settings.currencySymbol || '£';
     const spent = task.spent || 0;
     const over = spent > task.budget;
-    budgetBadge = `<span class="badge badge-budget${over ? ' over' : ''}">${sym}${spent.toFixed(2)}/${sym}${parseFloat(task.budget).toFixed(2)}</span>`;
+    const overPrefix = over ? '⚠ ' : '';
+    budgetBadge = `<span class="badge badge-budget${over ? ' over' : ''}" title="${over ? 'Over budget' : 'Within budget'}">${overPrefix}${sym}${spent.toFixed(2)}/${sym}${parseFloat(task.budget).toFixed(2)}</span>`;
   }
 
   // Live timer badge
   let liveTimeBadge = '';
   if (isRunning || task.timeLogged) {
     const base = task.timeLogged || 0;
-    const disp = fmtSecs(isRunning ? base + Math.floor((Date.now()/1000) - timerStart) : base);
+    const disp = fmtSecs(isRunning ? base + Math.floor((Date.now()/1000) - timerStart) + timerPausedElapsed : base);
     liveTimeBadge = `<span class="badge badge-time ${isRunning?'running':''}" id="time-badge-${task.id}">◷ ${disp}</span>`;
   }
 
@@ -915,7 +1021,8 @@ function taskCardHTML(task) {
   if (task.completed && (task.impact || task.outcome)) {
     const impBadge = task.impact ? `<span class="impact-badge impact-${task.impact}">${task.impact.charAt(0).toUpperCase()+task.impact.slice(1)} Impact</span>` : '';
     const outcomeText = task.outcome ? `<span>${esc(task.outcome)}</span>` : '';
-    const delivLink = task.deliverable && !/^javascript:/i.test(task.deliverable.trim()) ? `<a class="deliverable-link" href="${esc(task.deliverable)}" target="_blank">🔗 ${esc(task.deliverable)}</a>` : '';
+    const safeDeliv = safeUrl(task.deliverable);
+    const delivLink = safeDeliv ? `<a class="deliverable-link" href="${esc(safeDeliv)}" target="_blank" rel="noopener noreferrer">🔗 ${esc(safeDeliv)}</a>` : '';
     completionDetail = `<div class="completion-detail">${impBadge}${outcomeText}${delivLink}</div>`;
   }
 
@@ -1004,7 +1111,7 @@ function updateTagSidebar() {
   const tagSet = {};
   tasks.filter(t => !t.completed && !t.archived).forEach(t => (t.tags||[]).forEach(tag => { tagSet[tag] = (tagSet[tag]||0)+1; }));
   document.getElementById('tag-list').innerHTML = Object.keys(tagSet).sort().map(tag => `
-    <div class="sidebar-item" onclick="setView('tag:${esc(tag)}',this)">
+    <div class="sidebar-item" onclick="setView('tag:${escJs(tag)}',this)">
       <span class="tag-dot" style="background:${getTagColor(tag)}"></span>
       <span>${esc(tag)}</span>
       <span class="si-count">${tagSet[tag]}</span>
@@ -1032,13 +1139,14 @@ function checkGraceDayPrompt() {
   if (streakBeforeYesterday === 0) return; // no streak to protect
   // Mark as prompted today
   try { localStorage.setItem(cfg_key, JSON.stringify({ date: todayStr() })); } catch {}
-  // Show prompt
+  // Show prompt as informational — calcStreak already protects via the
+  // graceDayEnabled flag, so the button is effectively confirmation, not action.
   setTimeout(() => {
     showConfirmModal(
-      '⚡ Streak at risk',
-      'You missed yesterday and your <strong>' + streakBeforeYesterday + ' day streak</strong> is at risk.<br><br>Would you like to use your grace day to protect it? You get one grace day per streak.',
-      'Use Grace Day',
-      () => { showToast('Grace day used — streak protected!'); }
+      '⚡ Grace day applied',
+      'You missed yesterday but your <strong>' + streakBeforeYesterday + ' day streak</strong> has been protected automatically by your grace day.',
+      'Got it',
+      () => {}
     );
   }, 2000);
 }
@@ -1108,9 +1216,11 @@ function updateStreak() {
   best.textContent = longest > 0 ? `Best: ${longest} day${longest !== 1 ? 's' : ''}` : '';
 }
 
+// Use sessionStorage so the prompt re-shows on next launch if the user
+// dismissed it without resuming. Avoids polluting persisted settings.
 function promptVacationReturn() {
-  if (settings._vacationPromptShown) return;
-  settings._vacationPromptShown = true;
+  try { if (sessionStorage.getItem('ts_vacation_prompt_shown')) return; } catch {}
+  try { sessionStorage.setItem('ts_vacation_prompt_shown', '1'); } catch {}
   setTimeout(() => {
     showConfirmModal(
       'Welcome back!',
@@ -1119,7 +1229,6 @@ function promptVacationReturn() {
       () => {
         settings.vacationMode   = false;
         settings.vacationReturn = null;
-        settings._vacationPromptShown = false;
         api.saveConfig({ settings });
         updateStreak();
         showToast('Streak resumed! Welcome back ★');
@@ -1448,7 +1557,7 @@ function renderKanban() {
     const tagColor = tag === 'Untagged' ? 'var(--text3)' : getTagColor(tag);
     return `
       <div class="kanban-tag-group">
-        <div class="kanban-tag-header" onclick="toggleKanbanGroup('${esc(tag)}')">
+        <div class="kanban-tag-header" onclick="toggleKanbanGroup('${escJs(tag)}')">
           <span class="kanban-tag-arrow ${isOpen?'':'collapsed'}">▾</span>
           <span class="kanban-tag-label" style="color:${tagColor}">${esc(tag)}</span>
           <span class="kanban-col-count">${tagTasks.length}</span>
@@ -1593,7 +1702,7 @@ function renderMonthCell(dateStr, dayNum, otherMonth, today, activeTasks, comple
   const items = getItemsForDate(dateStr, activeTasks, allEvents, completedTasks);
   const shown = items.slice(0, 5), extra = items.length - 5;
   const chips = shown.map(item => {
-    const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="event.stopPropagation();openTaskModal(${item.id})"` : `onclick="event.stopPropagation();openCalEventModal('${item.id}')"`;
+    const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="event.stopPropagation();openTaskModal(${item.id})"` : `onclick="event.stopPropagation();openCalEventModal('${escJs(item.id)}')"`;
     const typeClass = item.eventType === 'holiday' ? ' event-holiday' : '';
     return `<div class="cal-chip ${item.type}${typeClass}" ${click}>${item.label}</div>`;
   }).join('');
@@ -1602,7 +1711,7 @@ function renderMonthCell(dateStr, dayNum, otherMonth, today, activeTasks, comple
   if (otherMonth) classes.push('other-month');
   if (isToday) classes.push('today');
   else if (isPast) classes.push('past');
-  return `<div class="${classes.join(' ')}" onclick="openCalEventModal(null,'${dateStr}')">
+  return `<div class="${classes.join(' ')}" onclick="openCalEventModal(null,'${escJs(dateStr)}')">
     <div class="cal-day-num">${dayNum}</div>${chips}${moreBtn}
   </div>`;
 }
@@ -1634,7 +1743,7 @@ function renderWeekView(date, today, activeTasks, completedTasks = [], allEvents
     const items = getItemsForDate(ds, activeTasks, allEvents.filter(e => e.allDay), completedTasks);
     // Also add timed events that fall on this day to all-day for tasks
     const chips = items.map(item => {
-      const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="openTaskModal(${item.id})"` : `onclick="openCalEventModal('${item.id}')"`;
+      const click = (item.type === 'task' || item.type === 'task-done') ? `onclick="openTaskModal(${item.id})"` : `onclick="openCalEventModal('${escJs(item.id)}')"`;
       return `<div class="cal-chip ${item.type}" ${click}>${item.label}</div>`;
     }).join('');
     return `<div class="cal-week-allday-cell">${chips}</div>`;
@@ -1653,11 +1762,11 @@ function renderWeekView(date, today, activeTasks, completedTasks = [], allEvents
       const eh = parseInt((e.end||e.start).slice(11,13)||sh+1), em = parseInt((e.end||e.start).slice(14,16)||0);
       const top = sh*48 + sm/60*48;
       const height = Math.max(24, ((eh*60+em)-(sh*60+sm))/60*48);
-      return `<div class="cal-week-event event" style="top:${top}px;height:${height}px" onclick="event.stopPropagation();openCalEventModal('${e.id}')">${esc(e.title)}</div>`;
+      return `<div class="cal-week-event event" style="top:${top}px;height:${height}px" onclick="event.stopPropagation();openCalEventModal('${escJs(e.id)}')">${esc(e.title)}</div>`;
     }).join('');
     const hourCells = Array.from({length:24}, () => '<div class="cal-week-cell"></div>').join('');
     const isPastDay = ds < today && ds !== today;
-    return `<div class="cal-week-day-col${ds===today?' today':''}${isPastDay?' past':''}" onclick="openCalEventModal(null,'${ds}')">
+    return `<div class="cal-week-day-col${ds===today?' today':''}${isPastDay?' past':''}" onclick="openCalEventModal(null,'${escJs(ds)}')">
       ${hourCells}<div style="position:absolute;inset:0;pointer-events:none;z-index:1"><div style="pointer-events:all">${eventChips}</div></div>
     </div>`;
   }).join('');
@@ -1687,7 +1796,7 @@ function renderDayView(date, today, activeTasks, completedTasks = [], allEvents 
   const allDayChips = allDayItems.map(item => {
     const click = (item.type === 'task' || item.type === 'task-done')
       ? `onclick="openTaskModal(${item.id})"`
-      : `onclick="openCalEventModal('${item.id}')"`;
+      : `onclick="openCalEventModal('${escJs(item.id)}')"`;
     const typeClass = item.eventType === 'holiday' ? ' event-holiday' : item.eventType === 'outlook' ? ' event-outlook' : '';
     return `<div class="cal-chip ${item.type}${typeClass}" ${click}>${item.label}</div>`;
   }).join('');
@@ -1700,7 +1809,7 @@ function renderDayView(date, today, activeTasks, completedTasks = [], allEvents 
     const top = sh*60 + sm/60*60;
     const height = Math.max(28, ((eh*60+em)-(sh*60+sm))/60*60);
     const typeClass = e.source === 'outlook' ? ' event-outlook' : '';
-    return `<div class="cal-week-event event${typeClass}" style="top:${top}px;height:${height}px;left:8px;right:8px" onclick="event.stopPropagation();openCalEventModal('${e.id}')">${esc(e.title)}</div>`;
+    return `<div class="cal-week-event event${typeClass}" style="top:${top}px;height:${height}px;left:8px;right:8px" onclick="event.stopPropagation();openCalEventModal('${escJs(e.id)}')">${esc(e.title)}</div>`;
   }).join('');
 
   const timeLabels = Array.from({length:24}, (_,h) => {
@@ -1727,7 +1836,7 @@ function renderDayView(date, today, activeTasks, completedTasks = [], allEvents 
         </div>
         <div class="cal-week-scroll day-view">
           <div class="cal-week-time-col">${timeLabels}</div>
-          <div class="cal-week-day-col${isToday?' today':''}${isPast?' past':''}" onclick="openCalEventModal(null,'${ds}')">
+          <div class="cal-week-day-col${isToday?' today':''}${isPast?' past':''}" onclick="openCalEventModal(null,'${escJs(ds)}')">
             ${hourCells}
             <div style="position:absolute;inset:0;pointer-events:none;z-index:1">
               <div style="pointer-events:all">${eventChips}</div>
@@ -1817,12 +1926,20 @@ async function refreshOutlookToken() {
   return false;
 }
 
-async function loadOutlookEvents() {
+// 5-minute TTL cache for Outlook events to avoid hammering Graph on every
+// calendar tab switch. Pass {force:true} to bypass.
+let _outlookCacheAt = 0;
+let _outlookCacheKey = '';
+async function loadOutlookEvents(opts = {}) {
   if (!outlookConnected || !outlookAccessToken) return;
+  const now   = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+  const end   = new Date(now.getFullYear(), now.getMonth() + 3, 0).toISOString();
+  const cacheKey = start + '|' + end;
+  if (!opts.force && _outlookCacheKey === cacheKey && Date.now() - _outlookCacheAt < 5 * 60 * 1000 && outlookEvents.length) {
+    return;
+  }
   try {
-    const now   = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-    const end   = new Date(now.getFullYear(), now.getMonth() + 3, 0).toISOString();
     let data = await api.outlookLoadEvents({ accessToken: outlookAccessToken, startDate: start, endDate: end });
     if (data.error?.code === 'InvalidAuthenticationToken') {
       const refreshed = await refreshOutlookToken();
@@ -1851,6 +1968,8 @@ async function loadOutlookEvents() {
         readonly: true
       };
     });
+    _outlookCacheAt = Date.now();
+    _outlookCacheKey = cacheKey;
   } catch(err) { console.error('Outlook load error:', err); }
 }
 
@@ -1884,7 +2003,7 @@ function renderCalEventTags() {
   const pills = document.getElementById('cev-tag-pills');
   if (!pills) return;
   pills.innerHTML = calEventTags.map(tag =>
-    `<span class="tag-pill" style="background:${getCalEventTagColor(tag)}">${esc(tag)}<button class="tag-pill-x" onclick="removeCalEventTag('${esc(tag)}')">&times;</button></span>`
+    `<span class="tag-pill" style="background:${getCalEventTagColor(tag)}">${esc(tag)}<button class="tag-pill-x" onclick="removeCalEventTag('${escJs(tag)}')">&times;</button></span>`
   ).join('');
 }
 
@@ -1912,7 +2031,7 @@ function showCalTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectCalTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectCalTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
       <span style="width:8px;height:8px;border-radius:50%;background:${getCalEventTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -1984,7 +2103,11 @@ function toggleCalEventAllDay() {
   }
 }
 
+let _savingCalEvent = false;
 function saveCalEvent() {
+  if (_savingCalEvent) return;
+  _savingCalEvent = true;
+  setTimeout(() => { _savingCalEvent = false; }, 800);
   const title = document.getElementById('cev-title').value.trim();
   if (!title) { document.getElementById('cev-title').focus(); return; }
   const allDay = document.getElementById('cev-allday').checked;
@@ -2009,15 +2132,20 @@ function saveCalEvent() {
   // If this is a holiday/vacation event, offer to enable vacation mode
   if (isHoliday && allDay) {
     const startDate = document.getElementById('cev-date-start') ? document.getElementById('cev-date-start').value : '';
-        const endDate = document.getElementById('cev-date-end') ? document.getElementById('cev-date-end').value : startDate;
+    const endDate = document.getElementById('cev-date-end') ? document.getElementById('cev-date-end').value : startDate;
     if (startDate && startDate > calFmtDate(new Date())) {
-      if (confirm('Enable vacation mode for this period? Your streak will be paused until the event ends.')) {
-        settings.vacationMode = true;
-        settings.vacationReturn = endDate;
-        api.saveConfig({ settings });
-        applySettings();
-        showToast('Vacation mode enabled — streak paused until ' + endDate);
-      }
+      showConfirmModal(
+        'Enable vacation mode?',
+        'Your streak will be paused until the event ends.',
+        'Enable',
+        () => {
+          settings.vacationMode = true;
+          settings.vacationReturn = endDate;
+          api.saveConfig({ settings });
+          applySettings();
+          showToast('Vacation mode enabled — streak paused until ' + endDate);
+        }
+      );
     }
   }
   closeModal('cal-event-modal-overlay');
@@ -2033,19 +2161,25 @@ function deleteCalEvent() {
 }
 
 async function saveCalEvents() {
-  if (offlineMode) return;
+  if (offlineMode || !accessToken || !spreadsheetId) return;
+  if (isReadOnly()) return;
   try {
     await ensureToken();
     await api.eventsSave({ accessToken, spreadsheetId, events: calEvents });
-  } catch(e) { console.error('Events save error:', e); }
+  } catch(e) { console.error('Events save error:', e); setSyncStatus('error', 'Calendar sync failed'); }
 }
 
 async function loadCalEvents() {
-  if (offlineMode) return;
+  if (offlineMode || !accessToken || !spreadsheetId) return;
   try {
     await ensureToken();
-    calEvents = await api.eventsLoad({ accessToken, spreadsheetId });
-  } catch(e) { calEvents = []; }
+    const remote = await api.eventsLoad({ accessToken, spreadsheetId });
+    if (Array.isArray(remote)) calEvents = remote;
+    // On a transient failure that returns null/undefined, keep what we already have
+  } catch(e) {
+    // B32: Don't wipe events on a transient network blip — keep cached view
+    console.warn('Events load error:', e.message);
+  }
 }
 
 function renderBudgetView() {
@@ -2469,7 +2603,7 @@ function statsRangeLabel(range) {
 
 async function statsExportToGoogleDoc() {
   if (!accessToken) {
-    alert('Connect your Google account first to export stats.');
+    showToast('Connect your Google account first to export stats.');
     return;
   }
   const btn = document.querySelector('.stats-export-btn');
@@ -2526,7 +2660,7 @@ svg { overflow: visible !important; }
     }
   } catch (e) {
     console.error('Export PDF to Drive failed:', e);
-    alert('Export failed. Please try again.');
+    showToast('Export failed. Please try again.');
   } finally {
     if (btn) { btn.textContent = 'Export PDF'; btn.disabled = false; }
   }
@@ -2645,7 +2779,9 @@ function renderStatsThroughputCard(start, end, range) {
   const labelAt = buckets.length<=7 ? buckets.map((_,i)=>i) : [0,Math.floor(buckets.length/2),buckets.length-1];
   const xP = i => PL+(buckets.length<=1?W/2:(i/(buckets.length-1))*W);
   const labels = labelAt.map(i=>`<text x="${xP(i).toFixed(1)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">${buckets[i].label}</text>`).join('');
-  const svg = `<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible">${grid}${statsLineSvg(buckets.map(b=>b.count),maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${labels}</svg>`;
+  const totalDone = buckets.reduce((a,b)=>a+(b.count||0),0);
+  const peak = Math.max(0, ...buckets.map(b=>b.count||0));
+  const svg = `<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-labelledby="stats-throughput-title"><title id="stats-throughput-title">Tasks completed over time. Total: ${totalDone}. Peak: ${peak} on a single day.</title>${grid}${statsLineSvg(buckets.map(b=>b.count),maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${labels}</svg>`;
   const hint = {today:'',  '7d':'Daily · last 7 days','30d':'Daily · last 30 days','90d':'Weekly · last 90 days','year':'Monthly · last year'}[range]||'';
   return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Tasks completed over time</div><div class="stats-card-hint">${hint}</div></div>${svg}</div>`;
 }
@@ -2674,7 +2810,7 @@ function renderStatsCreatedVsCompletedCard(start, end, daysInRange) {
   }).join('');
   const dots = cVals.map((_,i)=>`<circle cx="${xP(i).toFixed(1)}" cy="${(PT+H-(cVals[i]/maxVal)*H).toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
   const legend=`<text x="${TW-80}" y="14" fill="var(--text2)" font-size="11">— Completed</text><text x="${TW-80}" y="26" fill="var(--amber)" font-size="11">- - Created</text>`;
-  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible">${grid}${statsLineSvg(crVals,maxVal,'var(--amber)',W,H,PL,PT,PB,true)}${statsLineSvg(cVals,maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${dots}${labels}${legend}</svg>`;
+  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-label="Created vs completed tasks over time">${grid}${statsLineSvg(crVals,maxVal,'var(--amber)',W,H,PL,PT,PB,true)}${statsLineSvg(cVals,maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${dots}${labels}${legend}</svg>`;
   return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div><div class="stats-card-hint">Weekly</div></div>${svg}</div>`;
 }
 
@@ -2754,7 +2890,7 @@ function renderStatsScatterCard(start, end) {
     <text x="${xP(ceil/2)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">Estimated (min) →</text>
     <text x="${TW}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="end">${ceil}</text>
     <text x="${PL+2}" y="${PT+10}" fill="var(--text3)" font-size="10">↑ Actual</text>`;
-  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible">${ideal}${idealLabel}${dots}${axes}</svg>`;
+  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-label="Estimate vs actual time spent">${ideal}${idealLabel}${dots}${axes}</svg>`;
   return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimated vs actual</div><div class="stats-card-hint">Each dot is a completed task</div></div>${svg}</div>`;
 }
 
@@ -2994,6 +3130,7 @@ function openTaskModal(id = null) {
   editingId = id;
   modalTags = [];
   modalDue  = '';
+  modalAttachments = [];
   document.getElementById('task-modal-title').textContent = id ? 'Edit Task' : 'New Task';
 
   if (id) {
@@ -3046,7 +3183,11 @@ function openTaskModal(id = null) {
   setTimeout(() => document.getElementById('tm-title').focus(), 100);
 }
 
+let _savingTask = false;
 function saveTask() {
+  if (_savingTask) return;
+  _savingTask = true;
+  setTimeout(() => { _savingTask = false; }, 800);
   const title = document.getElementById('tm-title').value.trim();
   if (!title) { document.getElementById('tm-title').focus(); return; }
 
@@ -3148,6 +3289,11 @@ function showLinkInputDialog() {
   document.body.appendChild(overlay);
   const input = overlay.querySelector('#att-link-input');
   input.focus();
+  let keyHandler = null;
+  const cleanup = () => {
+    if (overlay.parentNode) document.body.removeChild(overlay);
+    if (keyHandler) document.removeEventListener('keydown', keyHandler, true);
+  };
   const confirm = () => {
     const url = input.value.trim();
     if (!url) return;
@@ -3155,11 +3301,16 @@ function showLinkInputDialog() {
     const name = withProtocol.replace(/^https?:\/\//, '').split('/')[0];
     modalAttachments.push({ type: 'link', name, path: withProtocol });
     renderModalAttachments();
-    document.body.removeChild(overlay);
+    cleanup();
   };
   overlay.querySelector('#att-link-confirm').onclick = confirm;
-  overlay.querySelector('#att-link-cancel').onclick  = () => document.body.removeChild(overlay);
-  input.onkeydown = e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') document.body.removeChild(overlay); };
+  overlay.querySelector('#att-link-cancel').onclick  = cleanup;
+  // Click outside the dialog body to dismiss
+  overlay.addEventListener('click', e => { if (e.target === overlay) cleanup(); });
+  // Escape closes from anywhere
+  keyHandler = e => { if (e.key === 'Escape') { e.preventDefault(); cleanup(); } };
+  document.addEventListener('keydown', keyHandler, true);
+  input.onkeydown = e => { if (e.key === 'Enter') confirm(); };
 }
 
 function showAttachmentTypeDialog() {
@@ -3175,9 +3326,18 @@ function showAttachmentTypeDialog() {
       </div>
     </div>`;
     document.body.appendChild(overlay);
-    overlay.querySelector('#att-file-btn').onclick   = () => { document.body.removeChild(overlay); resolve('file'); };
-    overlay.querySelector('#att-link-btn').onclick   = () => { document.body.removeChild(overlay); resolve('link'); };
-    overlay.querySelector('#att-cancel-btn').onclick = () => { document.body.removeChild(overlay); resolve(null); };
+    let keyHandler = null;
+    const close = (val) => {
+      if (overlay.parentNode) document.body.removeChild(overlay);
+      if (keyHandler) document.removeEventListener('keydown', keyHandler, true);
+      resolve(val);
+    };
+    overlay.querySelector('#att-file-btn').onclick   = () => close('file');
+    overlay.querySelector('#att-link-btn').onclick   = () => close('link');
+    overlay.querySelector('#att-cancel-btn').onclick = () => close(null);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
+    keyHandler = e => { if (e.key === 'Escape') { e.preventDefault(); close(null); } };
+    document.addEventListener('keydown', keyHandler, true);
   });
 }
 
@@ -3257,14 +3417,18 @@ function renderSubtasksHTML(task) {
   </div>`;
 }
 
+function _subtaskStateKey() {
+  // Namespace by workspace so task IDs from different workspaces don't collide
+  return 'taskspark_subtask_state_' + (activeWorkspaceId || 'default');
+}
 function getSubtaskState() {
-  try { return JSON.parse(localStorage.getItem('taskspark_subtask_state') || '{}'); } catch { return {}; }
+  try { return JSON.parse(localStorage.getItem(_subtaskStateKey()) || '{}'); } catch { return {}; }
 }
 
 function saveSubtaskState(id, isOpen) {
   const state = getSubtaskState();
   state[id] = isOpen;
-  try { localStorage.setItem('taskspark_subtask_state', JSON.stringify(state)); } catch {}
+  try { localStorage.setItem(_subtaskStateKey(), JSON.stringify(state)); } catch {}
 }
 
 function toggleSubtasks(id) {
@@ -3556,17 +3720,27 @@ function saveCompletion(skip) {
   }
 
   saveTasks(); renderAll();
-  // Prompt recurring after completion dialog
+  // If the user pressed Skip, don't pile on more prompts
+  if (skip) return;
+  // Sequence the prompts so a recurrence prompt isn't immediately overwritten by a wins prompt
   const completedTask = tasks.find(t => t.id === completionTaskId);
-  if (completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none') {
-    setTimeout(() => promptRecurringTask(completedTask), 300);
-  }
-  // Offer to add to Wins Board if enabled
-  if (settings.winsEnabled !== false && completedTask) {
+  const recurring = completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none';
+  const winsOk    = settings.winsEnabled !== false && completedTask;
+  if (recurring) {
+    setTimeout(() => promptRecurringTask(completedTask, winsOk ? () => {
+      // After recurrence prompt closes, optionally show wins prompt
+      setTimeout(() => showConfirmModal(
+        'Add to Wins Board',
+        `Capture <strong>${esc(completedTask.title)}</strong> as a win?`,
+        'Add Win',
+        () => addWinFromTask(completedTask.title)
+      ), 200);
+    } : null), 300);
+  } else if (winsOk) {
     setTimeout(() => {
       showConfirmModal(
         'Add to Wins Board',
-        `Capture <strong>${completedTask.title}</strong> as a win?`,
+        `Capture <strong>${esc(completedTask.title)}</strong> as a win?`,
         'Add Win',
         () => addWinFromTask(completedTask.title)
       );
@@ -3639,7 +3813,7 @@ function showTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
       <span style="width:8px;height:8px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -3735,7 +3909,7 @@ function renderCalendar() {
       dateStr === today ? 'today' : '',
       dateStr === modalDue ? 'selected' : '',
     ].filter(Boolean).join(' ');
-    cells += `<div class="${cls}" onclick="pickDate('${dateStr}')">${d}</div>`;
+    cells += `<div class="${cls}" onclick="pickDate('${escJs(dateStr)}')">${d}</div>`;
   }
 
   popup.innerHTML = `
@@ -3829,7 +4003,7 @@ function renderWinCalendar() {
   for (let d = 1; d <= daysInMonth; d++) {
     const ds = `${winCalYear}-${String(winCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const cls = ['cal-cell', ds === today ? 'today' : '', ds === winSelectedDate ? 'selected' : ''].filter(Boolean).join(' ');
-    cells += `<div class="${cls}" onclick="pickWinDate('${ds}')">${d}</div>`;
+    cells += `<div class="${cls}" onclick="pickWinDate('${escJs(ds)}')">${d}</div>`;
   }
   popup.innerHTML = `
     <div class="cal-header">
@@ -3955,11 +4129,12 @@ function resumeTimer() {
 
 function tickTimer() {
   if (!activeTimerId || !timerStart || timerPaused) return;
+  // Skip DOM updates when the document is hidden — the badge isn't visible
+  if (document.visibilityState === 'hidden') return;
   const task    = tasks.find(t => t.id === activeTimerId);
   const base    = task ? (task.timeLogged || 0) : 0;
   const elapsed = Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
   const total   = base + elapsed;
-  // Update live badge in task card
   const badge = document.getElementById(`time-badge-${activeTimerId}`);
   if (badge) badge.textContent = `◷ ${fmtSecs(total)}`;
 }
@@ -3982,11 +4157,14 @@ function stopTimerSave() {
     task.timeSessions = task.timeSessions || [];
     task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
   }
+  api.timerHide();
+  api.focusHide();
   clearInterval(timerInterval);
   timerInterval = null;
   activeTimerId = null;
   timerStart    = null;
   timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
+  clearBreakTimer();
 }
 
 function cancelTimer() {
@@ -3994,6 +4172,7 @@ function cancelTimer() {
   timerInterval = null;
   activeTimerId = null;
   timerStart    = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
   clearBreakTimer();
   document.getElementById('timer-overlay').classList.remove('active');
 }
@@ -4032,12 +4211,14 @@ function takeBreak() {
     }
     saveTasks();
   }
-  // Close the timer window and clear state
+  // Close the timer + focus windows and clear state
   api.timerHide();
+  api.focusHide();
   clearInterval(timerInterval);
   timerInterval = null;
   timerStart    = null;
   activeTimerId = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
   clearBreakTimer();
   // Restore window then show break panel
   api.restore();
@@ -4089,7 +4270,7 @@ function whatNow() {
   const pmap = { high:0, medium:1, low:2 };
   // Factor in mood: match energy level to today's mood
   const todayMood = getTodayMood();
-  const moodEnergyMap = { good: 'high', okay: 'medium', sad: 'low' };
+  const moodEnergyMap = { happy: 'high', neutral: 'medium', sad: 'low' };
   const preferredEnergy = moodEnergyMap[todayMood] || null;
   const emap = { high:0, medium:1, low:2 };
   const best = active.reduce((a, b) => {
@@ -4137,6 +4318,11 @@ function closeQuickAdd(e) {
 
 function quickAddKey(e) {
   if (e.key === 'Enter') {
+    if (isReadOnly()) {
+      showToast('This workspace is read-only');
+      document.getElementById('quick-add-overlay').classList.remove('open');
+      return;
+    }
     const title = e.target.value.trim();
     if (title) {
       pushUndo('Add task');
@@ -4155,15 +4341,36 @@ function quickAddKey(e) {
 }
 
 // ── Modals ─────────────────────────────────────────────────────────────────
+// Track focus before opening modals so we can restore it on close.
+const _modalPrevFocus = new Map();
+function openModal(overlayId) {
+  const el = document.getElementById(overlayId);
+  if (!el) return;
+  _modalPrevFocus.set(overlayId, document.activeElement);
+  el.classList.add('open');
+}
 function closeModal(overlayId) {
-  document.getElementById(overlayId).classList.remove('open');
+  const el = document.getElementById(overlayId);
+  if (!el) return;
+  el.classList.remove('open');
+  const prev = _modalPrevFocus.get(overlayId);
+  _modalPrevFocus.delete(overlayId);
+  if (prev && typeof prev.focus === 'function') {
+    try { prev.focus(); } catch {}
+  }
 }
 function closeModalOutside(e, overlayId) {
   if (e.target.id === overlayId) closeModal(overlayId);
 }
 function closeAllModals() {
+  // Special-case the confirm modal so its cancel callback fires
+  const confirmOverlay = document.getElementById('confirm-modal-overlay');
+  if (confirmOverlay && confirmOverlay.classList.contains('open')) {
+    closeConfirmModal();
+  }
   document.querySelectorAll('.modal-overlay').forEach(m => {
     if (m.id === 'ws-setup-modal-overlay') return;
+    if (m.id === 'confirm-modal-overlay') return; // already handled above
     m.classList.remove('open');
   });
   // Clean up any active inline edits
@@ -4412,8 +4619,6 @@ function clearSoundFile() {
 function previewSound() {
   const wasEnabled = settings.soundEnabled;
   settings.soundEnabled = true;
-  // Temporarily use whatever file is currently selected in the UI
-  const soundPath = document.getElementById('sound-file-path').textContent;
   playBreakSound();
   settings.soundEnabled = wasEnabled;
 }
@@ -4510,7 +4715,7 @@ function switchSettingsTab(tab, el) {
 }
 
 // ── Recurring tasks ─────────────────────────────────────────────────────────
-function promptRecurringTask(task) {
+function promptRecurringTask(task, after = null) {
   const label = {
     daily: 'daily', weekly: 'weekly', monthly: 'monthly',
     custom: 'every ' + (task.recurrence.interval||1) + ' days',
@@ -4520,7 +4725,9 @@ function promptRecurringTask(task) {
     'Recurring Task',
     'This is a <strong>' + label + '</strong> task. Would you like to create the next occurrence?',
     'Create Next',
-    () => _createRecurrenceOccurrence(task)
+    () => { _createRecurrenceOccurrence(task); if (after) after(); },
+    false,
+    after // cancelCallback — also chain through if user cancels
   );
 }
 
@@ -4531,17 +4738,23 @@ function _createRecurrenceOccurrence(task) {
     desc: task.desc || '',
     priority: task.priority,
     due: calcNextDueDate(task),
+    dueTime: task.dueTime || '',
     tags: [...(task.tags||[])],
     completed: false,
     createdAt: new Date().toISOString(),
     completedAt: '',
     timeLogged: 0, timeSessions: [],
-    impact: '', outcome: '', deliverable: '',
+    impact: '', outcome: '', deliverable: task.deliverable || '',
     estimate: task.estimate || 0,
     status: 'not-started',
     energy: task.energy || 'medium',
     subtasks: [],
     recurrence: { ...task.recurrence },
+    budget: task.budget || 0,
+    spent: 0,
+    attachments: [...(task.attachments||[])],
+    hideUntilDays: task.hideUntilDays || 0,
+    overdueAlert: !!task.overdueAlert,
   };
   tasks.push(newTask);
   saveTasks();
@@ -4652,6 +4865,7 @@ function renderTagColorSettings() {
         <span class="setting-label">${esc(tag)}</span>
       </div>
       <input type="color" value="${getTagColor(tag)}" onchange="setTagColor(${i},this.value)"
+        aria-label="Color for tag ${esc(tag)}"
         style="width:36px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px">
     </div>`
   ).join('');
@@ -4679,6 +4893,10 @@ function toggleTagColorSection() {
 function checkOverdueAlerts() {
   if (!settings.overdueAlertEnabled) return;
   const t = todayStr();
+  // Only show once per day — match the start-of-day pattern
+  try {
+    if (localStorage.getItem('taskspark_overdue_alert_shown') === t) return;
+  } catch {}
   let overdue = tasks.filter(task => !task.completed && !task.archived && task.due && task.due < t);
   if (settings.overdueAlertMode === 'per-task') overdue = overdue.filter(task => task.overdueAlert);
   if (!overdue.length) return;
@@ -4691,6 +4909,7 @@ function checkOverdueAlerts() {
     </div>`
   ).join('');
   document.getElementById('overdue-alert-overlay').classList.add('open');
+  try { localStorage.setItem('taskspark_overdue_alert_shown', t); } catch {}
 }
 
 function acknowledgeOverdueAlert() {
@@ -4888,7 +5107,7 @@ function renderHabitCard(habit) {
     else if (isToday)  { cls += ' today-empty'; title = '○'; }
     else               { cls += ' missed'; title = '✕'; }
 
-    const onclick = (!isNA && !isFuture) ? `onclick="toggleHabitDay('${habit.id}','${ds}')"` : '';
+    const onclick = (!isNA && !isFuture) ? `onclick="toggleHabitDay('${escJs(habit.id)}','${escJs(ds)}')"` : '';
     const label = habitsViewDays <= 7 ? `<div class="habit-day-label">${DAY_NAMES[dow].slice(0,1)}</div>` : '';
 
     return `<div>
@@ -4919,8 +5138,8 @@ function renderHabitCard(habit) {
             </div>
           </div>
           <div class="habit-actions">
-            <button class="action-btn" onclick="openHabitModal('${habit.id}')" title="Edit">✎</button>
-            <button class="action-btn delete" onclick="deleteHabit('${habit.id}')" title="Delete">✕</button>
+            <button class="action-btn" onclick="openHabitModal('${escJs(habit.id)}')" title="Edit">✎</button>
+            <button class="action-btn delete" onclick="deleteHabit('${escJs(habit.id)}')" title="Delete">✕</button>
           </div>
         </div>
       </div>
@@ -5068,7 +5287,11 @@ function openHabitModal(id = null) {
   setTimeout(() => document.getElementById('habit-name').focus(), 50);
 }
 
+let _savingHabit = false;
 function saveHabit() {
+  if (_savingHabit) return;
+  _savingHabit = true;
+  setTimeout(() => { _savingHabit = false; }, 800);
   const name = document.getElementById('habit-name').value.trim();
   if (!name) { showToast('Please enter a habit name'); return; }
   const icon = document.getElementById('habit-icon').value.trim() || '🔄';
@@ -5103,12 +5326,13 @@ function updateHabitsSidebar() {
 }
 
 async function saveHabits() {
-  api.saveConfig({ habits });
+  // Only persist to config when offline — online mode uses per-workspace Sheets as source of truth
+  if (offlineMode) api.saveConfig({ habits });
   if (!offlineMode && accessToken && spreadsheetId) {
     try {
       await ensureToken();
       await api.habitsSave({ accessToken, spreadsheetId, habits });
-    } catch (e) { console.error('Habits save error:', e); }
+    } catch (e) { console.error('Habits save error:', e); setSyncStatus('error', 'Habits sync failed'); }
   }
 }
 
@@ -5198,7 +5422,7 @@ function renderIdeaTags() {
   const area = document.getElementById('idea-tag-area');
   if (!area) return;
   const pills = ideaTags.map(t =>
-    `<span class="tag-pill" style="background:${getTagColor(t)}">${esc(t)}<button class="tag-pill-x" onclick="removeIdeaTag('${esc(t)}')">&times;</button></span>`
+    `<span class="tag-pill" style="background:${getTagColor(t)}">${esc(t)}<button class="tag-pill-x" onclick="removeIdeaTag('${escJs(t)}')">&times;</button></span>`
   ).join('');
   area.innerHTML = pills + `<input class="tag-text-input" id="idea-tag-input" placeholder="${ideaTags.length ? '' : 'Add tag…'}" onkeydown="handleIdeaTagKey(event)">`;
 }
@@ -5217,7 +5441,11 @@ function removeIdeaTag(tag) {
   renderIdeaTags();
 }
 
+let _savingIdea = false;
 function saveIdea() {
+  if (_savingIdea) return;
+  _savingIdea = true;
+  setTimeout(() => { _savingIdea = false; }, 800);
   const title = document.getElementById('idea-title').value.trim();
   if (!title) { showToast('Please enter a title'); return; }
   if (editingIdeaId) {
@@ -5264,10 +5492,10 @@ async function saveIdeas() {
     try {
       await ensureToken();
       await api.ideasSave({ accessToken, spreadsheetId, ideas });
-    } catch (e) { console.error('Ideas save error:', e); }
+    } catch (e) { console.error('Ideas save error:', e); setSyncStatus('error', 'Ideas sync failed'); }
   }
-  // Also keep a local copy in config
-  api.saveConfig({ ideas });
+  // Only persist to config when offline — online mode uses Sheets per-workspace
+  if (offlineMode) api.saveConfig({ ideas });
 }
 
 async function loadIdeas() {
@@ -5360,8 +5588,8 @@ function renderWins() {
           ${dateStr ? `<span class="badge wins-date-badge">📅 ${dateStr}</span>` : ''}
         </div>
         <div class="win-card-actions">
-          <button class="action-btn" onclick="openWinModal('${win.id}')" title="Edit">✎</button>
-          <button class="action-btn delete" onclick="deleteWin('${win.id}')" title="Delete">✕</button>
+          <button class="action-btn" onclick="openWinModal('${escJs(win.id)}')" title="Edit">✎</button>
+          <button class="action-btn delete" onclick="deleteWin('${escJs(win.id)}')" title="Delete">✕</button>
         </div>
       </div>`;
   }).join('');
@@ -5422,7 +5650,11 @@ function selectWinMood(btn) {
   btn.classList.add('selected');
 }
 
+let _savingWin = false;
 function saveWin() {
+  if (_savingWin) return;
+  _savingWin = true;
+  setTimeout(() => { _savingWin = false; }, 800);
   const quote = document.getElementById('win-quote').value.trim();
   if (!quote) { showToast('Please enter the win or feedback'); return; }
   const source   = document.getElementById('win-source').value.trim();
@@ -5472,12 +5704,12 @@ function addWinFromTask(taskTitle) {
 }
 
 async function saveWins() {
-  api.saveConfig({ wins });
+  if (offlineMode) api.saveConfig({ wins });
   if (!offlineMode && accessToken && spreadsheetId) {
     try {
       await ensureToken();
       await api.winsSave({ accessToken, spreadsheetId, wins });
-    } catch (e) { console.error('Wins save error:', e); }
+    } catch (e) { console.error('Wins save error:', e); setSyncStatus('error', 'Wins sync failed'); }
   }
 }
 
@@ -5674,7 +5906,11 @@ function openListModal(id = null) {
   setTimeout(() => input.focus(), 50);
 }
 
+let _savingList = false;
 function saveList() {
+  if (_savingList) return;
+  _savingList = true;
+  setTimeout(() => { _savingList = false; }, 800);
   const name = document.getElementById('list-name-input').value.trim();
   if (!name) { showToast('Please enter a name'); return; }
   if (editingListId) {
@@ -5840,12 +6076,12 @@ function saveEditListItem(listId, itemId, newText) {
 }
 
 async function saveLists() {
-  api.saveConfig({ lists });
+  if (offlineMode) api.saveConfig({ lists });
   if (!offlineMode && accessToken && spreadsheetId) {
     try {
       await ensureToken();
       await api.listsSave({ accessToken, spreadsheetId, lists });
-    } catch (e) { console.error('Lists save error:', e); }
+    } catch (e) { console.error('Lists save error:', e); setSyncStatus('error', 'Lists sync failed'); }
   }
 }
 
@@ -6085,7 +6321,7 @@ function parseTemplateCSV(csv, anchorDate, extraTag) {
       ? subtaskRaw.split('|').map(s => s.trim()).filter(Boolean).map((s, si) => ({
           id: Date.now() + i * 1000 + si,
           title: s,
-          completed: false
+          done: false
         }))
       : [];
 
@@ -6203,8 +6439,6 @@ function openMoodModal() {
   document.getElementById('mood-modal-overlay').classList.add('open');
 }
 
-function closeMoodBanner() {}
-
 function selectMood(mood) {
   checkOnboardingItem('mood');
   highlightMoodBtn(mood);
@@ -6220,7 +6454,7 @@ function updateMoodSidebarBtn() {
   if (!btn) return;
   const mood = getTodayMood();
   if (mood) {
-    const icons = { sad: '😔', okay: '😐', good: '😊' };
+    const icons = { sad: '😔', neutral: '😐', happy: '😊' };
     btn.textContent = `${icons[mood] || '♥'} \u00a0You're feeling ${mood === 'sad' ? 'not great' : mood} today`;
   } else {
     btn.innerHTML = '\u2665 \u00a0How are you feeling?';
@@ -6396,17 +6630,30 @@ function showEndOfDayModal() {
 
 let cachedRelease = null;
 
+// Cache the GitHub release for 1 hour in localStorage to avoid hitting the
+// 60-req/h anonymous API limit when both checkWhatsNew and loadChangelogContent
+// run in the same session.
+const _RELEASE_CACHE_KEY = 'taskspark_release_cache';
+const _RELEASE_CACHE_TTL = 60 * 60 * 1000;
+async function _fetchLatestRelease() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(_RELEASE_CACHE_KEY) || 'null');
+    if (cached && Date.now() - cached.t < _RELEASE_CACHE_TTL) return cached.r;
+  } catch {}
+  const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
+  const release = await res.json();
+  try { localStorage.setItem(_RELEASE_CACHE_KEY, JSON.stringify({ t: Date.now(), r: release })); } catch {}
+  return release;
+}
+
 async function checkWhatsNew(currentVersion) {
   try {
     const cfg = await api.loadConfig();
     const lastSeen = cfg && cfg.lastSeenVersion;
-    if (lastSeen === currentVersion) return; // already seen this version — don't show modal
-    // Fetch changelog from GitHub
-    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
-    const release = await res.json();
+    if (lastSeen === currentVersion) return;
+    const release = await _fetchLatestRelease();
     if (!release || !release.tag_name) return;
     cachedRelease = release;
-    // Show modal after a short delay so app finishes loading first
     setTimeout(() => showWhatsNew(currentVersion, release), 1500);
   } catch (e) {
     console.warn('Could not fetch changelog:', e);
@@ -6448,10 +6695,9 @@ async function loadChangelogContent() {
       return;
     }
     el.textContent = 'Loading…';
-    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
-    const release = await res.json();
+    const release = await _fetchLatestRelease();
     cachedRelease = release;
-    el.textContent = release.body || 'No changelog available.';
+    el.textContent = (release && release.body) || 'No changelog available.';
   } catch (e) {
     el.textContent = 'Could not load changelog.';
   }
@@ -6708,15 +6954,28 @@ function endTutorial() {
 let _confirmCallback = null;
 let _cancelCallback = null;
 
+// Build the confirm-modal body safely: HTML-escape everything, then narrowly
+// re-allow <strong>, </strong>, <em>, </em>, <br>. The previous version
+// re-decoded any "&lt;tag&gt;" sequence, which meant attacker-influenced text
+// could smuggle attributes onto the allowed tags. This regex matches only the
+// exact tag forms with no attributes, so even hostile input can't escape.
 function sanitizeConfirmBody(str) {
   const el = document.createElement('div');
-  el.textContent = str;
-  return el.innerHTML.replace(/&lt;(\/?(strong|em|br))\s*&gt;/gi, '<$1>');
+  el.textContent = String(str == null ? '' : str);
+  return el.innerHTML
+    .replace(/&lt;strong&gt;/g,  '<strong>')
+    .replace(/&lt;\/strong&gt;/g,'</strong>')
+    .replace(/&lt;em&gt;/g,      '<em>')
+    .replace(/&lt;\/em&gt;/g,    '</em>')
+    .replace(/&lt;br\s*\/?&gt;/g,'<br>');
 }
 
+let _confirmKeyHandler = null;
+let _confirmPrevFocus = null;
 function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false, cancelCallback = null) {
   _confirmCallback = callback;
   _cancelCallback = cancelCallback;
+  _confirmPrevFocus = document.activeElement;
   document.getElementById('confirm-modal-title').textContent = title;
   document.getElementById('confirm-modal-body').innerHTML = sanitizeConfirmBody(bodyHtml);
   const okBtn = document.getElementById('confirm-modal-ok');
@@ -6724,6 +6983,25 @@ function showConfirmModal(title, bodyHtml, okLabel, callback, danger = false, ca
   okBtn.style.background = danger ? 'var(--red)' : '';
   okBtn.style.borderColor = danger ? 'var(--red)' : '';
   document.getElementById('confirm-modal-overlay').classList.add('open');
+  // Autofocus the primary action; press Enter to confirm, Escape to cancel
+  setTimeout(() => okBtn.focus(), 0);
+  if (_confirmKeyHandler) document.removeEventListener('keydown', _confirmKeyHandler, true);
+  _confirmKeyHandler = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); confirmModalOk(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeConfirmModal(); }
+  };
+  document.addEventListener('keydown', _confirmKeyHandler, true);
+}
+
+function _detachConfirmKeyHandler() {
+  if (_confirmKeyHandler) {
+    document.removeEventListener('keydown', _confirmKeyHandler, true);
+    _confirmKeyHandler = null;
+  }
+  if (_confirmPrevFocus && typeof _confirmPrevFocus.focus === 'function') {
+    try { _confirmPrevFocus.focus(); } catch {}
+  }
+  _confirmPrevFocus = null;
 }
 
 function closeConfirmModal() {
@@ -6731,6 +7009,7 @@ function closeConfirmModal() {
   _confirmCallback = null;
   _cancelCallback = null;
   document.getElementById('confirm-modal-overlay').classList.remove('open');
+  _detachConfirmKeyHandler();
   if (cb) cb();
 }
 
@@ -6739,6 +7018,7 @@ function confirmModalOk() {
   _confirmCallback = null;
   _cancelCallback = null;
   document.getElementById('confirm-modal-overlay').classList.remove('open');
+  _detachConfirmKeyHandler();
   if (cb) cb();
 }
 
@@ -6780,17 +7060,21 @@ async function prefetchAllWorkspaces() {
   await ensureToken();
   await Promise.all(others.map(async ws => {
     try {
-      const [wsTasks, wsHabits, wsIdeas, wsWins] = await Promise.all([
+      const [wsTasks, wsHabits, wsIdeas, wsWins, wsLists, wsEvents] = await Promise.all([
         api.sheetsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.habitsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.ideasLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.winsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+        api.listsLoad ? api.listsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []) : Promise.resolve([]),
+        api.eventsLoad ? api.eventsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []) : Promise.resolve([]),
       ]);
       _wsCacheSet(ws.id, {
         tasks: wsTasks || [],
         habits: wsHabits || [],
         ideas: wsIdeas || [],
         wins: wsWins || [],
+        lists: wsLists || [],
+        calEvents: wsEvents || [],
       });
     } catch (e) {
       console.warn(`[prefetch] Failed for workspace ${ws.name}:`, e.message);
@@ -6801,16 +7085,31 @@ async function prefetchAllWorkspaces() {
 
 function setWorkspaceSwitching(name) {
   const btn = document.getElementById('workspace-dropdown-btn');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:ws-spin .6s linear infinite;flex-shrink:0;margin-right:8px"></span><span style="flex:1;color:var(--text2)">Switching to ${esc(name)}…</span>`;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:ws-spin .6s linear infinite;flex-shrink:0;margin-right:8px"></span><span style="flex:1;color:var(--text2)">Switching to ${esc(name)}…</span>`;
+  }
+  // Show a centered placeholder in the main area so the user doesn't see
+  // a flash of "All clear!" while data is being fetched
+  const main = document.getElementById('main');
+  if (main && !document.getElementById('ws-switch-overlay')) {
+    const overlay = document.createElement('div');
+    overlay.id = 'ws-switch-overlay';
+    overlay.style.cssText = 'position:absolute;inset:0;background:var(--bg);z-index:50;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px';
+    overlay.innerHTML = `<span style="display:inline-block;width:34px;height:34px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:ws-spin .6s linear infinite"></span><div style="color:var(--text2);font-size:13px">Loading <strong>${esc(name)}</strong>…</div>`;
+    main.style.position = main.style.position || 'relative';
+    main.appendChild(overlay);
+  }
 }
 
 function clearWorkspaceSwitching() {
   const btn = document.getElementById('workspace-dropdown-btn');
-  if (!btn) return;
-  btn.disabled = false;
-  renderWorkspaceDropdown();
+  if (btn) {
+    btn.disabled = false;
+    renderWorkspaceDropdown();
+  }
+  const overlay = document.getElementById('ws-switch-overlay');
+  if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
 }
 
 function getActiveWorkspace() {
@@ -6878,7 +7177,7 @@ function renderWorkspaceDropdown() {
     const c = WORKSPACE_COLOURS.find(x => x.id === w.colour) || WORKSPACE_COLOURS[0];
     const isActive = w.id === activeWorkspaceId;
     const sharedIcon = w.shared ? `<span style="font-size:11px;color:var(--text3);margin-right:4px" title="Shared workspace">⇄</span>` : '';
-    return `<div class="ws-menu-item${isActive ? ' ws-active' : ''}" onclick="switchWorkspace('${w.id}')">
+    return `<div class="ws-menu-item${isActive ? ' ws-active' : ''}" onclick="switchWorkspace('${escJs(w.id)}')">
       <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.hex};margin-right:8px;flex-shrink:0"></span>
       <span style="flex:1">${esc(w.name)}</span>
       ${sharedIcon}
@@ -6923,10 +7222,13 @@ async function switchWorkspace(id) {
       habits: [...habits],
       ideas: [...ideas],
       wins: [...wins],
+      lists: [...lists],
+      calEvents: [...calEvents],
     });
 
     activeWorkspaceId = id;
     spreadsheetId = target.spreadsheetId;
+    currentOpenListId = null;
 
     // Apply per-workspace settings if they exist
     if (target.settings) {
@@ -6940,10 +7242,12 @@ async function switchWorkspace(id) {
 
     // If we have pre-fetched data, show instantly then sync in background
     if (_wsCache[id]) {
-      tasks   = _wsCache[id].tasks   || [];
-      habits  = _wsCache[id].habits  || [];
-      ideas   = _wsCache[id].ideas   || [];
-      wins    = _wsCache[id].wins    || [];
+      tasks    = _wsCache[id].tasks    || [];
+      habits   = _wsCache[id].habits   || [];
+      ideas    = _wsCache[id].ideas    || [];
+      wins     = _wsCache[id].wins     || [];
+      lists    = _wsCache[id].lists    || [];
+      calEvents= _wsCache[id].calEvents|| [];
       renderAll();
       updateHabitsSidebar();
       const cntIdeas = document.getElementById('cnt-ideas');
@@ -6956,18 +7260,17 @@ async function switchWorkspace(id) {
       setTimeout(async () => {
         await api.saveCache([]);
         await connectToSheets();
-        await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists()]);
-        _wsCacheSet(id, { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] });
+        await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists(), loadCalEvents()]);
+        _wsCacheSet(id, { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists], calEvents: [...calEvents] });
       }, 500);
     } else {
       // No cache yet — load fresh
       tasks = []; habits = []; ideas = []; wins = []; calEvents = []; lists = [];
-      currentOpenListId = null;
       await api.saveCache([]);
       renderAll();
       await connectToSheets();
-      await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists()]);
-      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+      await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists(), loadCalEvents()]);
+      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists], calEvents: [...calEvents] };
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
     }
@@ -7278,8 +7581,8 @@ function renderManageWorkspacesList() {
         ${shareNudge}
       </div>
       <div class="ws-manage-actions">
-        <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openRenameWorkspace('${w.id}')">Rename</button>
-        ${workspaces.length > 1 ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="promptDeleteWorkspace('${w.id}')">${w.shared ? 'Remove' : 'Delete'}</button>` : ''}
+        <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openRenameWorkspace('${escJs(w.id)}')">Rename</button>
+        ${workspaces.length > 1 ? `<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:var(--red)" onclick="promptDeleteWorkspace('${escJs(w.id)}')">${w.shared ? 'Remove' : 'Delete'}</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -7301,7 +7604,10 @@ function openRenameWorkspace(id) {
     if (e.key === 'Enter') confirmRename(id, inp.value);
     if (e.key === 'Escape') { renderManageWorkspacesList(); }
   };
-  inp.onblur = () => { setTimeout(() => confirmRename(id, inp.value), 150); };
+  // Save synchronously on blur. setTimeout caused a race with the Delete button
+  // on the same row — clicks within the delay would delete then attempt rename
+  // on a workspace that no longer exists.
+  inp.onblur = () => confirmRename(id, inp.value);
 }
 
 function confirmRename(id, value) {
@@ -7397,6 +7703,10 @@ const saveTasksDebounced  = debounce(() => saveTasks(), 1500);
 const saveHabitsDebounced = debounce(() => saveHabits(), 2000);
 const saveIdeasDebounced  = debounce(() => saveIdeas(), 2000);
 const saveWinsDebounced   = debounce(() => saveWins(), 2000);
+const saveListsDebounced  = debounce(() => saveLists(), 2000);
+
+// Debounced search — avoids re-filtering+re-rendering on every keystroke
+const searchInputDebounced = debounce(() => renderTasks(), 150);
 
 // Debounced render — collapses rapid successive renderAll calls
 let renderPending = false;
@@ -7420,8 +7730,13 @@ async function startOfflineMode() {
   await api.saveConfig({ offlineMode: true });
   document.getElementById('offline-confirm-screen').classList.remove('active');
   showApp();
-  loadOfflineTasks();
-  setTimeout(startOnboarding, 800);
+  await loadOfflineTasks();
+  // Don't re-show onboarding/tutorial if the user already completed it
+  let cfg = null;
+  try { cfg = await api.loadConfig(); } catch {}
+  if (!cfg || (!cfg.onboardingComplete && !cfg.tutorialComplete)) {
+    setTimeout(startOnboarding, 800);
+  }
 }
 
 async function loadOfflineTasks() {
@@ -7515,4 +7830,8 @@ api.onTimerStopped((elapsed) => {
   timerDidMinimize = false;
 });
 
-init();
+init().catch(e => {
+  console.error('Init failed:', e);
+  hideLoadingScreen();
+  showAuth();
+});
