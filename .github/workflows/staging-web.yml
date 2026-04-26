@@ -3,6 +3,8 @@ name: Deploy Web Companion to Staging
 # Auto-deploys web/ to staging.taskspark.tech on every push to the V4
 # rebuild branch. Mirrors deploy-web.yml (production, manual trigger) but
 # uses STAGING_FTP_* secrets and includes assets/ for first-time uploads.
+# STAGING_FTP_REMOTE_DIR should be "./" when the FTP user is chrooted to
+# the staging document root.
 
 on:
   push:
