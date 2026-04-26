@@ -4215,17 +4215,6 @@ async function openSettings() {
   }
   // Reset to first tab (V4 tab structure)
   switchSettingsTab('task-org', document.querySelector('.settings-nav-item'));
-  // Only switch to timer tab if break is enabled, otherwise go to streak
-  const firstFeatureBtn = s.breakEnabled
-    ? document.querySelector('.feature-sub-btn')
-    : document.querySelectorAll('.feature-sub-btn')[1];
-  if (firstFeatureBtn) {
-    const match = firstFeatureBtn.getAttribute('onclick').match(/'([^']+)'/);
-    if (match) switchFeatureTab(match[1], firstFeatureBtn);
-  }
-  const soundPath = document.getElementById('sound-file-path');
-  soundPath.textContent = s.soundFile ? s.soundFile.split(/[\\/]/).pop() : 'Default (chime)';
-  soundPath.style.color = s.soundFile ? 'var(--text)' : 'var(--text3)';
   document.getElementById('settings-modal-overlay').classList.add('open');
 }
 
@@ -4248,8 +4237,6 @@ function clearSoundFile() {
 function previewSound() {
   const wasEnabled = settings.soundEnabled;
   settings.soundEnabled = true;
-  // Temporarily use whatever file is currently selected in the UI
-  const soundPath = document.getElementById('sound-file-path').textContent;
   playBreakSound();
   settings.soundEnabled = wasEnabled;
 }
@@ -5786,7 +5773,7 @@ function showWhatsNew(version, release) {
 
 function closeWhatsNew() {
   document.getElementById('whatsnew-modal-overlay').classList.remove('open');
-  api.getVersion().then(v => api.saveConfig({ lastSeenVersion: v }));
+  api.saveConfig({ lastSeenVersion: api.getVersion() });
 }
 
 function openChangelog() {
