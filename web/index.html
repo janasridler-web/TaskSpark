@@ -1480,11 +1480,11 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 </style>
 </head>
 <body>
-<!-- Update banner -->
-<div id="update-banner" style="display:none;position:fixed;top:36px;left:0;right:0;background:var(--accent);color:#fff;font-size:13px;font-weight:600;padding:8px 20px;z-index:999;align-items:center;justify-content:space-between;gap:12px">
-  <span>✨ TaskSpark v<span id="update-version"></span> is ready to install</span>
+<!-- Update banner — shown when a new service worker has taken over -->
+<div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;background:var(--accent);color:#fff;font-size:13px;font-weight:600;padding:8px 20px;z-index:999;align-items:center;justify-content:space-between;gap:12px">
+  <span>✨ TaskSpark has updated — refresh to get the latest.</span>
   <div style="display:flex;gap:8px">
-    <button onclick="api.installUpdate()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Restart & Update</button>
+    <button onclick="location.reload()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Refresh</button>
     <button onclick="document.getElementById('update-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px">Later</button>
   </div>
 </div>
@@ -2849,6 +2849,17 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <script>
 // ── Service Worker registration ──────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
+  // Capture initial controller so we can tell first-install from upgrade.
+  const hadControllerOnLoad = !!navigator.serviceWorker.controller;
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // Only show the banner on a real upgrade, not on first install.
+    if (hadControllerOnLoad) {
+      const banner = document.getElementById('update-banner');
+      if (banner) banner.style.display = 'flex';
+    }
+  });
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
