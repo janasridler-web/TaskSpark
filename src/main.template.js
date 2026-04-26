@@ -248,13 +248,28 @@ ipcMain.on('window-maximize', () => {
 ipcMain.on('window-close', () => mainWindow.close());
 
 // ── Timer window ──────────────────────────────────────────────────────────────
+// Returns the display TaskSpark's main window is currently on, falling back
+// to the primary display if the main window isn't ready. Use this whenever
+// we open a child window so it appears on the same monitor as the app —
+// not always on the primary monitor.
+function _getActiveDisplay() {
+  const { screen } = require('electron');
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      const b = mainWindow.getBounds();
+      return screen.getDisplayMatching(b) || screen.getPrimaryDisplay();
+    } catch {}
+  }
+  return screen.getPrimaryDisplay();
+}
+
 ipcMain.handle('timer-show', async (_, { taskName, baseLogged }) => {
   if (timerWindow) { try { timerWindow.close(); } catch {} timerWindow = null; }
-  const { screen } = require('electron');
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const display = _getActiveDisplay();
+  const { x: dx, y: dy, width, height } = display.workArea;
   const w = 340, h = 70;
   timerWindow = new BrowserWindow({
-    width: w, height: h, x: width-w-20, y: height-h-20,
+    width: w, height: h, x: dx + width - w - 20, y: dy + height - h - 20,
     frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false,
     webPreferences: { preload: path.join(__dirname, 'timer-preload.js'), contextIsolation: true, nodeIntegration: false },
   });
@@ -274,10 +289,10 @@ ipcMain.handle('timer-hide', async () => {
 
 ipcMain.handle('focus-show', async (_, { taskId, taskName, taskDesc, subtasks, baseLogged }) => {
   if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
-  const { screen } = require('electron');
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const display = _getActiveDisplay();
+  const { x, y, width, height } = display.workArea;
   focusWindow = new BrowserWindow({
-    width, height, x: 0, y: 0,
+    width, height, x, y,
     frame: false, resizable: false, skipTaskbar: false,
     webPreferences: { preload: path.join(__dirname, 'focus-preload.js'), contextIsolation: true, nodeIntegration: false },
   });
@@ -329,11 +344,11 @@ ipcMain.on('focus-subtask-toggle', (_, data) => {
 // ── Break prompt window ───────────────────────────────────────────────────────
 ipcMain.handle('break-prompt-show', async (_, { intervalMins } = {}) => {
   if (breakPromptWindow) { try { breakPromptWindow.close(); } catch {} breakPromptWindow = null; }
-  const { screen } = require('electron');
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const display = _getActiveDisplay();
+  const { x: dx, y: dy, width, height } = display.workArea;
   const w = 320, h = 120;
   breakPromptWindow = new BrowserWindow({
-    width: w, height: h, x: width-w-20, y: height-h-100,
+    width: w, height: h, x: dx + width - w - 20, y: dy + height - h - 100,
     frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false,
     webPreferences: { preload: path.join(__dirname, 'break-prompt-preload.js'), contextIsolation: true, nodeIntegration: false },
   });
