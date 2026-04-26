@@ -5942,159 +5942,6 @@ function updateChangelogSidebarBtn() {
   }
 }
 
-// ── Tutorial ─────────────────────────────────────────────────────────────────
-const TUTORIAL_STEPS = [
-  {
-    target: null,
-    title: 'Welcome to TaskSpark! 👋',
-    desc: 'TaskSpark is built for neuro-diverse minds — reducing decision fatigue, fighting time blindness, and making it easier to start, focus, and actually finish. Let\'s take a quick tour.'
-  },
-  {
-    target: '#task-list',
-    title: 'Your Task List',
-    desc: 'This is where all your tasks live. Each card shows the priority, due date, tags, status and energy level at a glance. Click the checkbox to complete a task.'
-  },
-  {
-    target: '.btn-new-task',
-    title: 'Adding Tasks',
-    desc: 'Click "+ New Task" to add something new. You can set a title, description, priority, due date, tags, status and energy level. You can also press Ctrl+Space from anywhere to quickly capture a task.'
-  },
-  {
-    target: '.btn-what-now',
-    title: 'What Now?',
-    desc: 'Not sure where to start? Hit "What Now?" and TaskSpark will pick the most important task for you based on priority, due date, and how you\'re feeling today.'
-  },
-  {
-    target: '.streak-widget',
-    title: 'Your Streak',
-    desc: 'Complete at least one task every day to build your streak. TaskSpark tracks your current streak and your best ever. Weekends can be included or excluded in Settings.'
-  },
-  {
-    target: '#sidebar-scroll',
-    title: 'Sidebar Filters',
-    desc: 'Use the sidebar to filter tasks by view, priority, status or tag. "Due Today" and "Overdue" help you stay on top of what needs attention right now.'
-  },
-  {
-    target: '.mood-sidebar-btn, #mood-sidebar-btn',
-    title: 'Mood Check-in',
-    desc: 'Tell TaskSpark how you\'re feeling today. Your mood influences what "What Now?" recommends — on low energy days it suggests lighter tasks, on good days it pushes the big ones.'
-  },
-  {
-    target: '.sidebar-bottom',
-    title: 'Settings & Refresh',
-    desc: 'Open Settings to customise every feature — turn things on or off, adjust timers, manage your account and export your data.'
-  },
-  {
-    target: null,
-    title: 'How would you like to get started?',
-    desc: 'Choose a starting configuration — you can always change anything in Settings later.',
-    preset: true
-  }
-];
-
-let tutorialStep = 0;
-
-function startTutorial() {
-  tutorialStep = 0;
-  document.getElementById('tutorial-overlay').classList.add('active');
-  showTutorialStep(0);
-}
-
-function showTutorialStep(index) {
-  const steps = TUTORIAL_STEPS;
-  if (index >= steps.length) { endTutorial(); return; }
-  const step = steps[index];
-
-  document.getElementById('tut-step-label').textContent = `Step ${index + 1} of ${steps.length}`;
-  document.getElementById('tut-title').textContent = step.title;
-  document.getElementById('tut-desc').textContent   = step.desc;
-  document.getElementById('tut-next-btn').textContent = step.last ? 'Get started!' : 'Next';
-  const normalActions = document.getElementById('tut-normal-actions');
-  const presetActions = document.getElementById('tut-preset-actions');
-  if (normalActions) normalActions.style.display = step.preset ? 'none' : 'flex';
-  if (presetActions) presetActions.style.display = step.preset ? 'flex' : 'none';
-
-  // Highlight target element
-  const hl = document.getElementById('tutorial-highlight');
-  if (step.target) {
-    const el = document.querySelector(step.target);
-    if (el) {
-      const r = el.getBoundingClientRect();
-      const pad = 6;
-      hl.style.left   = (r.left - pad) + 'px';
-      hl.style.top    = (r.top - pad) + 'px';
-      hl.style.width  = (r.width + pad * 2) + 'px';
-      hl.style.height = (r.height + pad * 2) + 'px';
-      hl.style.display = 'block';
-    } else {
-      hl.style.display = 'none';
-    }
-  } else {
-    hl.style.display = 'none';
-  }
-}
-
-function tutorialNext() {
-  tutorialStep++;
-  if (tutorialStep >= TUTORIAL_STEPS.length) {
-    endTutorial();
-  } else {
-    showTutorialStep(tutorialStep);
-  }
-}
-
-function skipTutorial() {
-  endTutorial();
-}
-
-function applyPreset(preset) {
-  if (preset === 'basic') {
-    settings.tagsEnabled = false; settings.streakEnabled = true;
-    settings.estimatesEnabled = false; settings.timerEnabled = false; settings.quickAddEnabled = false;
-    settings.whatNowEnabled = true; settings.completionDialog = false;
-    settings.moodEnabled = true; settings.energyEnabled = false;
-    settings.statusEnabled = false; settings.soundEnabled = false;
-    settings.breakEnabled = false; settings.dueTimeEnabled = false;
-    settings.budgetEnabled = false; settings.attachmentsEnabled = false;
-    settings.calendarEnabled = false; settings.subtasksEnabled = false;
-    settings.recurrenceEnabled = false; settings.kanbanEnabled = false;
-    settings.ideasEnabled = false; settings.habitsEnabled = false;
-    settings.winsEnabled = false; settings.sodEnabled = false;
-    settings.eodEnabled = false; settings.dueEnabled = false;
-    settings.workspacesEnabled = false;
-  } else if (preset === 'full') {
-    settings.tagsEnabled = true; settings.streakEnabled = true;
-    settings.estimatesEnabled = true; settings.timerEnabled = true; settings.quickAddEnabled = true;
-    settings.whatNowEnabled = true; settings.completionDialog = true;
-    settings.moodEnabled = true; settings.energyEnabled = true;
-    settings.statusEnabled = true; settings.soundEnabled = true;
-    settings.breakEnabled = true; settings.dueTimeEnabled = true;
-    settings.budgetEnabled = true; settings.attachmentsEnabled = true;
-    settings.calendarEnabled = true; settings.subtasksEnabled = true;
-    settings.recurrenceEnabled = true; settings.kanbanEnabled = true;
-    settings.ideasEnabled = true; settings.habitsEnabled = true;
-    settings.winsEnabled = true; settings.sodEnabled = true;
-    settings.eodEnabled = true; settings.dueEnabled = true;
-  }
-  api.saveConfig({ settings });
-  applySettings();
-  renderAll();
-  endTutorial();
-  if (preset === 'basic') showToast('Basic mode set — start simple, add more later!');
-  if (preset === 'full')  showToast('Full mode set — all features on!');
-}
-
-function applyCustomPreset() {
-  endTutorial();
-  setTimeout(() => openSettings(), 200);
-}
-
-function endTutorial() {
-  document.getElementById('tutorial-overlay').classList.remove('active');
-  document.getElementById('tutorial-highlight').style.display = 'none';
-  api.saveConfig({ tutorialComplete: true });
-  if (workspaceSetupPending) showWorkspaceSetupModal();
-}
 
 // ── Performance ─────────────────────────────────────────────────────────────
 
@@ -6360,9 +6207,9 @@ function welcomeGetStarted() {
   setTimeout(() => {
     showConfirmModal(
       'Quick tour?',
-      'Would you like a quick tour of TaskSpark before setting up your workspace?',
-      'Take tour',
-      () => startTutorial(),
+      'Would you like to set up TaskSpark before creating your workspace?',
+      'Set up',
+      () => startOnboarding(),
       false,
       () => { if (workspaceSetupPending) showWorkspaceSetupModal(); }
     );
@@ -6776,7 +6623,7 @@ async function startOfflineMode() {
   document.getElementById('offline-confirm-screen').classList.remove('active');
   showApp();
   loadOfflineTasks();
-  setTimeout(startTutorial, 1000);
+  setTimeout(startOnboarding, 1000);
 }
 
 async function loadOfflineTasks() {

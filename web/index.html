@@ -433,29 +433,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 #whatsnew-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .whatsnew-loading{color:var(--text3);font-size:13px;text-align:center;padding:20px 0}
 
-/* -- Tutorial overlay -- */
-#tutorial-overlay{position:fixed;inset:0;z-index:9000;pointer-events:none}
-#tutorial-overlay.active{pointer-events:all}
-#tutorial-dim{position:fixed;inset:0;background:rgba(0,0,0,0);transition:background .3s;z-index:9001}
-#tutorial-overlay.active #tutorial-dim{background:rgba(0,0,0,0.75)}
-#tutorial-highlight{position:fixed;z-index:9002;border-radius:8px;
-  box-shadow:0 0 0 4px var(--accent),0 0 0 9999px rgba(0,0,0,0.75);
-  transition:all .35s cubic-bezier(.4,0,.2,1);pointer-events:none;
-  display:none}
-#tutorial-overlay.active #tutorial-highlight{display:block}
-#tutorial-tooltip{position:fixed;z-index:9003;background:var(--surface);
-  border:1px solid var(--border);border-radius:var(--radius-lg);
-  padding:24px 28px;max-width:360px;width:90vw;
-  box-shadow:var(--shadow-lg);
-  top:50%;left:50%;transform:translate(-50%,-50%);
-  display:none;animation:fadeIn .25s ease}
-#tutorial-overlay.active #tutorial-tooltip{display:block}
-.tutorial-step-label{font-size:11px;font-weight:700;color:var(--accent);
-  letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
-.tutorial-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px}
-.tutorial-desc{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:20px}
-.tutorial-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.tutorial-progress{font-size:12px;color:var(--text3)}
 
 /* -- Offline mode -- */
 #offline-confirm-screen{position:fixed;inset:0;z-index:1100;background:var(--bg);
@@ -743,29 +720,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 #whatsnew-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 .whatsnew-loading{color:var(--text3);font-size:13px;text-align:center;padding:20px 0}
 
-/* -- Tutorial overlay -- */
-#tutorial-overlay{position:fixed;inset:0;z-index:9000;pointer-events:none}
-#tutorial-overlay.active{pointer-events:all}
-#tutorial-dim{position:fixed;inset:0;background:rgba(0,0,0,0);transition:background .3s;z-index:9001}
-#tutorial-overlay.active #tutorial-dim{background:rgba(0,0,0,0.75)}
-#tutorial-highlight{position:fixed;z-index:9002;border-radius:8px;
-  box-shadow:0 0 0 4px var(--accent),0 0 0 9999px rgba(0,0,0,0.75);
-  transition:all .35s cubic-bezier(.4,0,.2,1);pointer-events:none;
-  display:none}
-#tutorial-overlay.active #tutorial-highlight{display:block}
-#tutorial-tooltip{position:fixed;z-index:9003;background:var(--surface);
-  border:1px solid var(--border);border-radius:var(--radius-lg);
-  padding:24px 28px;max-width:360px;width:90vw;
-  box-shadow:var(--shadow-lg);
-  top:50%;left:50%;transform:translate(-50%,-50%);
-  display:none;animation:fadeIn .25s ease}
-#tutorial-overlay.active #tutorial-tooltip{display:block}
-.tutorial-step-label{font-size:11px;font-weight:700;color:var(--accent);
-  letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
-.tutorial-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px}
-.tutorial-desc{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:20px}
-.tutorial-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.tutorial-progress{font-size:12px;color:var(--text3)}
 
 /* -- Offline mode -- */
 #offline-confirm-screen{position:fixed;inset:0;z-index:1100;background:var(--bg);
@@ -2800,34 +2754,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   </div>
 </div>
 
-<!-- Tutorial overlay -->
-<div id="tutorial-overlay">
-  <div id="tutorial-dim" onclick="skipTutorial()"></div>
-  <div id="tutorial-highlight"></div>
-  <div id="tutorial-tooltip">
-    <div class="tutorial-step-label" id="tut-step-label">Step 1 of 8</div>
-    <div class="tutorial-title" id="tut-title"></div>
-    <div class="tutorial-desc" id="tut-desc"></div>
-    <div class="tutorial-actions" id="tut-normal-actions">
-      <button class="btn-secondary" style="font-size:13px;padding:7px 14px" onclick="skipTutorial()">Skip tutorial</button>
-      <button class="btn-primary" style="font-size:13px;padding:7px 18px" id="tut-next-btn" onclick="tutorialNext()">Next</button>
-    </div>
-    <div id="tut-preset-actions" style="display:none;flex-direction:column;gap:10px;margin-top:4px">
-      <button class="btn-secondary" style="text-align:left;padding:12px 16px;width:100%" onclick="applyPreset('basic')">
-        <div style="font-weight:700;color:var(--text);margin-bottom:3px">Basic</div>
-        <div style="font-size:12px;color:var(--text3)">All extra features off. Start simple and add what you need as you go.</div>
-      </button>
-      <button class="btn-secondary" style="text-align:left;padding:12px 16px;width:100%;border-color:var(--accent);background:var(--accent-l)" onclick="applyPreset('full')">
-        <div style="font-weight:700;color:var(--accent);margin-bottom:3px">Full</div>
-        <div style="font-size:12px;color:var(--text3)">Everything turned on. Dive straight in and adjust later.</div>
-      </button>
-      <button class="btn-secondary" style="text-align:left;padding:12px 16px;width:100%" onclick="applyCustomPreset()">
-        <div style="font-weight:700;color:var(--text);margin-bottom:3px">Custom</div>
-        <div style="font-size:12px;color:var(--text3)">Decide what matters to you. Opens Settings so you can choose.</div>
-      </button>
-    </div>
-  </div>
-</div>
 
 <!-- Mobile bottom nav bar -->
 <nav id="mobile-nav">
