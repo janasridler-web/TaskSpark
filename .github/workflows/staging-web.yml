@@ -58,6 +58,11 @@ jobs:
           log-level: verbose
           exclude: |
             **/cgi-bin/**
+            **/.well-known/**
+            **/.ftpquota
+            **/.htpasswds/**
+            **/.htaccess
+            **/error_log
 
       - name: Done
         run: echo "Staging deploy finished — check https://staging.taskspark.tech"
