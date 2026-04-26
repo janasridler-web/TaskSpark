@@ -22,7 +22,7 @@ jobs:
           sed -i "s/YOUR_GOOGLE_CLIENT_SECRET_HERE/${{ secrets.WEB_GOOGLE_CLIENT_SECRET }}/g" web/oauth-config.js
 
       - name: Deploy to cPanel via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
