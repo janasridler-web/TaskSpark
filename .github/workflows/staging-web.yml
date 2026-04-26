@@ -4,7 +4,8 @@ name: Deploy Web Companion to Staging
 # rebuild branch. Mirrors deploy-web.yml (production, manual trigger) but
 # uses STAGING_FTP_* secrets and includes assets/ for first-time uploads.
 # STAGING_FTP_REMOTE_DIR should be "./" when the FTP user is chrooted to
-# the staging document root.
+# the staging document root. Excludes cPanel-managed files and
+# assets/break-chime files that may have stricter ownership.
 
 on:
   push:
