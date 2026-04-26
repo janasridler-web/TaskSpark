@@ -251,7 +251,7 @@ function isDeferred(task) {
 }
 
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── Collapsible sidebar sections ───────────────────────────────────────────
@@ -553,7 +553,7 @@ api.onOauthCode(async ({ code }) => {
       } catch (e) { console.warn('[onOauthCode] workspace load failed:', e.message); }
 
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
 
       // Show workspace setup modal if no workspaces configured yet
       if (workspaces.length === 0) {
@@ -829,6 +829,7 @@ function renderAll() {
   else if (listsMode) renderLists();
   else if (budgetViewMode) renderBudgetView();
   else if (calendarViewMode) renderCalendarView();
+  else if (statsMode) renderStatsView();
   else renderTasks();
   updateCounts();
   updateTagSidebar();
@@ -914,7 +915,7 @@ function taskCardHTML(task) {
   if (task.completed && (task.impact || task.outcome)) {
     const impBadge = task.impact ? `<span class="impact-badge impact-${task.impact}">${task.impact.charAt(0).toUpperCase()+task.impact.slice(1)} Impact</span>` : '';
     const outcomeText = task.outcome ? `<span>${esc(task.outcome)}</span>` : '';
-    const delivLink = task.deliverable ? `<a class="deliverable-link" href="${esc(task.deliverable)}" target="_blank">🔗 ${esc(task.deliverable)}</a>` : '';
+    const delivLink = task.deliverable && !/^javascript:/i.test(task.deliverable.trim()) ? `<a class="deliverable-link" href="${esc(task.deliverable)}" target="_blank">🔗 ${esc(task.deliverable)}</a>` : '';
     completionDetail = `<div class="completion-detail">${impBadge}${outcomeText}${delivLink}</div>`;
   }
 
@@ -944,7 +945,7 @@ function taskCardHTML(task) {
         ${dueBadge}<span class="badge badge-priority-${task.priority}">${task.priority.charAt(0).toUpperCase()+task.priority.slice(1)}</span>
         ${settings.statusEnabled !== false ? (task.status ? `<span class="badge badge-status status-${task.status || 'not-started'}">${(task.status || 'not-started').replace(/-/g,' ')}</span>` : '<span class="badge badge-status status-not-started">not started</span>') : ''}
         ${settings.energyEnabled !== false ? `<span class="badge badge-energy energy-${task.energy || 'medium'}">${task.energy==='high'?'⚡ high':task.energy==='low'?'🌿 low':'◆ medium'}</span>` : ''}
-        ${task.recur && task.recur !== 'none' ? `<span class="badge badge-recur">↺ ${task.recur === 'custom' ? 'every ' + (task.recurInterval||1) + 'd' : task.recur}</span>` : ''}
+        ${task.recurrence && task.recurrence.type && task.recurrence.type !== 'none' ? `<span class="badge badge-recur">↺ ${task.recurrence.type === 'custom' ? 'every ' + (task.recurrence.interval||1) + 'd' : task.recurrence.type === 'days' ? 'weekly' : task.recurrence.type}</span>` : ''}
         ${tagBadges}${timeBadge}${liveTimeBadge}${budgetBadge}${renderAttachmentBadges(task)}
       </div>
       ${completionDetail}
@@ -1749,7 +1750,6 @@ async function connectOutlook() {
     const result = await api.outlookStart();
     if (result.code) {
       const tokens = await api.outlookExchange({ code: result.code, redirectUri: result.redirectUri, codeVerifier: result.codeVerifier });
-      console.log('Outlook token response:', JSON.stringify(tokens).slice(0, 200));
       if (tokens.access_token) {
         outlookAccessToken  = tokens.access_token;
         outlookRefreshToken = tokens.refresh_token;
@@ -1855,7 +1855,7 @@ async function loadOutlookEvents() {
 }
 
 async function initOutlook() {
-  const saved = settings.outlookRefreshToken || (config && config.outlookRefreshToken);
+  const saved = settings.outlookRefreshToken;
   if (saved) {
     outlookRefreshToken = saved;
     const ok = await refreshOutlookToken();
@@ -3973,7 +3973,9 @@ function stopTimer() {
 
 function stopTimerSave() {
   if (!activeTimerId || !timerStart) return;
-  const elapsed = Math.floor(Date.now()/1000 - timerStart);
+  const elapsed = timerPaused
+    ? timerPausedElapsed
+    : Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
   const task    = tasks.find(t => t.id === activeTimerId);
   if (task) {
     task.timeLogged = (task.timeLogged || 0) + elapsed;
@@ -3984,6 +3986,7 @@ function stopTimerSave() {
   timerInterval = null;
   activeTimerId = null;
   timerStart    = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
 }
 
 function cancelTimer() {
@@ -4018,7 +4021,9 @@ function onBreakDue() {
 function takeBreak() {
   // Save and fully stop the timer
   if (activeTimerId && timerStart) {
-    const elapsed = Math.floor(Date.now()/1000 - timerStart);
+    const elapsed = timerPaused
+      ? timerPausedElapsed
+      : Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
     const task = tasks.find(t => t.id === activeTimerId);
     if (task) {
       task.timeLogged = (task.timeLogged||0) + elapsed;
@@ -6951,16 +6956,17 @@ async function switchWorkspace(id) {
       setTimeout(async () => {
         await api.saveCache([]);
         await connectToSheets();
-        await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
+        await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists()]);
         _wsCacheSet(id, { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] });
       }, 500);
     } else {
       // No cache yet — load fresh
-      tasks = []; habits = []; ideas = []; wins = [];
+      tasks = []; habits = []; ideas = []; wins = []; calEvents = []; lists = [];
+      currentOpenListId = null;
       await api.saveCache([]);
       renderAll();
       await connectToSheets();
-      await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
+      await Promise.all([loadHabits(), loadIdeas(), loadWins(), loadLists()]);
       _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);

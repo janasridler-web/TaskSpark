@@ -303,11 +303,16 @@ ipcMain.handle('pick-attachment-file', async () => {
 });
 
 ipcMain.handle('open-attachment', async (_, pathOrUrl) => {
-  if (!pathOrUrl) return;
+  if (!pathOrUrl || typeof pathOrUrl !== 'string') return;
   if (/^https?:\/\//i.test(pathOrUrl)) {
+    // Only allow http/https URLs — block javascript: and other schemes
     shell.openExternal(pathOrUrl);
   } else {
-    shell.openPath(pathOrUrl);
+    // For local files, resolve the path and verify it exists before opening
+    const resolved = path.resolve(pathOrUrl);
+    if (fs.existsSync(resolved)) {
+      shell.openPath(resolved);
+    }
   }
 });
 
@@ -621,7 +626,7 @@ function sheetsRequest(method, path, accessToken, body, _attempt = 0) {
 const HEADERS = ['id','title','desc','priority','due','tags','completed',
   'createdAt','completedAt','timeLogged','timeSessions','impact','outcome',
   'deliverable','estimate','status','energy','subtasks','archived','archivedAt','recurrence','dueTime',
-  'budget','spent','attachments'];
+  'budget','spent','attachments','hideUntilDays','overdueAlert'];
 
 async function sheetsEnsure(accessToken, spreadsheetId) {
   const info = await sheetsRequest('GET', `/v4/spreadsheets/${spreadsheetId}`, accessToken);
@@ -681,7 +686,7 @@ async function sheetsEnsure(accessToken, spreadsheetId) {
         { requests: [{ addSheet: { properties: { title: 'Events' } } }] });
       await sheetsRequest('PUT',
         `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A1')}?valueInputOption=RAW`,
-        accessToken, { range: 'Events!A1', values: [['id','title','allDay','start','end','date','desc']], majorDimension: 'ROWS' });
+        accessToken, { range: 'Events!A1', values: [['id','title','allDay','start','end','date','desc','tags','dateEnd']], majorDimension: 'ROWS' });
     } catch(e) { /* Sheet may already exist */ }
   }
   return true;
@@ -835,7 +840,7 @@ ipcMain.handle('events-save', async (_, { accessToken, spreadsheetId, events }) 
 ipcMain.handle('events-load', async (_, { accessToken, spreadsheetId }) => {
   await sheetsEnsure(accessToken, spreadsheetId);
   const data = await sheetsRequest('GET',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A2:F10000')}`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A2:I10000')}`,
     accessToken);
   const rows = (data.values || []).filter(r => r[0]);
   return rows.map(r => ({
@@ -884,7 +889,7 @@ ipcMain.handle('mood-append', async (_, { accessToken, spreadsheetId, date, mood
 
 ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
   const data = await sheetsRequest('GET',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:Y10000')}`, accessToken);
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AA10000')}`, accessToken);
   const rows = data.values || [];
   return rows.filter(r => r && r[0]).map(row => {
     while (row.length < HEADERS.length) row.push('');
@@ -906,6 +911,8 @@ ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
       budget: parseFloat(row[22]) || 0,
       spent:  parseFloat(row[23]) || 0,
       attachments: _j(row[24], []),
+      hideUntilDays: parseInt(row[25]) || 0,
+      overdueAlert: row[26] === '1',
     };
   });
 });
@@ -927,6 +934,8 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
       String(t.budget||0),
       String(t.spent||0),
       JSON.stringify(t.attachments||[]),
+      String(t.hideUntilDays||0),
+      t.overdueAlert ? '1' : '0',
     ]);
     await sheetsRequest('PUT',
       `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2')}?valueInputOption=RAW`,
@@ -935,7 +944,7 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
   // Clear only rows beyond the written data — safe even if this fails (stale rows, not blank sheet)
   const clearFrom = tasks.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:Y10000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:AA10000`)}:clear`,
     accessToken, {});
   return true;
 });
