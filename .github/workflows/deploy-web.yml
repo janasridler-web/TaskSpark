@@ -1,11 +1,6 @@
 name: Deploy Web Companion
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'web/**'
   workflow_dispatch:
 
 jobs:
