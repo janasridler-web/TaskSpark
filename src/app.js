@@ -4137,10 +4137,32 @@ function tickTimer() {
 }
 
 function stopTimer() {
+  if (activeTimerId && timerStart) {
+    const elapsed = timerPaused
+      ? timerPausedElapsed
+      : Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
+    const task = tasks.find(t => t.id === activeTimerId);
+    if (task && elapsed > 0) {
+      task.timeLogged = (task.timeLogged || 0) + elapsed;
+      task.timeSessions = task.timeSessions || [];
+      task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
+    }
+  }
+  const wasMinimized = timerDidMinimize;
+  const wasSnoozed   = breakSnoozed;
   api.timerHide();
   hideFocusOverlay();
   clearInterval(timerInterval); timerInterval = null;
+  activeTimerId = null;
+  timerStart    = null;
+  timerPaused   = false; timerPausedAt = null; timerPausedElapsed = 0;
+  breakSnoozed  = false;
+  timerDidMinimize = false;
   clearBreakTimer();
+  saveTasks();
+  renderAll();
+  if (wasSnoozed)         setTimeout(showBreakPanel, 200);
+  else if (wasMinimized)  api.restore();
 }
 
 // ── Focus overlay (in-app focus mode) ──────────────────────────────────────
