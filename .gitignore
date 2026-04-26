@@ -4,7 +4,3 @@ dist/
 src/credentials.js
 # main.js contains credentials — never push to GitHub
 src/main.js
-# Session context files — local only
-CLAUDE.md
-FEATURES.md
-BACKLOG.md
