@@ -2307,8 +2307,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
           <div class="settings-section">
             <div class="settings-section-title">Onboarding</div>
             <div class="setting-row">
-              <div><div class="setting-label">Replay tutorial</div><div class="setting-desc">Walk through the feature tour again</div></div>
-              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startTutorial,150)" style="font-size:12px;padding:6px 14px">Replay</button>
+              <div><div class="setting-label">Replay onboarding</div><div class="setting-desc">Pick a feature preset again or open Settings to choose toggles by hand</div></div>
+              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startOnboarding,150)" style="font-size:12px;padding:6px 14px">Replay</button>
             </div>
           </div>
         </div>
@@ -2746,6 +2746,35 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div id="whatsnew-body"><div class="whatsnew-loading">Loading changelog...</div></div>
     <div style="display:flex;justify-content:flex-end">
       <button class="btn-primary" onclick="closeWhatsNew()">Got it!</button>
+    </div>
+  </div>
+</div>
+
+<!-- V4 onboarding preset modal — replaces the legacy tutorial overlay -->
+<div class="modal-overlay" id="onboarding-modal">
+  <div class="modal" style="max-width:460px">
+    <div style="text-align:center;padding:4px 0 22px">
+      <div style="font-size:32px;margin-bottom:12px">⚡</div>
+      <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px">Welcome to TaskSpark</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.6">Designed to reduce decision fatigue and help you start, focus, and finish.</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px">How much do you want to start with?</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%;border-color:var(--accent);background:var(--accent-l)" onclick="applyOnboardingPreset('basic')">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:3px">Keep it simple</div>
+        <div style="font-size:12px;color:var(--text3)">Just tasks, streak and smart suggestions. Add features as you go.</div>
+      </button>
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%" onclick="applyOnboardingPreset('full')">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">Full setup</div>
+        <div style="font-size:12px;color:var(--text3)">Timer, estimates, habits, ideas board and more — everything on.</div>
+      </button>
+      <button class="btn-secondary" style="text-align:left;padding:14px 16px;width:100%" onclick="applyOnboardingPreset('custom')">
+        <div style="font-weight:700;color:var(--text);margin-bottom:3px">I'll choose</div>
+        <div style="font-size:12px;color:var(--text3)">Opens Settings so you can pick exactly what you want.</div>
+      </button>
+    </div>
+    <div style="text-align:center;margin-top:14px">
+      <button style="background:none;border:none;color:var(--text3);font-size:13px;cursor:pointer;font-family:'Outfit',sans-serif;padding:4px 8px" onclick="closeOnboardingModal()">Skip for now</button>
     </div>
   </div>
 </div>

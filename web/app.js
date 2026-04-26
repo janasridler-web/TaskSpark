@@ -622,6 +622,7 @@ const WORKSPACE_COLOURS = [
 let workspaces = [];         // [{id, name, colour, spreadsheetId, settings}]
 let activeWorkspaceId = null;
 let workspaceSetupPending = false; // true if we need to prompt on first V3 launch
+let onboardingChecklist = { addTask: false, completeTask: false, whatNow: false, mood: false, dismissed: false };
 let configSheetId = null;  // ID of the TaskSpark-Config spreadsheet
 let rootSpreadsheetId = null;      // The original spreadsheet — used for cross-app workspace config
 // Pre-fetched workspace data cache: { [wsId]: { tasks, habits, ideas, wins } }
@@ -856,6 +857,7 @@ async function init() {
     if (cfg.sortMode) document.getElementById('sort-select').value = cfg.sortMode;
     if (cfg.settings) settings = { ...DEFAULT_SETTINGS, ...cfg.settings };
     if (cfg.configSheetId) configSheetId = cfg.configSheetId;
+    if (cfg.onboardingChecklist) onboardingChecklist = { ...onboardingChecklist, ...cfg.onboardingChecklist };
   }
   applySettings();
 
@@ -910,7 +912,7 @@ async function init() {
         await loadIdeas();
         await loadHabits();
         await loadWins();
-        if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+        if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
         setTimeout(showWorkspaceSetupModal, 800);
       } else {
         // Got workspaces from Drive — proceed normally
@@ -924,7 +926,7 @@ async function init() {
         updateWorkspaceTitle();
         await connectToSheets();
         await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
-        if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+        if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
     } else {
@@ -938,7 +940,7 @@ async function init() {
       updateWorkspaceTitle();
       await connectToSheets();
       await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
-      if (!cfg.tutorialComplete) setTimeout(startTutorial, 1000);
+      if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
   } else if (cfg && cfg.offlineMode) {
@@ -5774,6 +5776,64 @@ function showWhatsNew(version, release) {
 function closeWhatsNew() {
   document.getElementById('whatsnew-modal-overlay').classList.remove('open');
   api.saveConfig({ lastSeenVersion: api.getVersion() });
+}
+
+// ── V4 onboarding (preset modal) ─────────────────────────────────────────────
+function startOnboarding() {
+  const modal = document.getElementById('onboarding-modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeOnboardingModal() {
+  const modal = document.getElementById('onboarding-modal');
+  if (modal) modal.classList.remove('open');
+  api.saveConfig({ onboardingComplete: true, onboardingChecklist });
+  if (workspaceSetupPending) showWorkspaceSetupModal();
+}
+
+function applyOnboardingPreset(preset) {
+  if (preset === 'custom') applyCustomPreset();
+  else applyPreset(preset);
+  closeOnboardingModal();
+}
+
+function applyPreset(preset) {
+  if (preset === 'basic') {
+    settings.breakEnabled = false; settings.tagsEnabled = false;
+    settings.streakEnabled = true; settings.estimatesEnabled = false; settings.timerEnabled = false;
+    settings.dueEnabled = false; settings.dueTimeEnabled = false;
+    settings.quickAddEnabled = false; settings.whatNowEnabled = true;
+    settings.completionDialog = false; settings.soundEnabled = false;
+    settings.moodEnabled = true; settings.energyEnabled = false;
+    settings.statusEnabled = false; settings.subtasksEnabled = false;
+    settings.recurrenceEnabled = false; settings.kanbanEnabled = false;
+    settings.workspacesEnabled = false; settings.ideasEnabled = false;
+    settings.habitsEnabled = false; settings.winsEnabled = false;
+    settings.sodEnabled = false; settings.eodEnabled = false;
+    settings.budgetEnabled = false; settings.attachmentsEnabled = false; settings.calendarEnabled = false;
+  } else if (preset === 'full') {
+    settings.tagsEnabled = true; settings.streakEnabled = true;
+    settings.estimatesEnabled = true; settings.timerEnabled = true; settings.quickAddEnabled = true;
+    settings.whatNowEnabled = true; settings.completionDialog = true;
+    settings.moodEnabled = true; settings.energyEnabled = true;
+    settings.statusEnabled = true; settings.soundEnabled = true;
+    settings.breakEnabled = true; settings.dueTimeEnabled = true;
+    settings.budgetEnabled = true; settings.attachmentsEnabled = true; settings.calendarEnabled = true;
+    settings.subtasksEnabled = true; settings.recurrenceEnabled = true;
+    settings.kanbanEnabled = true; settings.workspacesEnabled = true;
+    settings.ideasEnabled = true; settings.habitsEnabled = true;
+    settings.winsEnabled = true; settings.sodEnabled = true;
+    settings.eodEnabled = true; settings.dueEnabled = true;
+  }
+  api.saveConfig({ settings });
+  applySettings();
+  if (typeof renderAll === 'function') renderAll();
+  if (preset === 'basic') showToast('Basic mode set — start simple, add more later!');
+  if (preset === 'full')  showToast('Full mode set — all features on!');
+}
+
+function applyCustomPreset() {
+  setTimeout(() => openSettings(), 200);
 }
 
 function openChangelog() {
