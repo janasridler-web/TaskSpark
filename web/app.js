@@ -4213,8 +4213,8 @@ async function openSettings() {
     if (signoutRow)  signoutRow.style.display   = '';
     if (connectRow)  connectRow.style.display   = 'none';
   }
-  // Reset to first tab
-  switchSettingsTab('general', document.querySelector('.settings-nav-item'));
+  // Reset to first tab (V4 tab structure)
+  switchSettingsTab('task-org', document.querySelector('.settings-nav-item'));
   // Only switch to timer tab if break is enabled, otherwise go to streak
   const firstFeatureBtn = s.breakEnabled
     ? document.querySelector('.feature-sub-btn')

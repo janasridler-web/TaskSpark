@@ -1985,21 +1985,24 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div class="settings-modal-inner">
       <!-- Left nav -->
       <div class="settings-nav">
-        <div class="settings-nav-item active" onclick="switchSettingsTab('general',this)">General</div>
-        <div class="settings-nav-item" onclick="switchSettingsTab('feature-settings',this)">Feature Settings</div>
+        <div class="settings-nav-item active" onclick="switchSettingsTab('task-org',this)">Task Organisation</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('focus',this)">Focus &amp; Productivity</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('wellbeing',this)">Wellbeing</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('tools',this)">Tools</div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('daily-flow',this)">Daily Flow</div>
         <div class="settings-nav-item" onclick="switchSettingsTab('appearance',this)">Appearance</div>
-        <div class="settings-nav-item" onclick="switchSettingsTab('onboarding',this)">Onboarding</div>
         <div class="settings-nav-item" onclick="switchSettingsTab('account',this)">Account &amp; Data</div>
-        <div class="settings-nav-item" onclick="switchSettingsTab('changelog',this)">Changelog</div>
+        <div style="height:1px;background:var(--border);margin:8px 6px 4px"></div>
+        <div class="settings-nav-item" onclick="switchSettingsTab('changelog',this)">What's New</div>
         <div class="settings-nav-item" onclick="switchSettingsTab('contact',this)">Contact Us</div>
       </div>
       <!-- Right panel -->
       <div class="settings-panel">
 
-        <!-- GENERAL -->
-        <div class="settings-panel-section active" id="settings-tab-general">
+        <!-- TASK ORGANISATION -->
+        <div class="settings-panel-section active" id="settings-tab-task-org">
           <div class="settings-section" style="margin-top:16px">
-            <div class="settings-section-title">Task Organisation</div>
+            <div class="settings-section-title">Task Fields</div>
             <div class="setting-row">
               <div><div class="setting-label">Tags</div><div class="setting-desc">Tag tasks and filter by tag in the sidebar</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-tags"><span class="toggle-slider"></span></label>
@@ -2007,6 +2010,18 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Task status</div><div class="setting-desc">Track status on tasks (Not Started, In Progress, Blocked, etc.)</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-status-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Due date</div><div class="setting-desc">Set due dates on tasks with calendar picker</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-due-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Due time</div><div class="setting-desc">Add a specific time alongside the due date</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-due-time-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-energy-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Subtasks</div><div class="setting-desc">Break tasks into smaller checkable steps</div></div>
@@ -2017,49 +2032,23 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <label class="toggle-switch"><input type="checkbox" id="set-recurrence-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-label">Due Date</div><div class="setting-desc">Set due dates on tasks with calendar picker</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-due-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Due Time</div><div class="setting-desc">Add a specific time alongside the due date</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-due-time-enabled"><span class="toggle-slider"></span></label>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Focus &amp; Productivity</div>
-            <div class="setting-row">
-              <div><div class="setting-label">What Now? button</div><div class="setting-desc">Smart task picker that suggests what to focus on</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-whatnow"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-energy-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Daily mood check-in</div><div class="setting-desc">Show the "How are you feeling?" button in the sidebar</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-mood-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a changelog button in the sidebar and mobile menu</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Attachments</div><div class="setting-desc">Attach links to tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-attachments-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Completion dialog</div><div class="setting-desc">Ask for impact, outcome and deliverable when completing a task</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-completion"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
-
-            </div>
           </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Time &amp; Wellbeing</div>
+        </div>
+
+        <!-- FOCUS &amp; PRODUCTIVITY -->
+        <div class="settings-panel-section" id="settings-tab-focus">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Smart Features</div>
             <div class="setting-row">
-              <div><div class="setting-label">Break reminders</div><div class="setting-desc">Prompt to take a break after working for a set time</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-break-enabled-general" onchange="toggleBreakFeatureTab()"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Streak tracker</div><div class="setting-desc">Track consecutive days of completing tasks</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-streak" onchange="toggleStreakSettings()"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">What Now? button</div><div class="setting-desc">Smart task picker that suggests what to focus on</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-whatnow"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Time estimates</div><div class="setting-desc">Set estimated time on tasks and compare with actual</div></div>
@@ -2069,105 +2058,44 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <div><div class="setting-label">Task timer</div><div class="setting-desc">Show the start timer button on task cards</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-timer-enabled"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Budget tracking</div><div class="setting-desc">Set a budget on tasks and track how much was spent</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled"><span class="toggle-slider"></span></label>
-            </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-title">Views</div>
+            <div class="settings-section-title">Break Reminders</div>
             <div class="setting-row">
-              <div><div class="setting-label">Kanban view</div><div class="setting-desc">View tasks as a Kanban board grouped by tag and status</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Break reminders</div><div class="setting-desc">Prompt to take a break after working for a set time</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-break-enabled-general" onchange="toggleBreakFeatureTab()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="break-timing-row" id="break-timing-row">
+              <div class="break-timing-item"><label>Work before break (minutes)</label><input type="number" id="set-break-interval" min="1" max="120" value="30"></div>
+              <div class="break-timing-item"><label>Break duration (minutes)</label><input type="number" id="set-break-duration" min="1" max="60" value="5"></div>
             </div>
             <div class="setting-row">
-              <div><div class="setting-label">Calendar view</div><div class="setting-desc">View tasks and events on a monthly or weekly calendar</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-calendar-enabled"><span class="toggle-slider"></span></label>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Daily Summaries</div>
-            <div class="setting-row">
-              <div><div class="setting-label">Start of day summary</div><div class="setting-desc">Show a morning summary when you first open the app each day</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-sod-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Play sound on break</div><div class="setting-desc">Play a chime when the break prompt appears</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sound-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-label">End of day summary</div><div class="setting-desc">Show an end of day summary at a set time</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-eod-enabled"><span class="toggle-slider"></span></label>
-            </div>
-          </div>
-          <div class="settings-section">
-            <div class="settings-section-title">Tools</div>
-            <div class="setting-row">
-              <div><div class="setting-label">Ideas</div><div class="setting-desc">Capture thoughts and turn them into tasks</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-ideas-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Habit Tracker</div><div class="setting-desc">Track daily habits with a visual streak grid</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-habits-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Wins Board</div><div class="setting-desc">Capture praise and achievements to revisit when you need a boost</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-wins-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Budget View</div><div class="setting-desc">View and manage task budgets in a dedicated board</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Attachments</div><div class="setting-desc">Attach links to tasks</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-attachments-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Workspaces</div><div class="setting-desc">Separate areas for different parts of your life, each with their own Google Sheet</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-workspaces-enabled"><span class="toggle-slider"></span></label>
+              <div><div class="setting-label">Preview chime</div><div class="setting-desc">Hear the break sound</div></div>
+              <button class="btn-sound preview" onclick="previewSound()">▶ Preview</button>
             </div>
           </div>
         </div>
 
-        <!-- FEATURE SETTINGS -->
-        <div class="settings-panel-section" id="settings-tab-feature-settings">
-          <!-- Empty state when no features with settings are enabled -->
-          <div id="feature-settings-empty" style="display:none;padding:40px 0;text-align:center">
-            <div style="font-size:28px;margin-bottom:12px">⚙</div>
-            <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">No feature settings available</div>
-            <div style="font-size:13px;color:var(--text3);line-height:1.6">Turn on Break reminders, Streak tracker or Kanban<br>in General to access their settings here.</div>
-          </div>
-          <!-- Feature sub-nav -->
-          <div style="display:flex;gap:6px;flex-wrap:wrap;padding:14px 0 10px;border-bottom:1px solid var(--border);margin-bottom:14px">
-            <button class="feature-sub-btn active" onclick="switchFeatureTab('timer',this)">Timer &amp; Breaks</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('streak',this)">Streak</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('kanban',this)">Kanban</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('budget',this)">Budget</button>
-            <button class="feature-sub-btn" onclick="switchFeatureTab('summaries',this)">Daily Summaries</button>
-          </div>
-          <!-- Timer & Breaks -->
-          <div class="feature-sub-section active" id="feature-tab-timer">
-            <div class="settings-section">
-              <div class="settings-section-title">Break Timer</div>
-              <div class="break-timing-row" id="break-timing-row">
-                <div class="break-timing-item"><label>Work before break (minutes)</label><input type="number" id="set-break-interval" min="1" max="120" value="30"></div>
-                <div class="break-timing-item"><label>Break duration (minutes)</label><input type="number" id="set-break-duration" min="1" max="60" value="5"></div>
-              </div>
-            </div>
-            <div class="settings-section">
-              <div class="settings-section-title">Break Sound</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Play sound on break</div><div class="setting-desc">Play a chime when the break prompt appears</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-sound-enabled"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="sound-file-row">
-                <span class="sound-file-name" id="sound-file-path">Default (chime)</span>
-                <button class="btn-sound preview" onclick="previewSound()">▶ Preview</button>
-                <button class="btn-sound" onclick="pickSoundFile()">📂 Custom</button>
-                <button class="btn-sound" onclick="clearSoundFile()">✕ Reset</button>
-              </div>
+        <!-- WELLBEING -->
+        <div class="settings-panel-section" id="settings-tab-wellbeing">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Mood</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Daily mood check-in</div><div class="setting-desc">Show the "How are you feeling?" button in the sidebar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-mood-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
-          <!-- Streak -->
-          <div class="feature-sub-section" id="feature-tab-streak">
-            <div class="settings-section" id="streak-extra-settings" style="margin-top:4px">
-              <div class="settings-section-title">Streak Settings</div>
+          <div class="settings-section">
+            <div class="settings-section-title">Streak</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Streak tracker</div><div class="setting-desc">Track consecutive days of completing tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-streak" onchange="toggleStreakSettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="streak-extra-settings">
               <div class="setting-row">
                 <div><div class="setting-label">Include weekends</div><div class="setting-desc">Count Saturday and Sunday towards your streak</div></div>
                 <label class="toggle-switch"><input type="checkbox" id="set-streak-weekends"><span class="toggle-slider"></span></label>
@@ -2191,72 +2119,113 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               </div>
             </div>
           </div>
-          <!-- Kanban -->
-          <div class="feature-sub-section" id="feature-tab-kanban">
-            <div class="settings-section" style="margin-top:4px">
-              <div class="settings-section-title">Kanban Settings</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board. Turn off to see all tasks in a single board</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-kanban-group-tags"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Keep completed tasks visible</div><div class="setting-desc">Show completed tasks in the Completed column instead of hiding them</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-kanban-show-completed"><span class="toggle-slider"></span></label>
-              </div>
+        </div>
+
+        <!-- TOOLS -->
+        <div class="settings-panel-section" id="settings-tab-tools">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Tracking &amp; Insights</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Ideas</div><div class="setting-desc">Capture thoughts and turn them into tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-ideas-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Habit Tracker</div><div class="setting-desc">Track daily habits with a visual streak grid</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-habits-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Wins Board</div><div class="setting-desc">Capture praise and achievements to revisit when you need a boost</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-wins-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
-          <!-- Budget -->
-          <div class="feature-sub-section" id="feature-tab-budget">
-            <div class="settings-section" style="margin-top:4px">
-              <div class="settings-section-title">Currency</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Currency symbol</div><div class="setting-desc">Shown next to budget and spent amounts</div></div>
-                <input type="text" id="set-currency-symbol" maxlength="3" style="width:56px;border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;text-align:center">
-              </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Kanban</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Kanban view</div><div class="setting-desc">View tasks as a Kanban board grouped by tag and status</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled"><span class="toggle-slider"></span></label>
             </div>
-            <div class="settings-section">
-              <div class="settings-section-title">Budget View</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Group by tags</div><div class="setting-desc">Split the Budget View into sections by tag, each with its own summary</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-budget-group-tags"><span class="toggle-slider"></span></label>
-              </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-kanban-group-tags"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Keep completed tasks visible</div><div class="setting-desc">Show completed tasks in the Completed column instead of hiding them</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-kanban-show-completed"><span class="toggle-slider"></span></label>
             </div>
           </div>
-          <!-- Daily Summaries -->
-          <div class="feature-sub-section" id="feature-tab-summaries">
-            <div class="settings-section" style="margin-top:4px">
-              <div class="settings-section-title">Start of Day</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show tasks due today</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-sod-due-today"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show overdue tasks</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-sod-overdue"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Include mood check-in</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-sod-mood"><span class="toggle-slider"></span></label>
-              </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Budget Tracking</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Budget tracking</div><div class="setting-desc">Set a budget on tasks and track how much was spent</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled"><span class="toggle-slider"></span></label>
             </div>
-            <div class="settings-section">
-              <div class="settings-section-title">End of Day</div>
-              <div class="setting-row">
-                <div><div class="setting-label">Time</div><div class="setting-desc">When to show the end of day summary</div></div>
-                <input type="time" id="set-eod-time" style="border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:13px;background:var(--surface);color:var(--text);font-family:inherit">
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show tasks completed today</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-eod-completed"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show tasks due tomorrow</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-eod-tomorrow"><span class="toggle-slider"></span></label>
-              </div>
-              <div class="setting-row">
-                <div><div class="setting-label">Show streak &amp; motivation</div></div>
-                <label class="toggle-switch"><input type="checkbox" id="set-eod-streak"><span class="toggle-slider"></span></label>
-              </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Currency symbol</div><div class="setting-desc">Shown next to budget and spent amounts</div></div>
+              <input type="text" id="set-currency-symbol" maxlength="3" style="width:56px;border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;text-align:center">
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Group by tags</div><div class="setting-desc">Split the Budget View into sections by tag, each with its own summary</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-budget-group-tags"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Calendar</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Calendar view</div><div class="setting-desc">View tasks and events on a monthly or weekly calendar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-calendar-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Workspaces</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Workspaces</div><div class="setting-desc">Separate areas for different parts of your life, each with their own Google Sheet</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-workspaces-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- DAILY FLOW -->
+        <div class="settings-panel-section" id="settings-tab-daily-flow">
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-section-title">Start of Day</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Start of day summary</div><div class="setting-desc">Show a morning summary when you first open the app each day</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show tasks due today</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-due-today"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show overdue tasks</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-overdue"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Include mood check-in</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-sod-mood"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">End of Day</div>
+            <div class="setting-row">
+              <div><div class="setting-label">End of day summary</div><div class="setting-desc">Show an end of day summary at a set time</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Time</div><div class="setting-desc">When to show the end of day summary</div></div>
+              <input type="time" id="set-eod-time" style="border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:13px;background:var(--surface);color:var(--text);font-family:inherit">
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show tasks completed today</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-completed"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show tasks due tomorrow</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-tomorrow"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Show streak &amp; motivation</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-eod-streak"><span class="toggle-slider"></span></label>
             </div>
           </div>
         </div>
@@ -2283,20 +2252,16 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <div id="colour-theme-name" style="font-size:12px;color:var(--text3);margin-top:-4px"></div>
             </div>
           </div>
-        </div>
-
-        <!-- ONBOARDING -->
-        <div class="settings-panel-section" id="settings-tab-onboarding">
-          <div class="settings-section" style="margin-top:16px">
-            <div class="settings-section-title">Onboarding</div>
+          <div class="settings-section">
+            <div class="settings-section-title">Sidebar</div>
             <div class="setting-row">
-              <div><div class="setting-label">Replay tutorial</div><div class="setting-desc">Walk through the feature tour again</div></div>
-              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startTutorial,150)" style="font-size:12px;padding:6px 14px">Replay</button>
+              <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a changelog button in the sidebar and mobile menu</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
         </div>
 
-        <!-- ACCOUNT & DATA -->
+        <!-- ACCOUNT &amp; DATA -->
         <div class="settings-panel-section" id="settings-tab-account">
           <div class="settings-section" style="margin-top:16px">
             <div class="settings-section-title">Account</div>
@@ -2339,9 +2304,16 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(openArchiveModal,150)" style="font-size:12px;padding:6px 12px">Archive</button>
             </div>
           </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Onboarding</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Replay tutorial</div><div class="setting-desc">Walk through the feature tour again</div></div>
+              <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startTutorial,150)" style="font-size:12px;padding:6px 14px">Replay</button>
+            </div>
+          </div>
         </div>
 
-        <!-- CHANGELOG -->
+        <!-- WHAT'S NEW (id stays settings-tab-changelog for compat) -->
         <div class="settings-panel-section" id="settings-tab-changelog">
           <div class="settings-section" style="margin-top:16px">
             <div class="settings-section-title">What's New</div>
