@@ -290,17 +290,24 @@ ipcMain.handle('timer-hide', async () => {
 ipcMain.handle('focus-show', async (_, { taskId, taskName, taskDesc, subtasks, baseLogged }) => {
   if (focusWindow) { try { focusWindow.close(); } catch {} focusWindow = null; }
   const display = _getActiveDisplay();
-  const { x, y, width, height } = display.workArea;
+  const { x, y, width, height } = display.bounds;
   focusWindow = new BrowserWindow({
     width, height, x, y,
     frame: false, resizable: false, skipTaskbar: false,
     webPreferences: { preload: path.join(__dirname, 'focus-preload.js'), contextIsolation: true, nodeIntegration: false },
   });
+  focusWindow.maximize();
   focusWindow.loadFile(path.join(__dirname, 'focus.html'));
   focusWindow.webContents.once('did-finish-load', () => {
     focusWindow.webContents.send('focus-start', { taskId, taskName, taskDesc, subtasks, baseLogged });
   });
   focusWindow.on('closed', () => { focusWindow = null; });
+  focusWindow.on('blur', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
   return true;
 });
 
