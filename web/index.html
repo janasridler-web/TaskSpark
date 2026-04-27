@@ -3310,16 +3310,17 @@ function buildMobileDrawer(section) {
   }
 
   // Views — Calendar / Kanban hidden on /m essentials (desktop / non-/m
-  // phone gets the full set).
+  // phone gets the full set). Icons match the desktop sidebar so iOS
+  // doesn't emoji-render them at chunky sizes.
   const onM = !!window.MOBILE_ESSENTIALS;
   sections.push(`<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;margin-top:8px">Views</div>`);
-  sections.push(drawerItem('☑', 'All Tasks', () => { setView('all'); closeMobileDrawer(); }));
+  sections.push(drawerItem('☰', 'All Tasks', () => { setView('all'); closeMobileDrawer(); }));
   if (!onM) sections.push(drawerItem('▦', 'Calendar', () => { setView('calendar-view'); closeMobileDrawer(); }));
   if (!onM && s.kanbanEnabled !== false) sections.push(drawerItem('⊞', 'Kanban', () => { setView('kanban'); closeMobileDrawer(); }));
   sections.push(drawerItem('◷', 'Due Today', () => { setView('today'); closeMobileDrawer(); }));
-  sections.push(drawerItem('⚠', 'Overdue', () => { setView('overdue'); closeMobileDrawer(); }));
+  sections.push(drawerItem('!', 'Overdue', () => { setView('overdue'); closeMobileDrawer(); }));
   sections.push(drawerItem('✓', 'Completed', () => { setView('completed'); closeMobileDrawer(); }));
-  sections.push(drawerItem('▣', 'Archived', () => { setView('archived'); closeMobileDrawer(); }));
+  sections.push(drawerItem('◫', 'Archived', () => { setView('archived'); closeMobileDrawer(); }));
 
   // Tools — Stats / Budget hidden on /m essentials.
   const anyTool = s.winsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false
@@ -3327,17 +3328,18 @@ function buildMobileDrawer(section) {
   if (anyTool) {
     sections.push(`<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;margin-top:8px">Tools</div>`);
     if (!onM && s.statsEnabled !== false) sections.push(drawerItem('▲', 'Stats', () => { setView('stats'); closeMobileDrawer(); }));
-    if (s.ideasEnabled !== false) sections.push(drawerItem('💡', 'Ideas', () => { setView('ideas'); closeMobileDrawer(); }));
-    if (s.habitsEnabled !== false) sections.push(drawerItem('🔄', 'Habits', () => { setView('habits'); closeMobileDrawer(); }));
-    if (s.winsEnabled !== false) sections.push(drawerItem('⭐', 'Wins Board', () => { setView('wins'); closeMobileDrawer(); }));
+    if (s.ideasEnabled !== false) sections.push(drawerItem('❋', 'Ideas', () => { setView('ideas'); closeMobileDrawer(); }));
+    if (s.habitsEnabled !== false) sections.push(drawerItem('⊕', 'Habits', () => { setView('habits'); closeMobileDrawer(); }));
+    if (s.winsEnabled !== false) sections.push(drawerItem('✪', 'Wins Board', () => { setView('wins'); closeMobileDrawer(); }));
     if (!onM && s.budgetEnabled !== false) sections.push(drawerItem('$', 'Budget View', () => { setView('budget-view'); closeMobileDrawer(); }));
   }
 
-  // Priority filters
+  // Priority filters — text-rendered bullets coloured via inline span,
+  // matching the desktop sidebar (no iOS emoji circles).
   sections.push(`<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;margin-top:8px">Priority</div>`);
-  sections.push(drawerItem('🔴', 'High', () => { setView('priority-high'); closeMobileDrawer(); }));
-  sections.push(drawerItem('🟡', 'Medium', () => { setView('priority-medium'); closeMobileDrawer(); }));
-  sections.push(drawerItem('🟢', 'Low', () => { setView('priority-low'); closeMobileDrawer(); }));
+  sections.push(drawerItem('<span style="color:var(--red)">●</span>', 'High', () => { setView('priority-high'); closeMobileDrawer(); }));
+  sections.push(drawerItem('<span style="color:var(--amber)">●</span>', 'Medium', () => { setView('priority-medium'); closeMobileDrawer(); }));
+  sections.push(drawerItem('<span style="color:var(--blue)">●</span>', 'Low', () => { setView('priority-low'); closeMobileDrawer(); }));
 
   // Bottom actions
   sections.push(`<div style="padding:12px 8px;margin-top:8px;border-top:1px solid var(--border)">`);
