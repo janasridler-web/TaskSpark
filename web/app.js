@@ -491,29 +491,30 @@ function isIOSWithoutPWA() {
   return !standalone;
 }
 
+function _notificationsFail(checkbox, title, body) {
+  checkbox.checked = false;
+  settings.browserNotificationsEnabled = false;
+  showConfirmModal(title, body, 'OK', () => {});
+}
+
 async function onNotificationsToggle(checkbox) {
   if (!checkbox.checked) {
     settings.browserNotificationsEnabled = false;
     return;
   }
   if (!('Notification' in window)) {
-    showToast('This browser does not support notifications');
-    checkbox.checked = false;
-    settings.browserNotificationsEnabled = false;
+    _notificationsFail(checkbox, 'Not supported',
+      "This browser doesn't support notifications, so we can't enable them here.");
     return;
   }
   if (isIOSWithoutPWA()) {
-    showToast('Install TaskSpark to your home screen first to get notifications on iOS');
-    checkbox.checked = false;
-    settings.browserNotificationsEnabled = false;
+    _notificationsFail(checkbox, 'Install TaskSpark first',
+      'iOS only allows notifications for installed web apps. Tap the share icon in Safari and choose <strong>Add to Home Screen</strong>, then open TaskSpark from the icon and try again.');
     return;
   }
-  // If the user previously denied permission, the browser won't show the
-  // prompt again — they have to clear it in browser settings.
   if (Notification.permission === 'denied') {
-    showToast('Notifications are blocked. Click the lock icon in the address bar to allow them.');
-    checkbox.checked = false;
-    settings.browserNotificationsEnabled = false;
+    _notificationsFail(checkbox, 'Notifications blocked',
+      "Your browser is blocking notifications for this site. To unblock:<br><br>1. Click the <strong>lock or settings icon</strong> in the address bar.<br>2. Find <strong>Notifications</strong> and set it to <strong>Allow</strong>.<br>3. Reload the page and try the toggle again.");
     return;
   }
   try {
@@ -521,21 +522,20 @@ async function onNotificationsToggle(checkbox) {
     console.log('[notifications] requestPermission result:', result);
     if (result === 'granted') {
       settings.browserNotificationsEnabled = true;
+      // Tiny sample so the user knows it worked.
+      try { new Notification('Notifications on', { body: 'TaskSpark will alert you here when it\'s break time.', icon: 'assets/icon-192.png' }); } catch {}
     } else if (result === 'denied') {
-      showToast('Notifications are blocked. Click the lock icon in the address bar to allow them.');
-      checkbox.checked = false;
-      settings.browserNotificationsEnabled = false;
+      _notificationsFail(checkbox, 'Notifications blocked',
+        "You picked Block in the browser prompt. To change your mind, click the <strong>lock or settings icon</strong> in the address bar, set Notifications to <strong>Allow</strong>, then reload and try again.");
     } else {
       // 'default' — user dismissed without choosing
-      showToast('You need to allow notifications to enable this');
-      checkbox.checked = false;
-      settings.browserNotificationsEnabled = false;
+      _notificationsFail(checkbox, 'Permission needed',
+        'You need to choose <strong>Allow</strong> in the browser prompt for notifications to work. Try the toggle again and pick Allow.');
     }
   } catch (e) {
     console.warn('[notifications] requestPermission threw:', e);
-    showToast('Could not request notification permission');
-    checkbox.checked = false;
-    settings.browserNotificationsEnabled = false;
+    _notificationsFail(checkbox, "Couldn't enable notifications",
+      'Something went wrong asking your browser for permission. Try reloading the page and toggling again.');
   }
 }
 
