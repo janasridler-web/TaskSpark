@@ -1649,10 +1649,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       </div>
 
       <div class="sidebar-divider"></div>
-      <div class="sidebar-section-label">Views</div>
+      <div class="sidebar-section-label">Tasks</div>
       <div class="sidebar-item active" data-view="all" onclick="setView('all',this)"><span class="si-icon">☰</span>All Tasks<span class="si-count" id="cnt-all">0</span></div>
-      <div class="sidebar-item" data-view="calendar-view" id="sidebar-calendar-view" onclick="setView('calendar-view',this)"><span class="si-icon">▦</span>Calendar</div>
-      <div class="sidebar-item" data-view="kanban" onclick="setView('kanban',this)"><span class="si-icon">⊞</span>Kanban</div>
       <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon">◷</span>Due Today<span class="si-count" id="cnt-today">0</span></div>
       <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon">!</span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
       <div class="sidebar-item" data-view="deferred" id="sidebar-deferred" onclick="setView('deferred',this)" style="display:none"><span class="si-icon">◷</span>Deferred<span class="si-count" id="cnt-deferred">0</span></div>
@@ -1661,12 +1659,14 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
       <div id="sidebar-tools-section">
       <div class="sidebar-divider"></div>
-      <div class="sidebar-section-label">TOOLS</div>
+      <div class="sidebar-section-label">Tools</div>
       <div class="sidebar-item" data-view="ideas" onclick="setView('ideas',this)"><span class="si-icon">❋</span>Ideas<span class="si-count" id="cnt-ideas">0</span></div>
       <div class="sidebar-item" onclick="showHabitsView()" id="sidebar-habits-main"><span class="si-icon">⊕</span>Habit Tracker</div>
-      <div class="sidebar-item" data-view="lists" id="sidebar-lists" onclick="setView('lists',this)"><span class="si-icon">☑</span>Lists<span class="si-count" id="cnt-lists">0</span></div>
       <div class="sidebar-item" data-view="wins" onclick="setView('wins',this)"><span class="si-icon">✪</span>Wins Board<span class="si-count" id="cnt-wins">0</span></div>
+      <div class="sidebar-item" data-view="lists" id="sidebar-lists" onclick="setView('lists',this)"><span class="si-icon">☑</span>Lists<span class="si-count" id="cnt-lists">0</span></div>
       <div class="sidebar-item" data-view="budget-view" id="sidebar-budget-view" onclick="setView('budget-view',this)"><span class="si-icon">$</span>Budget View</div>
+      <div class="sidebar-item" data-view="calendar-view" id="sidebar-calendar-view" onclick="setView('calendar-view',this)"><span class="si-icon">▦</span>Calendar</div>
+      <div class="sidebar-item" data-view="kanban" onclick="setView('kanban',this)"><span class="si-icon">⊞</span>Kanban</div>
       </div>
 
       <div class="sidebar-divider"></div>
@@ -2242,30 +2242,34 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="settings-section-title">Kanban</div>
             <div class="setting-row">
               <div><div class="setting-label">Kanban view</div><div class="setting-desc">View tasks as a Kanban board grouped by tag and status</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="set-kanban-enabled" onchange="settings.kanbanEnabled = this.checked; applySettings()"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-group-tags"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Keep completed tasks visible</div><div class="setting-desc">Show completed tasks in the Completed column instead of hiding them</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-kanban-show-completed"><span class="toggle-slider"></span></label>
+            <div id="kanban-sub-settings">
+              <div class="setting-row">
+                <div><div class="setting-label">Group by tag</div><div class="setting-desc">Show a separate row for each tag on the Kanban board</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-kanban-group-tags"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Keep completed tasks visible</div><div class="setting-desc">Show completed tasks in the Completed column instead of hiding them</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-kanban-show-completed"><span class="toggle-slider"></span></label>
+              </div>
             </div>
           </div>
           <div class="settings-section">
             <div class="settings-section-title">Budget Tracking</div>
             <div class="setting-row">
               <div><div class="setting-label">Budget tracking</div><div class="setting-desc">Set a budget on tasks and track how much was spent</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="set-budget-enabled" onchange="settings.budgetEnabled = this.checked; applySettings()"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Currency symbol</div><div class="setting-desc">Shown next to budget and spent amounts</div></div>
-              <input type="text" id="set-currency-symbol" maxlength="3" style="width:56px;border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;text-align:center">
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Group by tags</div><div class="setting-desc">Split the Budget View into sections by tag, each with its own summary</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-budget-group-tags"><span class="toggle-slider"></span></label>
+            <div id="budget-sub-settings">
+              <div class="setting-row">
+                <div><div class="setting-label">Currency symbol</div><div class="setting-desc">Shown next to budget and spent amounts</div></div>
+                <input type="text" id="set-currency-symbol" maxlength="3" style="width:56px;border:1px solid var(--border);border-radius:var(--radius);padding:6px 10px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;text-align:center">
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Group by tags</div><div class="setting-desc">Split the Budget View into sections by tag, each with its own summary</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-budget-group-tags"><span class="toggle-slider"></span></label>
+              </div>
             </div>
           </div>
           <div class="settings-section">

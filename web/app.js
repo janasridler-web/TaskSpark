@@ -4436,6 +4436,12 @@ function applySettings() {
   // Lists sidebar item — only visible when listsEnabled
   const listsSidebar = document.getElementById('sidebar-lists');
   if (listsSidebar) listsSidebar.style.display = s.listsEnabled !== false ? '' : 'none';
+  // Kanban sub-settings depend on kanbanEnabled
+  const kanbanSub = document.getElementById('kanban-sub-settings');
+  if (kanbanSub) kanbanSub.style.display = s.kanbanEnabled !== false ? '' : 'none';
+  // Budget sub-settings depend on budgetEnabled
+  const budgetSub = document.getElementById('budget-sub-settings');
+  if (budgetSub) budgetSub.style.display = s.budgetEnabled !== false ? '' : 'none';
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
