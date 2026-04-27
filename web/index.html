@@ -325,7 +325,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   color:var(--text);background:var(--bg);outline:none;transition:border .15s,background .15s}
 .form-input:focus{border-color:var(--accent);background:var(--surface)}
 .form-textarea{min-height:80px;resize:vertical}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}
+/* Use minmax(0, 1fr) so the columns can actually shrink — without it,
+   wide intrinsic-content children (iOS native time/date inputs) blow
+   the grid out and force horizontal page scroll. */
+.form-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;min-width:0}
 .form-row > *{min-width:0}
 
 .btn-primary{padding:9px 20px;background:var(--accent);color:#fff;border:none;
