@@ -38,6 +38,81 @@ function goToMobileVersion() {
   location.href = '/m/';
 }
 
+// ── /m mobile-essentials shell (V4 bottom nav + FAB universal picker) ───────
+// Rebuilds the bottom nav with the V4 layout (Today/All/Lists/Habits/More)
+// and reveals the FAB. The FAB opens a universal picker offering Task /
+// List / Idea / Habit / Win / Mood (gated on settings + mood-not-set-today).
+function applyMobileEssentials() {
+  if (!window.MOBILE_ESSENTIALS) return;
+  document.body.classList.add('mobile-essentials');
+  const nav = document.getElementById('mobile-nav');
+  if (nav) {
+    nav.innerHTML = `
+      <button class="mobile-nav-item active" id="mobile-nav-today" onclick="mobileNav('today')">
+        <span class="nav-icon">◷</span><span>Today</span>
+      </button>
+      <button class="mobile-nav-item" id="mobile-nav-all" onclick="mobileNav('all')">
+        <span class="nav-icon">☰</span><span>All</span>
+      </button>
+      <button class="mobile-nav-item" id="mobile-nav-lists" onclick="mobileNav('lists')">
+        <span class="nav-icon">☑</span><span>Lists</span>
+      </button>
+      <button class="mobile-nav-item" id="mobile-nav-habits" onclick="mobileNav('habits')">
+        <span class="nav-icon">⊕</span><span>Habits</span>
+      </button>
+      <button class="mobile-nav-item" id="mobile-nav-more" onclick="openMobileDrawer()">
+        <span class="nav-icon">···</span><span>More</span>
+      </button>`;
+  }
+}
+
+function openMobileAddPicker() {
+  const overlay  = document.getElementById('mobile-add-picker');
+  const optionsEl = document.getElementById('mobile-add-options');
+  if (!overlay || !optionsEl) return;
+  const s = settings || {};
+  const moodSetToday = (function(){
+    try { return JSON.parse(localStorage.getItem('taskspark_mood') || '{}').date === todayStr(); }
+    catch { return false; }
+  })();
+  const options = [
+    { key:'task',   label:'Task',           icon:'✓', show:true,
+      run:() => openTaskModal() },
+    { key:'list',   label:'List',           icon:'☑', show:s.listsEnabled !== false,
+      run:() => openListModal() },
+    { key:'idea',   label:'Idea',           icon:'❋', show:s.ideasEnabled !== false,
+      run:() => openIdeaModal() },
+    { key:'habit',  label:'Habit',          icon:'⊕', show:s.habitsEnabled !== false,
+      run:() => openHabitModal() },
+    { key:'win',    label:'Win',            icon:'✪', show:s.winsEnabled  !== false,
+      run:() => openWinModal() },
+    { key:'mood',   label:moodSetToday ? "Today's mood (already set)" : "Today's mood",
+      icon:'♥', show:s.moodEnabled !== false, disabled: moodSetToday,
+      run:() => openMoodModal() },
+  ].filter(o => o.show);
+  optionsEl.innerHTML = options.map(o => `
+    <button class="mobile-add-option" type="button"${o.disabled ? ' disabled aria-disabled="true"' : ''}
+      onclick="_mobileAddPick('${o.key}')">
+      <span class="mobile-add-icon" aria-hidden="true">${o.icon}</span>
+      <span>${o.label}</span>
+    </button>`).join('');
+  // Stash actions for the click handler (using a closure-friendly map).
+  window._mobileAddOptions = Object.fromEntries(options.map(o => [o.key, o]));
+  overlay.classList.add('open');
+}
+
+function closeMobileAddPicker() {
+  const overlay = document.getElementById('mobile-add-picker');
+  if (overlay) overlay.classList.remove('open');
+}
+
+function _mobileAddPick(key) {
+  const opt = (window._mobileAddOptions || {})[key];
+  if (!opt || opt.disabled) return;
+  closeMobileAddPicker();
+  setTimeout(() => { try { opt.run(); } catch(e) { console.warn('mobile add', key, e); } }, 80);
+}
+
 const api = {
   loadConfig: () => {
     try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null'); } catch { return null; }

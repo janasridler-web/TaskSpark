@@ -1682,6 +1682,45 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .toast-msg.show{opacity:1;transform:translateY(0)}
 .toast-msg.error{background:var(--red,#c0392b)}
 
+/* V4 mobile FAB + universal "add" picker bottom-sheet (only shown on /m) */
+#mobile-fab{position:fixed;right:16px;
+  bottom:calc(60px + 16px + env(safe-area-inset-bottom,0px));
+  width:56px;height:56px;border-radius:50%;
+  background:var(--accent);color:#fff;border:none;cursor:pointer;
+  font-size:28px;line-height:1;font-family:'Outfit',sans-serif;
+  box-shadow:0 6px 16px rgba(0,0,0,.22);z-index:250;
+  display:none;align-items:center;justify-content:center;padding:0}
+#mobile-fab:active{transform:scale(.96)}
+#mobile-fab[hidden]{display:none}
+body.mobile-essentials #mobile-fab{display:flex}
+
+#mobile-add-picker{position:fixed;inset:0;z-index:1200;display:none;
+  align-items:flex-end;justify-content:center;background:rgba(0,0,0,.4);
+  backdrop-filter:blur(2px)}
+#mobile-add-picker.open{display:flex;animation:fadeIn .15s ease}
+.mobile-add-sheet{background:var(--surface);width:100%;max-width:480px;
+  border-radius:18px 18px 0 0;padding:8px 10px 16px;
+  padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  box-shadow:0 -4px 20px rgba(0,0,0,.18)}
+.mobile-add-handle{width:36px;height:4px;background:var(--border2);
+  border-radius:2px;margin:6px auto 12px}
+.mobile-add-title{font-size:13px;font-weight:700;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.06em;text-align:center;
+  margin-bottom:8px}
+.mobile-add-option{display:flex;align-items:center;gap:14px;
+  padding:14px 12px;border:none;background:none;width:100%;
+  font-family:'Outfit',sans-serif;font-size:15px;color:var(--text);
+  text-align:left;cursor:pointer;border-radius:10px}
+.mobile-add-option:hover,.mobile-add-option:focus-visible{background:var(--surface2)}
+.mobile-add-option:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.mobile-add-icon{width:34px;height:34px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  background:var(--accent-l);color:var(--accent);flex-shrink:0}
+.mobile-add-option[disabled]{opacity:.5;cursor:default}
+.mobile-add-cancel{display:block;width:100%;padding:12px;margin-top:6px;
+  background:none;border:1px solid var(--border);border-radius:10px;
+  font-family:'Outfit',sans-serif;font-size:14px;color:var(--text2);cursor:pointer}
+
 </style>
 </head>
 <body>
@@ -3084,6 +3123,19 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
 
 <!-- Mobile bottom nav bar -->
+<!-- V4 mobile FAB — visible on /m only (body.mobile-essentials) -->
+<button id="mobile-fab" type="button" aria-label="Add" onclick="openMobileAddPicker()">+</button>
+
+<!-- V4 universal "what would you like to add?" picker -->
+<div id="mobile-add-picker" role="dialog" aria-modal="true" aria-labelledby="mobile-add-title" onclick="if(event.target===this)closeMobileAddPicker()">
+  <div class="mobile-add-sheet">
+    <div class="mobile-add-handle" aria-hidden="true"></div>
+    <div class="mobile-add-title" id="mobile-add-title">What would you like to add?</div>
+    <div id="mobile-add-options"></div>
+    <button class="mobile-add-cancel" type="button" onclick="closeMobileAddPicker()">Cancel</button>
+  </div>
+</div>
+
 <nav id="mobile-nav">
   <button class="mobile-nav-item active" id="mobile-nav-tasks" onclick="mobileNav('tasks')">
     <span class="nav-icon">☑</span>
@@ -3141,20 +3193,42 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Swap the bottom nav to V4 layout + reveal FAB if we're on /m. This runs
+// once at script-parse time — by now MOBILE_ESSENTIALS is set (app.js sets
+// it in its first IIFE), and the relevant DOM (#mobile-nav, #mobile-fab)
+// is already present above this script tag.
+if (window.MOBILE_ESSENTIALS && typeof applyMobileEssentials === 'function') {
+  applyMobileEssentials();
+}
+
 // ── Mobile nav ───────────────────────────────────────────────────────────────
 function mobileNav(view) {
   document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.remove('active'));
+  // V3 layout (Tasks / Calendar / Tools)
   if (view === 'tasks') {
-    document.getElementById('mobile-nav-tasks').classList.add('active');
+    document.getElementById('mobile-nav-tasks')?.classList.add('active');
     setView('all');
   } else if (view === 'calendar') {
-    document.getElementById('mobile-nav-calendar').classList.add('active');
+    document.getElementById('mobile-nav-calendar')?.classList.add('active');
     calViewType = 'day';
     setView('calendar-view');
   } else if (view === 'tools') {
-    document.getElementById('mobile-nav-tools').classList.add('active');
-    // Show tools sub-menu in drawer
+    document.getElementById('mobile-nav-tools')?.classList.add('active');
     openMobileDrawer('tools');
+  }
+  // V4 layout on /m (Today / All / Lists / Habits / More)
+  else if (view === 'today') {
+    document.getElementById('mobile-nav-today')?.classList.add('active');
+    setView('today');
+  } else if (view === 'all') {
+    document.getElementById('mobile-nav-all')?.classList.add('active');
+    setView('all');
+  } else if (view === 'lists') {
+    document.getElementById('mobile-nav-lists')?.classList.add('active');
+    setView('lists');
+  } else if (view === 'habits') {
+    document.getElementById('mobile-nav-habits')?.classList.add('active');
+    if (typeof showHabitsView === 'function') showHabitsView();
   }
 }
 
