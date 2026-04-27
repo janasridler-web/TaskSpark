@@ -1250,8 +1250,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
 /* ── Mobile / PWA ───────────────────────────────────────────────────────────── */
 @media(max-width:768px){
-  /* Safe area padding for notched phones */
-  body{padding-top:env(safe-area-inset-top)}
+  /* No body padding-top — iOS Safari's URL bar already covers the notch
+     area so the safe-area-inset padding was just stealing vertical
+     space. If the URL bar hides on scroll, the top of the screen briefly
+     shows under the notch; accepted trade-off for ~50px more space. */
 
   /* Hide desktop sidebar */
   #sidebar{display:none}
