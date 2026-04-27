@@ -1647,7 +1647,7 @@ function taskCardHTML(task) {
   return `
   <div class="${cardClass}" id="task-card-${task.id}">
     <div class="task-check-wrap">
-      <div class="task-checkbox ${task.completed?'checked':''}" ${ro ? '' : `onclick="toggleComplete(${task.id})"`} style="${ro ? 'pointer-events:none;opacity:0.4' : ''}">${task.completed?'✓':''}</div>
+      <button type="button" class="task-checkbox ${task.completed?'checked':''}" role="checkbox" aria-checked="${task.completed ? 'true' : 'false'}" aria-label="${task.completed ? 'Mark not done' : 'Mark done'}: ${esc(task.title)}" ${ro ? 'disabled' : `onclick="toggleComplete(${task.id})"`}>${task.completed?'✓':''}</button>
     </div>
     <div class="task-body">
       <div class="task-title" id="task-title-${task.id}" ${ro ? '' : `ondblclick="startInlineEdit(${task.id})"`}>${esc(task.title)}</div>
@@ -3485,7 +3485,7 @@ function renderSubtasksHTML(task) {
       ondragleave="onSubtaskDragLeave(event)"
       ondrop="onSubtaskDrop(event,${task.id},${s.id})">
       <span class="subtask-drag-handle">⠿</span>
-      <div class="subtask-check ${s.done?'checked':''}" onclick="toggleSubtask(${task.id},${s.id})">${s.done?'✓':''}</div>
+      <button type="button" class="subtask-check ${s.done?'checked':''}" role="checkbox" aria-checked="${s.done ? 'true' : 'false'}" aria-label="${s.done ? 'Mark subtask not done' : 'Mark subtask done'}: ${esc(s.title)}" onclick="toggleSubtask(${task.id},${s.id})">${s.done?'✓':''}</button>
       <span class="subtask-title ${s.done?'done':''}" ondblclick="startSubtaskEdit(${task.id},${s.id},this)">${esc(s.title)}</span>
       <button class="subtask-delete" onclick="deleteSubtask(${task.id},${s.id})">✕</button>
     </div>`
@@ -4034,10 +4034,10 @@ function renderFocusSubtasks(taskId) {
   }
   el.style.display = 'flex';
   el.innerHTML = task.subtasks.map(s => `
-    <div class="focus-sub-row" onclick="toggleFocusSubtask(${task.id}, ${s.id})">
-      <div class="focus-sub-check ${s.done ? 'done' : ''}">${s.done ? '✓' : ''}</div>
+    <button type="button" class="focus-sub-row" role="checkbox" aria-checked="${s.done ? 'true' : 'false'}" aria-label="${s.done ? 'Mark subtask not done' : 'Mark subtask done'}: ${esc(s.title)}" onclick="toggleFocusSubtask(${task.id}, ${s.id})">
+      <div class="focus-sub-check ${s.done ? 'done' : ''}" aria-hidden="true">${s.done ? '✓' : ''}</div>
       <div class="focus-sub-text ${s.done ? 'done' : ''}">${esc(s.title)}</div>
-    </div>
+    </button>
   `).join('');
 }
 
