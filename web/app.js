@@ -3911,20 +3911,26 @@ function tickTimer() {
 }
 
 function stopTimer() {
-  // Close the separate timer window — the 'timer-stopped' IPC event
-  // will fire back and handle saving + restoring the main window
+  // Save elapsed time to the task and reset all timer state.
+  // (On desktop this normally happens via the timer-stopped IPC event
+  // from the floating timer window; on web there's no IPC, so we save
+  // synchronously here.)
+  stopTimerSave();
   api.timerHide();
   hideFocusOverlay();
-  // Also clear local state immediately so UI updates
-  clearInterval(timerInterval); timerInterval = null;
+  hideInPageTimer();
   clearBreakTimer();
+  saveTasks();
+  renderAll();
 }
 
 function stopTimerSave() {
   if (!activeTimerId || !timerStart) return;
-  const elapsed = Math.floor(Date.now()/1000 - timerStart);
+  const elapsed = timerPaused
+    ? timerPausedElapsed
+    : Math.floor(Date.now()/1000 - timerStart) + timerPausedElapsed;
   const task    = tasks.find(t => t.id === activeTimerId);
-  if (task) {
+  if (task && elapsed > 0) {
     task.timeLogged = (task.timeLogged || 0) + elapsed;
     task.timeSessions = task.timeSessions || [];
     task.timeSessions.push({ start: new Date(timerStart*1000).toISOString(), elapsed });
@@ -3933,6 +3939,9 @@ function stopTimerSave() {
   timerInterval = null;
   activeTimerId = null;
   timerStart    = null;
+  timerPaused   = false;
+  timerPausedElapsed = 0;
+  timerPausedAt = null;
 }
 
 function cancelTimer() {
