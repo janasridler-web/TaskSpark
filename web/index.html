@@ -2778,17 +2778,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 </div>
 
 <script>
-  // Make web-timer-panel visible when active
-  const _origShowTimer = window.showInPageTimer;
-  document.getElementById('web-timer-panel').style.display = 'none';
-  function showInPageTimer(taskName, baseLogged) {
-    const panel = document.getElementById('web-timer-panel');
-    panel.style.display = 'block';
-    document.getElementById('wtp-task-name').textContent = taskName;
-  }
-  function hideInPageTimer() {
-    document.getElementById('web-timer-panel').style.display = 'none';
-  }
+  // Hide the in-page timer panel at startup; app.js's showInPageTimer
+  // shows it when a timer starts (and focus mode is off).
   // Make break prompt use flex when active
   const _origBreakPrompt = document.getElementById('web-break-prompt');
   const _observer = new MutationObserver(() => {

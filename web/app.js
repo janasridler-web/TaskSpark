@@ -446,17 +446,39 @@ function webBreakChoice(choice) {
   else snoozeBreak();
 }
 
-// ── In-page timer panel (replaces Electron's always-on-top timer window) ────
+// ── In-page timer panel (web's equivalent of desktop's floating window) ─────
 function showInPageTimer(taskName, baseLogged) {
   const panel = document.getElementById('web-timer-panel');
   const nameEl = document.getElementById('wtp-task-name');
-  if (panel) panel.classList.add('active');
+  if (!panel) return;
+  panel.style.display = 'block';
   if (nameEl) nameEl.textContent = taskName;
+  updateInPageTimer(baseLogged || 0);
+  updateInPageTimerPauseUI();
 }
 
 function hideInPageTimer() {
   const panel = document.getElementById('web-timer-panel');
-  if (panel) panel.classList.remove('active');
+  if (panel) panel.style.display = 'none';
+}
+
+function updateInPageTimer(totalSecs) {
+  const el = document.getElementById('wtp-time');
+  if (!el) return;
+  const t = Math.max(0, Math.floor(totalSecs || 0));
+  const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+  const pad = n => String(n).padStart(2, '0');
+  el.textContent = h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function updateInPageTimerPauseUI() {
+  const btn = document.getElementById('wtp-pause-btn');
+  if (btn) btn.textContent = timerPaused ? '▶ Resume' : '⏸ Pause';
+}
+
+function toggleTimerPause() {
+  if (timerPaused) resumeTimer();
+  else pauseTimer();
 }
 
 // ── Handle OAuth callback (code in URL params after redirect) ───────────────
@@ -3861,6 +3883,7 @@ function toggleTimer(id) {
   });
 
   if (settings.focusModeEnabled) showFocusOverlay(task);
+  else                            showInPageTimer(task.title, task.timeLogged || 0);
 
   // Start local tick for task card badge updates
   timerInterval = setInterval(tickTimer, 1000);
@@ -3883,6 +3906,7 @@ function pauseTimer() {
   // Only reset the break countdown — task time is preserved
   clearBreakTimer();
   updateFocusPauseUI();
+  updateInPageTimerPauseUI();
 }
 
 function resumeTimer() {
@@ -3895,6 +3919,7 @@ function resumeTimer() {
   // Restart break countdown from zero (fresh work session after pause)
   scheduleBreak();
   updateFocusPauseUI();
+  updateInPageTimerPauseUI();
 }
 
 function tickTimer() {
@@ -3906,8 +3931,9 @@ function tickTimer() {
   // Update live badge in task card
   const badge = document.getElementById(`time-badge-${activeTimerId}`);
   if (badge) badge.textContent = `◷ ${fmtSecs(total)}`;
-  // Mirror time onto the focus overlay if it's active
+  // Mirror onto whichever timer surface is active
   updateFocusTime(total);
+  updateInPageTimer(total);
 }
 
 function stopTimer() {
