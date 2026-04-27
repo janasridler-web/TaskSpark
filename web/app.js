@@ -5952,6 +5952,112 @@ function renderStatsStreakPanel(start, end, totalDays) {
     <div class="stats-stat-row"><div class="stats-stat-label">Avg per active day</div><div class="stats-stat-value">${s.avgPerActiveDay.toFixed(1)} tasks</div></div>`;
 }
 
+function renderStatsCreatedVsCompletedCard(start, end, daysInRange) {
+  if (daysInRange < 14) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div><div class="stats-card-hint">Weekly</div></div><div class="stats-empty-msg">Not enough history yet — needs at least 14 days of data.</div></div>`;
+  }
+  const { completedBuckets, createdBuckets } = statsCalcCreatedVsCompleted(start, end);
+  const allKeys = [];
+  const wCur = new Date(start); wCur.setDate(wCur.getDate() - wCur.getDay());
+  const wEnd = new Date(end);
+  while (wCur <= wEnd) { allKeys.push(dateToLocalStr(wCur)); wCur.setDate(wCur.getDate()+7); }
+  if (!allKeys.length) return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div></div><div class="stats-empty-msg">No data for this period.</div></div>`;
+  const cVals = allKeys.map(k=>completedBuckets[k]||0);
+  const crVals = allKeys.map(k=>createdBuckets[k]||0);
+  const maxVal = Math.max(...cVals,...crVals,1);
+  const PL=28,PT=8,PB=20,W=560,H=155,TW=PL+W,TH=PT+H+PB;
+  const base=(PT+H).toFixed(1);
+  const grid=`<line x1="${PL}" y1="${base}" x2="${TW}" y2="${base}" stroke="var(--border2)" stroke-width="1"/>`;
+  const labelAt = allKeys.length<=5?allKeys.map((_,i)=>i):[0,Math.floor(allKeys.length/2),allKeys.length-1];
+  const xP = i=>PL+(allKeys.length<=1?W/2:(i/(allKeys.length-1))*W);
+  const labels = labelAt.map(i=>{
+    const d=new Date(allKeys[i]+'T00:00:00');
+    return `<text x="${xP(i).toFixed(1)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</text>`;
+  }).join('');
+  const dots = cVals.map((_,i)=>`<circle cx="${xP(i).toFixed(1)}" cy="${(PT+H-(cVals[i]/maxVal)*H).toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
+  const legend=`<text x="${TW-80}" y="14" fill="var(--text2)" font-size="11">— Completed</text><text x="${TW-80}" y="26" fill="var(--amber)" font-size="11">- - Created</text>`;
+  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-label="Created vs completed tasks over time">${grid}${statsLineSvg(crVals,maxVal,'var(--amber)',W,H,PL,PT,PB,true)}${statsLineSvg(cVals,maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${dots}${labels}${legend}</svg>`;
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Created vs completed</div><div class="stats-card-hint">Weekly</div></div>${svg}</div>`;
+}
+
+function renderStatsDowCard(start, end, daysInRange) {
+  if (daysInRange < 14) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">By day of week</div><div class="stats-card-hint">Tasks completed</div></div><div class="stats-empty-msg">Not enough history yet — needs at least 14 days of data.</div></div>`;
+  }
+  const counts = statsCalcDayOfWeek(start, end);
+  const days = settings.streakWeekends ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] : ['Mon','Tue','Wed','Thu','Fri'];
+  const maxVal = Math.max(...days.map(d => counts[d]||0), 1);
+  const bars = days.map(d=>`<div class="stats-dow-row"><div class="stats-dow-label">${d}</div><div class="stats-dow-track"><div class="stats-dow-fill" style="width:${Math.round((counts[d]||0)/maxVal*100)}%"></div></div><div class="stats-dow-val">${counts[d]||0}</div></div>`).join('');
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">By day of week</div><div class="stats-card-hint">Tasks completed</div></div><div class="stats-dow-bars">${bars}</div></div>`;
+}
+
+function renderStatsHeatmapCard(start, end) {
+  const totalSessions = tasks.reduce((n,t)=>n+statsSessionsInRange(t,start,end).length,0);
+  if (totalSessions < 10) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">When you're most productive</div><div class="stats-card-hint">Time tracked by hour</div></div><div class="stats-empty-msg">Not enough sessions yet — needs at least 10 timer sessions.</div></div>`;
+  }
+  const { grid, intensity } = statsCalcHeatmap(start, end);
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const cells = days.map(day=>{
+    const label = `<div class="stats-hm-label">${day}</div>`;
+    const cols = grid[day].map((v,h)=>`<div class="stats-hm-cell"${intensity(v)>0?` data-v="${intensity(v)}"`:''} title="${day} ${h}:00 — ${v}m"></div>`).join('');
+    return label+cols;
+  }).join('');
+  const legend=`<div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--text2)"><span>Less</span><div style="width:10px;height:10px;background:var(--surface2);border-radius:2px"></div><div style="width:10px;height:10px;background:color-mix(in srgb,var(--accent) 25%,var(--surface2));border-radius:2px"></div><div style="width:10px;height:10px;background:color-mix(in srgb,var(--accent) 50%,var(--surface2));border-radius:2px"></div><div style="width:10px;height:10px;background:color-mix(in srgb,var(--accent) 75%,var(--surface2));border-radius:2px"></div><div style="width:10px;height:10px;background:var(--accent);border-radius:2px"></div><span>More</span></div>`;
+  const hmGrid=`<div class="stats-heatmap">${cells}</div>`;
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">When you're most productive</div><div class="stats-card-hint">Time tracked by hour</div></div>${hmGrid}${legend}</div>`;
+}
+
+function renderStatsTimeByTagCard(start, end) {
+  const { sorted, untaggedSecs } = statsCalcTimeByTag(start, end);
+  if (!sorted.length && !untaggedSecs) {
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div><div class="stats-empty-msg">No tagged tasks with tracked time yet.</div></div>`;
+  }
+  const rows = sorted.map(([tag,secs])=>`<div class="stats-tag-row"><div class="stats-tag-name">${esc(tag)}</div><div class="stats-tag-time">${statsFmtTime(secs)}</div></div>`).join('');
+  const untagged = untaggedSecs ? `<div class="stats-tag-row"><div class="stats-tag-name untagged">Untagged</div><div class="stats-tag-time">${statsFmtTime(untaggedSecs)}</div></div>` : '';
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div>${rows}${untagged}</div>`;
+}
+
+function renderStatsEstimateBreakdownCard(start, end) {
+  const bd = statsCalcEstimateBreakdown(start, end);
+  if (!bd.total) return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimate accuracy breakdown</div></div><div class="stats-empty-msg">No eligible tasks yet.</div></div>`;
+  const earlyPct = Math.round(bd.earlyCount/bd.total*100);
+  const onPct    = Math.round(bd.onCount/bd.total*100);
+  const overPct  = 100-earlyPct-onPct;
+  return `<div class="stats-card">
+    <div class="stats-card-header"><div class="stats-card-title">Estimate accuracy breakdown</div><div class="stats-card-hint">${bd.total} completed tasks had estimates</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">On estimate <span style="font-size:11px;color:var(--text3)">(within ±20%)</span></div><div class="stats-stat-value" style="color:var(--accent)">${bd.onCount} tasks</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Finished early <span style="font-size:11px;color:var(--text3)">(20%+ under)</span></div><div class="stats-stat-value">${bd.earlyCount} tasks</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Ran over <span style="font-size:11px;color:var(--text3)">(20%+ over)</span></div><div class="stats-stat-value" style="color:var(--amber)">${bd.overCount} tasks</div></div>
+    <div class="stats-estimate-bar" style="margin-top:14px">
+      <div class="stats-estimate-bar-early" style="width:${earlyPct}%"></div>
+      <div class="stats-estimate-bar-on" style="width:${onPct}%"></div>
+      <div class="stats-estimate-bar-over" style="width:${overPct}%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px"><span>Early</span><span>On estimate</span><span>Over</span></div>
+  </div>`;
+}
+
+function renderStatsScatterCard(start, end) {
+  const points = statsCalcEstimateScatter(start, end);
+  if (!points.length) return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimated vs actual</div></div><div class="stats-empty-msg">No eligible tasks yet.</div></div>`;
+  const maxVal = Math.max(...points.flatMap(p=>[p.estimate,p.actual]),30);
+  const ceil = maxVal<=60?60:maxVal<=120?120:maxVal<=240?240:Math.ceil(maxVal/60)*60;
+  const PL=30,PT=8,PB=24,W=550,H=155,TW=PL+W,TH=PT+H+PB;
+  const xP = v=>PL+(v/ceil)*W;
+  const yP = v=>PT+H-(v/ceil)*H;
+  const ideal=`<path d="M ${xP(0)},${yP(0)} L ${xP(ceil)},${yP(ceil)}" stroke="var(--border2)" stroke-width="1.5" stroke-dasharray="4,4"/>`;
+  const idealLabel=`<text x="${xP(ceil*0.7)}" y="${yP(ceil*0.7)-5}" fill="var(--text3)" font-size="9">ideal (estimate = actual)</text>`;
+  const dots=points.map(p=>`<circle cx="${xP(p.estimate).toFixed(1)}" cy="${yP(p.actual).toFixed(1)}" r="3.5" fill="${p.onBand?'var(--accent)':'var(--amber)'}" opacity="0.75"/>`).join('');
+  const axes=`<line x1="${PL}" y1="${PT+H}" x2="${TW}" y2="${PT+H}" stroke="var(--border2)" stroke-width="1"/>
+    <text x="${PL}" y="${TH}" fill="var(--text3)" font-size="10">0</text>
+    <text x="${xP(ceil/2)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">Estimated (min) →</text>
+    <text x="${TW}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="end">${ceil}</text>
+    <text x="${PL+2}" y="${PT+10}" fill="var(--text3)" font-size="10">↑ Actual</text>`;
+  const svg=`<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-label="Estimate vs actual time spent">${ideal}${idealLabel}${dots}${axes}</svg>`;
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimated vs actual</div><div class="stats-card-hint">Each dot is a completed task</div></div>${svg}</div>`;
+}
+
 function renderStatsView() {
   const container = document.getElementById('stats-container');
   if (!container) return;
@@ -5965,12 +6071,25 @@ function renderStatsView() {
 
   const { start, end, totalDays } = statsDateRange(range);
   const profile = statsDetectProfile(start, end);
+  const daysInRange = Math.round((end - start) / 86400000);
   const noData = statsCompletedInRange(start, end).length === 0;
 
   let rows = '';
   if (noData) rows += `<div class="stats-empty-range">No completed tasks in this period — numbers will fill in once you start wrapping things up.</div>`;
+  // Always: throughput + streak panel.
   rows += `<div class="stats-grid" style="margin-bottom:16px">${renderStatsThroughputCard(start, end, range)}<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Streak</div></div>${renderStatsStreakPanel(start, end, totalDays)}</div></div>`;
-  rows += `<div class="stats-empty-msg">More cards (created vs completed, day of week, heatmap, time by tag, estimate accuracy) land in the next update.</div>`;
+  // Range-gated: created-vs-completed + day-of-week need at least 14 days
+  // of history to make sense. Hidden for the 7d range entirely.
+  if (range !== '7d') rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsCreatedVsCompletedCard(start, end, daysInRange)}${renderStatsDowCard(start, end, daysInRange)}</div>`;
+  // Profile-gated: heatmap + time-by-tag need timer sessions (TIMER+).
+  if (profile !== 'PROFILE_BASIC') {
+    rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsHeatmapCard(start, end)}${renderStatsTimeByTagCard(start, end)}</div>`;
+  }
+  // Profile-gated: estimate breakdown + scatter need timer sessions and
+  // estimates on >= 3 completed tasks (FULL).
+  if (profile === 'PROFILE_FULL') {
+    rows += `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">${renderStatsEstimateBreakdownCard(start, end)}${renderStatsScatterCard(start, end)}</div>`;
+  }
 
   container.innerHTML = `<div class="stats-page">${header}${statsKpiRow(profile, start, end, range)}${rows}<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div></div>`;
 }
