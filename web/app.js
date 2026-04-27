@@ -10,6 +10,11 @@ const CACHE_KEY   = 'taskspark_cache';
 //      auto-redirect, which uses /m/ as the destination).
 // Once detected, we put /m/ back in the address bar via history.replaceState
 // so the URL stays clean and shareable.
+//
+// Note: we deliberately do NOT auto-persist preferredView=mobile here. That
+// flag is only set when the user explicitly clicks the View Mode override
+// buttons in Settings — otherwise just visiting /m once would silently lock
+// them onto the mobile route on every future visit.
 (function detectMobileMode(){
   try {
     var params = new URLSearchParams(location.search);
@@ -17,7 +22,6 @@ const CACHE_KEY   = 'taskspark_cache';
     var fromPath = location.pathname === '/m' || location.pathname === '/m/';
     if (fromFlag || fromPath) {
       window.MOBILE_ESSENTIALS = true;
-      try { localStorage.setItem('preferredView', 'mobile'); } catch(_){}
       try { history.replaceState(null, '', '/m/'); } catch(_){}
     }
   } catch(_){}
