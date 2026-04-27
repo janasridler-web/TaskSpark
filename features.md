@@ -74,10 +74,6 @@ TaskSpark is minimised.
 ### Undo / Redo
 **Desktop · V3.5** — Ctrl+Z, up to 20 steps.
 
-### Task Breakdown Helper
-**Desktop · V3.5** — "Break it down" button on a task asks an AI for 4–6
-concrete subtasks. Edit and tick before applying.
-
 ---
 
 ## Focus & Productivity
