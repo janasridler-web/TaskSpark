@@ -1276,6 +1276,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
      than the viewport. */
   input[type="time"],input[type="date"],input[type="datetime-local"]{
     min-width:0;max-width:100%;box-sizing:border-box}
+  /* Stack two-column form rows on phones — each field gets the full
+     row width, sidestepping iOS native input min-widths entirely
+     and giving the form more breathing room. */
+  .form-row{grid-template-columns:1fr}
   .tag-text-input{font-size:16px !important}
   .break-timing-item input{font-size:16px !important}
   .btn-whatnow{font-size:13px;padding:7px 12px}
