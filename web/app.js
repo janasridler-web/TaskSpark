@@ -63,7 +63,7 @@ function applyMobileEssentials() {
         <span>+</span>
       </button>
       <button class="mobile-nav-item" id="mobile-nav-lists" onclick="mobileNav('lists')">
-        <span class="nav-icon">☑</span><span>Lists</span>
+        <span class="nav-icon">▤</span><span>Lists</span>
       </button>
       <button class="mobile-nav-item" id="mobile-nav-more" onclick="openMobileDrawer()">
         <span class="nav-icon">···</span><span>More</span>
@@ -6266,7 +6266,7 @@ function renderLists() {
         <button class="btn-primary" onclick="openListModal()">+ New List</button>
       </div>
       <div class="lists-empty">
-        <div class="lists-empty-icon" aria-hidden="true">≡</div>
+        <div class="lists-empty-icon" aria-hidden="true">▤</div>
         <div class="lists-empty-text">No lists yet</div>
         <div class="lists-empty-sub">Create a list to keep track of anything — shopping, reading, errands…</div>
       </div>`;
