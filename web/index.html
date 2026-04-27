@@ -1743,7 +1743,10 @@ body.mobile-essentials input#import-file-input{display:none}
    /m when the current view is one of those three. */
 #mobile-task-toggle{display:none}
 body.mobile-essentials #mobile-task-toggle.show{
-  display:flex;gap:6px;padding:14px 12px 4px;justify-content:center}
+  display:flex;gap:6px;padding:6px 12px 4px;justify-content:center}
+/* /m: tighten the top of the task list area so the toggle pills sit
+   close to the URL bar — every pixel matters on a phone. */
+body.mobile-essentials #task-list-container{padding-top:0}
 .mobile-task-toggle-btn{
   flex:1;max-width:120px;padding:8px 10px;font-size:13px;font-weight:600;
   font-family:'Outfit',sans-serif;border:1px solid var(--border);
