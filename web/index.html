@@ -2108,6 +2108,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <div><div class="setting-label">Preview chime</div><div class="setting-desc">Hear the break sound</div></div>
               <button class="btn-sound preview" onclick="previewSound()">▶ Preview</button>
             </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Browser notification on break</div><div class="setting-desc">Show a system notification so you see the break alert even when TaskSpark is in another tab</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-browser-notifications" onchange="onNotificationsToggle(this)"><span class="toggle-slider"></span></label>
+            </div>
           </div>
         </div>
 

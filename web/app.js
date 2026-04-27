@@ -435,6 +435,7 @@ function safeJSON(str, fallback) {
 // ── In-page break prompt (replaces Electron's always-on-top window) ─────────
 function showInPageBreakPrompt() {
   playBreakSound();
+  notify('Time for a break!', "You've been working for a while. Step away for a few minutes.");
   const overlay = document.getElementById('web-break-prompt');
   if (overlay) overlay.classList.add('active');
 }
@@ -479,6 +480,57 @@ function updateInPageTimerPauseUI() {
 function toggleTimerPause() {
   if (timerPaused) resumeTimer();
   else pauseTimer();
+}
+
+// ── Browser notifications ────────────────────────────────────────────────────
+function isIOSWithoutPWA() {
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1);
+  if (!isIOS) return false;
+  const standalone = window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+  return !standalone;
+}
+
+async function onNotificationsToggle(checkbox) {
+  if (!checkbox.checked) {
+    settings.browserNotificationsEnabled = false;
+    return;
+  }
+  if (!('Notification' in window)) {
+    showToast('This browser does not support notifications');
+    checkbox.checked = false;
+    settings.browserNotificationsEnabled = false;
+    return;
+  }
+  if (isIOSWithoutPWA()) {
+    showToast('Install TaskSpark to your home screen first to get notifications on iOS');
+    checkbox.checked = false;
+    settings.browserNotificationsEnabled = false;
+    return;
+  }
+  try {
+    const result = await Notification.requestPermission();
+    if (result === 'granted') {
+      settings.browserNotificationsEnabled = true;
+    } else {
+      showToast('Allow notifications in your browser to enable this');
+      checkbox.checked = false;
+      settings.browserNotificationsEnabled = false;
+    }
+  } catch (e) {
+    showToast('Could not request notification permission');
+    checkbox.checked = false;
+    settings.browserNotificationsEnabled = false;
+  }
+}
+
+function notify(title, body, opts = {}) {
+  if (!settings.browserNotificationsEnabled) return;
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, { body, icon: 'assets/icon-192.png', tag: 'taskspark', ...opts });
+  } catch {}
 }
 
 // Favicon "timer running" indicator — visible in the browser tab strip
@@ -738,6 +790,7 @@ const DEFAULT_SETTINGS = {
   deferEnabled:      false,
   tagCustomColorsEnabled: false,
   tagColors:         {},
+  browserNotificationsEnabled: false,
 };
 let settings = { ...DEFAULT_SETTINGS };
 
@@ -1160,6 +1213,55 @@ async function ensureToken() {
   } catch (e) {
     console.warn('Token refresh failed:', e);
   }
+}
+
+// ── Centralised fetch wrapper for Google + Microsoft API calls ──────────────
+// Adds the Authorization header automatically (when called for a Google or
+// Graph endpoint), refreshes the token on 401 once and retries, and surfaces
+// non-OK responses or network failures as a toast. Existing call sites can
+// migrate to apiFetch gradually; new code should use it from day one.
+async function apiFetch(url, options = {}) {
+  const isGoogle = /googleapis\.com|accounts\.google\.com/.test(url);
+  const isGraph  = /graph\.microsoft\.com|login\.microsoftonline\.com/.test(url);
+  const needsAuth = isGoogle || isGraph;
+  const opts = { ...options, headers: { ...(options.headers || {}) } };
+
+  if (needsAuth) {
+    if (isGoogle) await ensureToken();
+    if (accessToken && !opts.headers.Authorization && !opts.headers.authorization) {
+      opts.headers.Authorization = 'Bearer ' + accessToken;
+    }
+  }
+
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (err) {
+    showToast('Network error. Check your connection and try again.');
+    throw err;
+  }
+
+  // Retry once on 401 by refreshing the token (Google only — Graph uses its
+  // own refresh path which lives elsewhere).
+  if (res.status === 401 && isGoogle && refreshToken) {
+    try {
+      const tokens = await api.oauthRefresh({ refreshToken });
+      if (tokens && tokens.access_token) {
+        accessToken = tokens.access_token;
+        tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
+        await api.saveConfig({ accessToken, tokenExpiry });
+        opts.headers.Authorization = 'Bearer ' + accessToken;
+        res = await fetch(url, opts);
+      }
+    } catch (err) {
+      console.warn('apiFetch: token refresh on 401 failed', err);
+    }
+  }
+
+  if (!res.ok) {
+    showToast('Sync failed (HTTP ' + res.status + '). Some changes may not have saved.');
+  }
+  return res;
 }
 
 async function signOut() {
@@ -4419,6 +4521,7 @@ async function openSettings() {
   if (document.getElementById('set-calendar-enabled')) document.getElementById('set-calendar-enabled').checked = s.calendarEnabled !== false;
   if (document.getElementById('set-defer-enabled')) document.getElementById('set-defer-enabled').checked = s.deferEnabled === true;
   if (document.getElementById('set-focus-mode-enabled')) document.getElementById('set-focus-mode-enabled').checked = s.focusModeEnabled === true;
+  if (document.getElementById('set-browser-notifications')) document.getElementById('set-browser-notifications').checked = s.browserNotificationsEnabled === true;
   if (document.getElementById('set-tag-custom-colors')) document.getElementById('set-tag-custom-colors').checked = s.tagCustomColorsEnabled === true;
   if (typeof toggleTagColorSection === 'function') toggleTagColorSection();
   if (document.getElementById('set-sod-enabled'))         document.getElementById('set-sod-enabled').checked         = s.sodEnabled !== false;
@@ -4762,6 +4865,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-calendar-enabled')) settings.calendarEnabled = document.getElementById('set-calendar-enabled').checked;
   if (document.getElementById('set-defer-enabled')) settings.deferEnabled = document.getElementById('set-defer-enabled').checked;
   if (document.getElementById('set-focus-mode-enabled')) settings.focusModeEnabled = document.getElementById('set-focus-mode-enabled').checked;
+  if (document.getElementById('set-browser-notifications')) settings.browserNotificationsEnabled = document.getElementById('set-browser-notifications').checked;
   if (document.getElementById('set-tag-custom-colors')) settings.tagCustomColorsEnabled = document.getElementById('set-tag-custom-colors').checked;
   if (document.getElementById('set-break-enabled-general')) settings.breakEnabled = document.getElementById('set-break-enabled-general').checked;
   if (document.getElementById('set-budget-enabled'))  settings.budgetEnabled   = document.getElementById('set-budget-enabled').checked;
