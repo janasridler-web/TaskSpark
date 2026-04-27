@@ -1985,7 +1985,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="settings-section-title">Task Fields</div>
             <div class="setting-row">
               <div><div class="setting-label">Tags</div><div class="setting-desc">Tag tasks and filter by tag in the sidebar</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-tags"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="set-tags" onchange="settings.tagsEnabled = this.checked; applySettings()"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Task status</div><div class="setting-desc">Track status on tasks (Not Started, In Progress, Blocked, etc.)</div></div>
@@ -1993,13 +1993,13 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Due date</div><div class="setting-desc">Set due dates on tasks with calendar picker</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-due-enabled"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="set-due-enabled" onchange="settings.dueEnabled = this.checked; applySettings()"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Due time</div><div class="setting-desc">Add a specific time alongside the due date</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-due-time-enabled"><span class="toggle-slider"></span></label>
             </div>
-            <div class="setting-row">
+            <div class="setting-row" id="defer-setting-row">
               <div><div class="setting-label">Hide-until (Defer)</div><div class="setting-desc">Hide tasks until N days before their due date — adds a Deferred view in the sidebar</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-defer-enabled" onchange="settings.deferEnabled = this.checked; toggleDeferSidebarItem(); renderAll()"><span class="toggle-slider"></span></label>
             </div>
@@ -2243,7 +2243,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
-          <div class="settings-section">
+          <div class="settings-section" id="tag-colours-settings-section">
             <div class="settings-section-title">Tag Colours</div>
             <div class="setting-row">
               <div><div class="setting-label">Custom tag colours</div><div class="setting-desc">Choose a colour for each of your tags instead of using the auto-assigned palette</div></div>

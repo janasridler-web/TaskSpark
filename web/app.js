@@ -4108,6 +4108,12 @@ function applySettings() {
   if (deferredSidebar) deferredSidebar.style.display = s.deferEnabled ? '' : 'none';
   const hideUntilGroup = document.getElementById('hide-until-form-group');
   if (hideUntilGroup) hideUntilGroup.style.display = (s.deferEnabled && !!modalDue) ? '' : 'none';
+  // Defer setting row depends on dueEnabled — hidden when due dates are off
+  const deferSettingRow = document.getElementById('defer-setting-row');
+  if (deferSettingRow) deferSettingRow.style.display = s.dueEnabled !== false ? '' : 'none';
+  // Tag Colours settings section depends on tagsEnabled
+  const tagColoursSection = document.getElementById('tag-colours-settings-section');
+  if (tagColoursSection) tagColoursSection.style.display = s.tagsEnabled ? '' : 'none';
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
