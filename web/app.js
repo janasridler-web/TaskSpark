@@ -508,16 +508,31 @@ async function onNotificationsToggle(checkbox) {
     settings.browserNotificationsEnabled = false;
     return;
   }
+  // If the user previously denied permission, the browser won't show the
+  // prompt again — they have to clear it in browser settings.
+  if (Notification.permission === 'denied') {
+    showToast('Notifications are blocked. Click the lock icon in the address bar to allow them.');
+    checkbox.checked = false;
+    settings.browserNotificationsEnabled = false;
+    return;
+  }
   try {
     const result = await Notification.requestPermission();
+    console.log('[notifications] requestPermission result:', result);
     if (result === 'granted') {
       settings.browserNotificationsEnabled = true;
+    } else if (result === 'denied') {
+      showToast('Notifications are blocked. Click the lock icon in the address bar to allow them.');
+      checkbox.checked = false;
+      settings.browserNotificationsEnabled = false;
     } else {
-      showToast('Allow notifications in your browser to enable this');
+      // 'default' — user dismissed without choosing
+      showToast('You need to allow notifications to enable this');
       checkbox.checked = false;
       settings.browserNotificationsEnabled = false;
     }
   } catch (e) {
+    console.warn('[notifications] requestPermission threw:', e);
     showToast('Could not request notification permission');
     checkbox.checked = false;
     settings.browserNotificationsEnabled = false;
@@ -4359,6 +4374,9 @@ function applySettings() {
   // Tag Colours settings section depends on tagsEnabled
   const tagColoursSection = document.getElementById('tag-colours-settings-section');
   if (tagColoursSection) tagColoursSection.style.display = s.tagsEnabled ? '' : 'none';
+  // Break sub-settings depend on breakEnabled
+  const breakSub = document.getElementById('break-sub-settings');
+  if (breakSub) breakSub.style.display = s.breakEnabled ? '' : 'none';
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
@@ -4807,15 +4825,14 @@ function getRecurrenceFromUI() {
 
 function toggleBreakFeatureTab() {
   const enabled = document.getElementById('set-break-enabled-general')?.checked;
+  // Hide all break sub-settings (timing inputs, sound toggle, preview button,
+  // browser-notification toggle) when the master Break Reminders is off.
+  const sub = document.getElementById('break-sub-settings');
+  if (sub) sub.style.display = enabled ? '' : 'none';
+  // Legacy: was used to manage the old Feature Settings sub-tab visibility.
+  // Kept null-safe for the unlikely case that DOM still has it.
   const timerSubBtn = document.querySelector('.feature-sub-btn[onclick*="timer"]');
   if (timerSubBtn) timerSubBtn.style.display = enabled ? '' : 'none';
-  if (!enabled) {
-    const timerTab = document.getElementById('feature-tab-timer');
-    if (timerTab && timerTab.classList.contains('active')) {
-      const nextBtn = document.querySelector('.feature-sub-btn:not([style*="none"])');
-      if (nextBtn) switchFeatureTab(nextBtn.getAttribute('onclick').match(/'([^']+)'/)[1], nextBtn);
-    }
-  }
 }
 
 function toggleBreakInputs() {

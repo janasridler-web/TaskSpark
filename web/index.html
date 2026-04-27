@@ -2096,21 +2096,23 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <div><div class="setting-label">Break reminders</div><div class="setting-desc">Prompt to take a break after working for a set time</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-break-enabled-general" onchange="toggleBreakFeatureTab()"><span class="toggle-slider"></span></label>
             </div>
-            <div class="break-timing-row" id="break-timing-row">
-              <div class="break-timing-item"><label>Work before break (minutes)</label><input type="number" id="set-break-interval" min="1" max="120" value="30"></div>
-              <div class="break-timing-item"><label>Break duration (minutes)</label><input type="number" id="set-break-duration" min="1" max="60" value="5"></div>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Play sound on break</div><div class="setting-desc">Play a chime when the break prompt appears</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-sound-enabled"><span class="toggle-slider"></span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Preview chime</div><div class="setting-desc">Hear the break sound</div></div>
-              <button class="btn-sound preview" onclick="previewSound()">▶ Preview</button>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Browser notification on break</div><div class="setting-desc">Show a system notification so you see the break alert even when TaskSpark is in another tab</div></div>
-              <label class="toggle-switch"><input type="checkbox" id="set-browser-notifications" onchange="onNotificationsToggle(this)"><span class="toggle-slider"></span></label>
+            <div id="break-sub-settings">
+              <div class="break-timing-row" id="break-timing-row">
+                <div class="break-timing-item"><label>Work before break (minutes)</label><input type="number" id="set-break-interval" min="1" max="120" value="30"></div>
+                <div class="break-timing-item"><label>Break duration (minutes)</label><input type="number" id="set-break-duration" min="1" max="60" value="5"></div>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Play sound on break</div><div class="setting-desc">Play a chime when the break prompt appears</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-sound-enabled"><span class="toggle-slider"></span></label>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Preview chime</div><div class="setting-desc">Hear the break sound</div></div>
+                <button class="btn-sound preview" onclick="previewSound()">▶ Preview</button>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Browser notification on break</div><div class="setting-desc">Show a system notification so you see the break alert even when TaskSpark is in another tab</div></div>
+                <label class="toggle-switch"><input type="checkbox" id="set-browser-notifications" onchange="onNotificationsToggle(this)"><span class="toggle-slider"></span></label>
+              </div>
             </div>
           </div>
         </div>
