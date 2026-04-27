@@ -1438,12 +1438,20 @@ function undo() {
   showToast(`↩ Undid: ${desc}`);
 }
 
-function showToast(msg) {
-  const lbl = document.getElementById('sync-lbl');
-  const prevText  = lbl.textContent;
-  const prevColor = lbl.style.color;
-  lbl.textContent = msg; lbl.style.color = 'var(--accent)';
-  setTimeout(() => { lbl.textContent = prevText; lbl.style.color = prevColor; }, 2500);
+function showToast(msg, opts = {}) {
+  const region = document.getElementById('toast-region');
+  if (!region) return;
+  const el = document.createElement('div');
+  el.className = 'toast-msg' + (opts.error ? ' error' : '');
+  el.textContent = msg;
+  region.appendChild(el);
+  // Fade-in on next frame; remove after a short stay.
+  requestAnimationFrame(() => el.classList.add('show'));
+  const stay = opts.duration || 3000;
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 250);
+  }, stay);
 }
 
 function showUpdateBanner(version) {

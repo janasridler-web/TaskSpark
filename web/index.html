@@ -1637,9 +1637,25 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .stats-estimate-bar-on{background:var(--accent)}
 .stats-estimate-bar-over{background:var(--amber)}
 
+/* Dedicated toast region (U16) — top-center, accent pill, fades after 3s.
+   role="status" + aria-live="polite" so screen readers announce. */
+#toast-region{position:fixed;top:14px;left:50%;transform:translateX(-50%);
+  z-index:10000;display:flex;flex-direction:column;align-items:center;gap:8px;
+  pointer-events:none}
+.toast-msg{background:var(--accent);color:#fff;font-size:13px;font-weight:600;
+  padding:9px 18px;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.18);
+  max-width:90vw;line-height:1.4;text-align:center;
+  opacity:0;transform:translateY(-6px);transition:opacity .2s,transform .2s;
+  pointer-events:auto}
+.toast-msg.show{opacity:1;transform:translateY(0)}
+.toast-msg.error{background:var(--red,#c0392b)}
+
 </style>
 </head>
 <body>
+<!-- Toast region (U16) — see showToast() in app.js -->
+<div id="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
+
 <!-- Update banner — shown when a new service worker has taken over -->
 <div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;background:var(--accent);color:#fff;font-size:13px;font-weight:600;padding:8px 20px;z-index:999;align-items:center;justify-content:space-between;gap:12px">
   <span>✨ TaskSpark has updated — refresh to get the latest.</span>
@@ -3056,7 +3072,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
         <img src="assets/taskspark_sidebar.png" style="height:24px" alt="">
         <span style="font-weight:700;font-size:15px;color:var(--text)">TaskSpark</span>
       </div>
-      <button onclick="closeMobileDrawer()" style="background:none;border:none;font-size:20px;color:var(--text3);cursor:pointer;padding:4px">✕</button>
+      <button onclick="closeMobileDrawer()" aria-label="Close menu" style="background:none;border:none;font-size:20px;color:var(--text3);cursor:pointer;padding:4px">✕</button>
     </div>
     <!-- Drawer nav items injected by JS -->
     <div id="mobile-drawer-nav"></div>
@@ -3228,7 +3244,7 @@ function filterByPriority(p) {
     <div class="modal" style="max-width:400px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div class="modal-title" style="margin:0">New Workspace</div>
-        <button class="btn-icon" onclick="closeNewWorkspaceModal()" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
+        <button class="btn-icon" onclick="closeNewWorkspaceModal()" aria-label="Close" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
       </div>
       <p style="color:var(--text2);font-size:13px;margin:0 0 16px;line-height:1.5">
         A new Google Sheet will be created in your Drive for this workspace.
@@ -3254,7 +3270,7 @@ function filterByPriority(p) {
     <div class="modal" style="max-width:460px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
         <div class="modal-title" style="margin:0">Manage Workspaces</div>
-        <button onclick="closeManageWorkspacesModal()" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
+        <button onclick="closeManageWorkspacesModal()" aria-label="Close" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
       </div>
       <div id="ws-manage-list"></div>
       <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:16px">
@@ -3274,7 +3290,7 @@ function filterByPriority(p) {
     <div class="modal" style="max-width:460px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div class="modal-title" style="margin:0">Add Shared Workspace</div>
-        <button onclick="closeAddSharedWorkspaceModal()" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
+        <button onclick="closeAddSharedWorkspaceModal()" aria-label="Close" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
       </div>
       <div style="margin-bottom:14px">
         <button onclick="toggleSharedWorkspaceHowTo()" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:13px;padding:0;display:flex;align-items:center;gap:6px">
