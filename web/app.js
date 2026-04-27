@@ -5177,10 +5177,12 @@ function showHabitsView() {
   document.getElementById('kanban-container').style.display = 'none';
   document.getElementById('ideas-container').classList.remove('active');
   document.getElementById('wins-container').classList.remove('active');
+  document.getElementById('lists-container')?.classList.remove('active');
+  document.getElementById('stats-container')?.classList.remove('active');
   const bvcH = document.getElementById('budget-view-container'); if (bvcH) bvcH.classList.remove('active');
   const cvcH = document.getElementById('calendar-view-container'); if (cvcH) { cvcH.classList.remove('active'); }
   document.getElementById('habits-container').classList.add('active');
-  kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+  kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
   // Update sidebar active state
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   const habitsBtn = document.getElementById('sidebar-habits-main');
@@ -6264,7 +6266,7 @@ function renderLists() {
         <button class="btn-primary" onclick="openListModal()">+ New List</button>
       </div>
       <div class="lists-empty">
-        <div class="lists-empty-icon">☑</div>
+        <div class="lists-empty-icon" aria-hidden="true">≡</div>
         <div class="lists-empty-text">No lists yet</div>
         <div class="lists-empty-sub">Create a list to keep track of anything — shopping, reading, errands…</div>
       </div>`;
