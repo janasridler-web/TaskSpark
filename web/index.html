@@ -11,6 +11,10 @@
 (function(){
   try {
     if (location.pathname === '/m' || location.pathname === '/m/') return;
+    // Loop-guard: /m/ redirects to /?_m=1, and app.js then replaceState's
+    // back to /m/. Without this guard, the auto-redirect would fire again
+    // on /?_m=1 and bounce the user back to /m/ → infinite loop.
+    if (location.search.indexOf('_m=1') !== -1) return;
     var pref = null;
     try { pref = localStorage.getItem('preferredView'); } catch(_){}
     if (pref === 'full') return;
