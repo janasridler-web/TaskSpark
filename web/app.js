@@ -4549,9 +4549,20 @@ function applySettings() {
   if (attachmentsRow) attachmentsRow.style.display = s.attachmentsEnabled !== false ? '' : 'none';
   if (s.budgetEnabled === false && budgetViewMode) { budgetViewMode = false; setView('all', document.querySelector('[data-view="all"]')); }
   if (s.calendarEnabled === false && calendarViewMode) { calendarViewMode = false; setView('all', document.querySelector('[data-view="all"]')); }
-  // Hide the entire TOOLS section if all are disabled
+  // Hide the entire TOOLS section if every tool is disabled (V4: Stats,
+  // Ideas, Habits, Wins, Lists, Budget, Calendar, Kanban — sidebar order).
   const toolsSection = document.getElementById('sidebar-tools-section');
-  if (toolsSection) toolsSection.style.display = (s.ideasEnabled !== false || s.habitsEnabled !== false || s.winsEnabled !== false || s.budgetEnabled !== false) ? '' : 'none';
+  if (toolsSection) {
+    const anyToolOn = s.statsEnabled !== false
+      || s.ideasEnabled !== false
+      || s.habitsEnabled !== false
+      || s.winsEnabled !== false
+      || s.listsEnabled !== false
+      || s.budgetEnabled !== false
+      || s.calendarEnabled !== false
+      || s.kanbanEnabled !== false;
+    toolsSection.style.display = anyToolOn ? '' : 'none';
+  }
   const wsDropdown = document.getElementById('workspace-dropdown');
   const wsTitle = document.getElementById('workspace-title');
   if (wsDropdown) wsDropdown.style.display = s.workspacesEnabled !== false ? '' : 'none';
