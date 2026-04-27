@@ -1268,6 +1268,11 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   #sort-select{font-size:16px;padding:5px 8px}
   /* Prevent iOS auto-zoom on input focus — must be 16px or larger */
   input,textarea,select,.form-input{font-size:16px !important}
+  /* iOS native date/time inputs have intrinsic min-widths from their
+     segmented controls. Clamp them so they don't push the modal wider
+     than the viewport. */
+  input[type="time"],input[type="date"],input[type="datetime-local"]{
+    min-width:0;max-width:100%;box-sizing:border-box}
   .tag-text-input{font-size:16px !important}
   .break-timing-item input{font-size:16px !important}
   .btn-whatnow{font-size:13px;padding:7px 12px}
@@ -2055,8 +2060,8 @@ body.mobile-essentials #mobile-task-toggle.show{
       <div class="form-group" id="due-time-form-group">
         <label class="form-label">Due Time <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3)">(optional)</span></label>
         <div style="display:flex;gap:8px;align-items:center">
-          <div style="flex:1">
-            <input type="time" id="tm-due-time" class="form-input" onchange="onDueTimeChange(this.value)" style="width:100%">
+          <div style="flex:1;min-width:0">
+            <input type="time" id="tm-due-time" class="form-input" onchange="onDueTimeChange(this.value)" style="width:100%;min-width:0;max-width:100%;box-sizing:border-box">
           </div>
           <button type="button" id="tm-due-time-clear" onclick="clearDueTime()" style="display:none;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:none;color:var(--text3);font-size:12px;cursor:pointer;white-space:nowrap" title="Clear time">✕ Clear</button>
         </div>
