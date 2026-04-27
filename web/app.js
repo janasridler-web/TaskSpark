@@ -712,6 +712,8 @@ let undoStack    = [];
 let kanbanMode = false;
 let ideasMode  = false;
 let listsMode  = false;
+let statsMode  = false;
+let statsCurrentRange = '30d';
 let lists = [];
 let editingListId = null;
 let currentOpenListId = null;
@@ -815,6 +817,7 @@ const DEFAULT_SETTINGS = {
   habitsEnabled:     true,
   winsEnabled:       true,
   listsEnabled:      true,
+  statsEnabled:      true,
   streakWeekends:    false,  // include weekends in streak count
   graceDayEnabled:   true,   // allow one missed day per streak
   vacationMode:      false,  // pause streak while away
