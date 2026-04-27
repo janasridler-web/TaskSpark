@@ -1397,6 +1397,12 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
   /* Ideas / Wins / Habits panels */
   #ideas-panel,#wins-panel,#habits-panel{padding:12px 12px 80px}
+
+  /* Lists with categories — desktop renders these as horizontal kanban
+     columns. On a phone that overflows off-screen, so stack vertically. */
+  .list-kanban{flex-direction:column;gap:10px;overflow-x:visible;padding-bottom:8px}
+  .list-kanban-col{flex:0 0 auto;min-width:0;width:100%;max-height:none}
+  .list-kanban-add-col{width:100%;min-height:48px}
 }
 
 /* Desktop — hide mobile-only elements */
