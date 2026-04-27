@@ -696,6 +696,9 @@ const DEFAULT_SETTINGS = {
   budgetGroupByTags: false,
   attachmentsEnabled: true,
   calendarEnabled:   true,
+  deferEnabled:      false,
+  tagCustomColorsEnabled: false,
+  tagColors:         {},
 };
 let settings = { ...DEFAULT_SETTINGS };
 
@@ -766,8 +769,21 @@ function dueStatus(due) {
 }
 
 function getTagColor(tag) {
+  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) {
+    const v = settings.tagColors[tag];
+    return v.startsWith('#') ? v : '#' + v;
+  }
   if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
   return tagColorMap[tag];
+}
+
+function isDeferred(task) {
+  if (!settings.deferEnabled || !task.hideUntilDays || !task.due) return false;
+  const t = todayStr();
+  if (task.due <= t) return false;
+  const show = new Date(task.due + 'T00:00:00');
+  show.setDate(show.getDate() - task.hideUntilDays);
+  return show.toISOString().slice(0, 10) > t;
 }
 
 function esc(s) {
@@ -1277,19 +1293,20 @@ function filterTasks() {
         !(task.desc||'').toLowerCase().includes(q) &&
         !(task.tags||[]).some(tg => tg.toLowerCase().includes(q))) return false;
     const v = currentView;
-    if (v === 'all')             return !task.completed && !task.archived;
-    if (v === 'today')           return !task.completed && !task.archived && task.due === t;
+    if (v === 'all')             return !task.completed && !task.archived && !isDeferred(task);
+    if (v === 'today')           return !task.completed && !task.archived && task.due === t && !isDeferred(task);
     if (v === 'overdue')         return !task.completed && !task.archived && task.due && task.due < t;
+    if (v === 'deferred')        return !task.completed && !task.archived && isDeferred(task);
     if (v === 'completed')       return task.completed && !task.archived;
-    if (v === 'priority-high')        return !task.completed && !task.archived && task.priority === 'high';
-    if (v === 'priority-medium')      return !task.completed && !task.archived && task.priority === 'medium';
-    if (v === 'priority-low')         return !task.completed && !task.archived && task.priority === 'low';
-    if (v === 'status-not-started')   return !task.completed && !task.archived && (task.status || 'not-started') === 'not-started';
-    if (v === 'status-in-progress')   return !task.completed && !task.archived && task.status === 'in-progress';
-    if (v === 'status-blocked')       return !task.completed && !task.archived && task.status === 'blocked';
-    if (v === 'status-on-hold')       return !task.completed && !task.archived && task.status === 'on-hold';
+    if (v === 'priority-high')        return !task.completed && !task.archived && task.priority === 'high' && !isDeferred(task);
+    if (v === 'priority-medium')      return !task.completed && !task.archived && task.priority === 'medium' && !isDeferred(task);
+    if (v === 'priority-low')         return !task.completed && !task.archived && task.priority === 'low' && !isDeferred(task);
+    if (v === 'status-not-started')   return !task.completed && !task.archived && (task.status || 'not-started') === 'not-started' && !isDeferred(task);
+    if (v === 'status-in-progress')   return !task.completed && !task.archived && task.status === 'in-progress' && !isDeferred(task);
+    if (v === 'status-blocked')       return !task.completed && !task.archived && task.status === 'blocked' && !isDeferred(task);
+    if (v === 'status-on-hold')       return !task.completed && !task.archived && task.status === 'on-hold' && !isDeferred(task);
     if (v === 'archived')             return task.archived === true;
-    if (v.startsWith('tag:'))         return !task.completed && !task.archived && (task.tags||[]).includes(v.slice(4));
+    if (v.startsWith('tag:'))         return !task.completed && !task.archived && (task.tags||[]).includes(v.slice(4)) && !isDeferred(task);
     return false;
   });
 }
@@ -1470,9 +1487,11 @@ function updateStats() {
 function updateCounts() {
   const t = todayStr();
   const active = tasks.filter(x => !x.completed);
-  document.getElementById('cnt-all').textContent       = active.length;
-  document.getElementById('cnt-today').textContent     = active.filter(x => x.due === t).length;
+  document.getElementById('cnt-all').textContent       = active.filter(x => !isDeferred(x)).length;
+  document.getElementById('cnt-today').textContent     = active.filter(x => x.due === t && !isDeferred(x)).length;
   document.getElementById('cnt-overdue').textContent   = active.filter(x => x.due && x.due < t).length;
+  const cntDeferred = document.getElementById('cnt-deferred');
+  if (cntDeferred) cntDeferred.textContent = active.filter(isDeferred).length;
   document.getElementById('cnt-completed').textContent = tasks.filter(x => x.completed && !x.archived).length;
   const cntArchived = document.getElementById('cnt-archived');
   if (cntArchived) cntArchived.textContent = tasks.filter(x => x.archived).length;
@@ -1989,6 +2008,7 @@ function openTaskModal(id = null) {
     if (document.getElementById('tm-due-time')) document.getElementById('tm-due-time').value = task.dueTime || '';
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -2002,6 +2022,7 @@ function openTaskModal(id = null) {
     modalAttachments = [];
     const clearBtnNewT = document.getElementById('tm-due-time-clear');
     if (clearBtnNewT) clearBtnNewT.style.display = 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
   }
   renderModalAttachments();
 
@@ -2031,6 +2052,7 @@ function saveTask() {
     energy:     document.getElementById('tm-energy').value,
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
+    hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -2919,6 +2941,7 @@ function openTaskModal(id = null) {
     if (document.getElementById('tm-due-time')) document.getElementById('tm-due-time').value = task.dueTime || '';
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -2932,6 +2955,7 @@ function openTaskModal(id = null) {
     modalAttachments = [];
     const clearBtnNewT = document.getElementById('tm-due-time-clear');
     if (clearBtnNewT) clearBtnNewT.style.display = 'none';
+    if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
   }
 
   renderModalAttachments();
@@ -2962,6 +2986,7 @@ function saveTask() {
     energy:     document.getElementById('tm-energy').value,
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
+    hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -3708,6 +3733,9 @@ function refreshDueBtn() {
     lbl.textContent = 'Pick a date';
     btn.classList.remove('has-date');
   }
+  // Hide-until only makes sense if a due date is set AND the defer feature is on
+  const hideUntilGroup = document.getElementById('hide-until-form-group');
+  if (hideUntilGroup) hideUntilGroup.style.display = (settings.deferEnabled && !!modalDue) ? '' : 'none';
 }
 
 function onDueTimeChange(val) {
@@ -4004,6 +4032,53 @@ function closeAllModals() {
 
 
 // -- Settings --
+// ── Defer/hide-until + Tag colour settings UI ────────────────────────────────
+function toggleDeferSidebarItem() {
+  const item = document.getElementById('sidebar-deferred');
+  if (item) item.style.display = settings.deferEnabled ? '' : 'none';
+}
+
+let _tagColorSettingsTags = [];
+
+function renderTagColorSettings() {
+  const el = document.getElementById('tag-colors-list');
+  if (!el) return;
+  _tagColorSettingsTags = [...new Set(tasks.flatMap(t => t.tags || []))].sort();
+  if (_tagColorSettingsTags.length === 0) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 0">No tags yet — add tags to tasks first.</div>';
+    return;
+  }
+  el.innerHTML = _tagColorSettingsTags.map((tag, i) =>
+    `<div class="setting-row" style="padding:6px 0">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="tag-color-dot-${i}" style="width:10px;height:10px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>
+        <span class="setting-label">${esc(tag)}</span>
+      </div>
+      <input type="color" value="${getTagColor(tag)}" onchange="setTagColor(${i},this.value)"
+        aria-label="Color for tag ${esc(tag)}"
+        style="width:36px;height:28px;border:1px solid var(--border);border-radius:6px;cursor:pointer;padding:2px">
+    </div>`
+  ).join('');
+}
+
+function setTagColor(index, color) {
+  const tag = _tagColorSettingsTags[index];
+  if (!tag) return;
+  if (!settings.tagColors) settings.tagColors = {};
+  settings.tagColors[tag] = color;
+  const dot = document.getElementById(`tag-color-dot-${index}`);
+  if (dot) dot.style.background = color;
+  renderAll();
+}
+
+function toggleTagColorSection() {
+  const enabled = document.getElementById('set-tag-custom-colors')?.checked;
+  const section = document.getElementById('tag-colors-section');
+  if (section) section.style.display = enabled ? '' : 'none';
+  if (enabled) renderTagColorSettings();
+  renderAll();
+}
+
 function applySettings() {
   const s = settings;
   // Tags sidebar + form
@@ -4028,6 +4103,11 @@ function applySettings() {
   if (dueFormGroup) dueFormGroup.style.display = s.dueEnabled !== false ? '' : 'none';
   const dueTimeFormGroup = document.getElementById('due-time-form-group');
   if (dueTimeFormGroup) dueTimeFormGroup.style.display = (s.dueEnabled !== false && s.dueTimeEnabled !== false) ? '' : 'none';
+  // Deferred sidebar item + hide-until form group (only when defer feature on)
+  const deferredSidebar = document.getElementById('sidebar-deferred');
+  if (deferredSidebar) deferredSidebar.style.display = s.deferEnabled ? '' : 'none';
+  const hideUntilGroup = document.getElementById('hide-until-form-group');
+  if (hideUntilGroup) hideUntilGroup.style.display = (s.deferEnabled && !!modalDue) ? '' : 'none';
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
@@ -4188,6 +4268,9 @@ async function openSettings() {
   if (document.getElementById('set-budget-group-tags')) document.getElementById('set-budget-group-tags').checked = s.budgetGroupByTags === true;
   if (document.getElementById('set-attachments-enabled')) document.getElementById('set-attachments-enabled').checked = s.attachmentsEnabled !== false;
   if (document.getElementById('set-calendar-enabled')) document.getElementById('set-calendar-enabled').checked = s.calendarEnabled !== false;
+  if (document.getElementById('set-defer-enabled')) document.getElementById('set-defer-enabled').checked = s.deferEnabled === true;
+  if (document.getElementById('set-tag-custom-colors')) document.getElementById('set-tag-custom-colors').checked = s.tagCustomColorsEnabled === true;
+  if (typeof toggleTagColorSection === 'function') toggleTagColorSection();
   if (document.getElementById('set-sod-enabled'))         document.getElementById('set-sod-enabled').checked         = s.sodEnabled !== false;
   if (document.getElementById('set-sod-due-today'))       document.getElementById('set-sod-due-today').checked       = s.sodShowDueToday !== false;
   if (document.getElementById('set-sod-overdue'))         document.getElementById('set-sod-overdue').checked         = s.sodShowOverdue !== false;
@@ -4527,6 +4610,8 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-budget-group-tags')) settings.budgetGroupByTags = document.getElementById('set-budget-group-tags').checked;
   if (document.getElementById('set-attachments-enabled')) settings.attachmentsEnabled = document.getElementById('set-attachments-enabled').checked;
   if (document.getElementById('set-calendar-enabled')) settings.calendarEnabled = document.getElementById('set-calendar-enabled').checked;
+  if (document.getElementById('set-defer-enabled')) settings.deferEnabled = document.getElementById('set-defer-enabled').checked;
+  if (document.getElementById('set-tag-custom-colors')) settings.tagCustomColorsEnabled = document.getElementById('set-tag-custom-colors').checked;
   if (document.getElementById('set-break-enabled-general')) settings.breakEnabled = document.getElementById('set-break-enabled-general').checked;
   if (document.getElementById('set-budget-enabled'))  settings.budgetEnabled   = document.getElementById('set-budget-enabled').checked;
   if (document.getElementById('set-currency-symbol')) settings.currencySymbol  = document.getElementById('set-currency-symbol').value || '£';

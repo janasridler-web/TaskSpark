@@ -1555,6 +1555,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <div class="sidebar-item" data-view="kanban" onclick="setView('kanban',this)"><span class="si-icon">⊞</span>Kanban</div>
       <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon">◷</span>Due Today<span class="si-count" id="cnt-today">0</span></div>
       <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon">!</span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
+      <div class="sidebar-item" data-view="deferred" id="sidebar-deferred" onclick="setView('deferred',this)" style="display:none"><span class="si-icon">◷</span>Deferred<span class="si-count" id="cnt-deferred">0</span></div>
       <div class="sidebar-item" data-view="completed" onclick="setView('completed',this)"><span class="si-icon">✓</span>Completed<span class="si-count" id="cnt-completed">0</span></div>
       <div class="sidebar-item" data-view="archived" onclick="setView('archived',this)"><span class="si-icon" style="color:var(--text3)">◫</span>Archived<span class="si-count" id="cnt-archived">0</span></div>
 
@@ -1718,6 +1719,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
           <button type="button" id="tm-due-time-clear" onclick="clearDueTime()" style="display:none;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:none;color:var(--text3);font-size:12px;cursor:pointer;white-space:nowrap" title="Clear time">✕ Clear</button>
         </div>
       </div>
+    </div>
+    <div class="form-group" id="hide-until-form-group" style="display:none">
+      <label class="form-label">Hide until <span style="font-weight:400;color:var(--text3)">(days before due date)</span></label>
+      <input class="form-input" id="tm-hide-until" type="number" min="1" placeholder="e.g. 3">
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -1995,6 +2000,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <label class="toggle-switch"><input type="checkbox" id="set-due-time-enabled"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
+              <div><div class="setting-label">Hide-until (Defer)</div><div class="setting-desc">Hide tasks until N days before their due date — adds a Deferred view in the sidebar</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-defer-enabled" onchange="settings.deferEnabled = this.checked; toggleDeferSidebarItem(); renderAll()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
               <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-energy-enabled"><span class="toggle-slider"></span></label>
             </div>
@@ -2232,6 +2241,16 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a changelog button in the sidebar and mobile menu</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-title">Tag Colours</div>
+            <div class="setting-row">
+              <div><div class="setting-label">Custom tag colours</div><div class="setting-desc">Choose a colour for each of your tags instead of using the auto-assigned palette</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-tag-custom-colors" onchange="toggleTagColorSection()"><span class="toggle-slider"></span></label>
+            </div>
+            <div id="tag-colors-section" style="display:none">
+              <div id="tag-colors-list"></div>
             </div>
           </div>
         </div>
