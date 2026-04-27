@@ -5665,6 +5665,282 @@ function renderStatsWelcome() {
   </div>`;
 }
 
+// Calculation helpers — return shaped data ready for renderers.
+function statsCalcCompleted(start, end) {
+  const { start: ps, end: pe } = statsPrevRange(statsCurrentRange);
+  const count = statsCompletedInRange(start, end).length;
+  const prev  = statsCompletedInRange(ps, pe).length;
+  return { count, delta: count - prev };
+}
+
+function statsCalcActiveDays(start, end, totalDays) {
+  const done = statsCompletedInRange(start, end);
+  let days = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
+  if (!settings.streakWeekends) {
+    days = new Set([...days].filter(d => { const wd = new Date(d + 'T00:00:00').getDay(); return wd !== 0 && wd !== 6; }));
+  }
+  const activeDays = days.size;
+  const avg = activeDays > 0 ? (done.length / activeDays) : 0;
+  return { activeDays, totalDays, avg };
+}
+
+function statsCalcTimeTracked(start, end) {
+  let totalSecs = 0, sessionCount = 0;
+  tasks.forEach(t => {
+    statsSessionsInRange(t, start, end).forEach(s => { totalSecs += s.elapsed || 0; sessionCount++; });
+    const run = statsRunningSecsForTask(t, start, end);
+    if (run > 0) { totalSecs += run; sessionCount++; }
+  });
+  return { totalSecs, sessionCount };
+}
+
+function statsCalcAvgTime(start, end) {
+  const times = statsCompletedInRange(start, end)
+    .map(t => statsTaskTimeInRange(t, start, end))
+    .filter(s => s > 0);
+  if (!times.length) return { mean: 0, median: 0 };
+  const mean = times.reduce((a, b) => a + b, 0) / times.length;
+  const sorted = [...times].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return { mean, median };
+}
+
+function statsCalcOnEstimate(start, end) {
+  const eligible = statsCompletedInRange(start, end).filter(t =>
+    t.estimate > 0 && (t.timeSessions || []).length > 0
+  );
+  if (!eligible.length) return { rate: 0, onCount: 0, eligibleCount: 0 };
+  const onCount = eligible.filter(t => {
+    const actualMins = (t.timeLogged || 0) / 60;
+    return Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
+  }).length;
+  return { rate: Math.round(onCount / eligible.length * 100), onCount, eligibleCount: eligible.length };
+}
+
+function statsCalcThroughput(start, end, range) {
+  const done = statsCompletedInRange(start, end);
+  const useWeekly = (range === '90d' || range === 'year');
+  const useMonthly = (range === 'year');
+  const buckets = {};
+  done.forEach(t => {
+    const d = new Date(t.completedAt);
+    let key;
+    if (useMonthly) {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    } else if (useWeekly) {
+      const day = new Date(d); day.setDate(day.getDate() - day.getDay());
+      key = dateToLocalStr(day);
+    } else {
+      key = dateToLocalStr(d);
+    }
+    buckets[key] = (buckets[key] || 0) + 1;
+  });
+  return buckets;
+}
+
+function statsCalcDayOfWeek(start, end) {
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const counts = { Mon:0, Tue:0, Wed:0, Thu:0, Fri:0, Sat:0, Sun:0 };
+  statsCompletedInRange(start, end).forEach(t => {
+    const d = new Date(t.completedAt);
+    const dow = d.getDay();
+    const key = days[dow === 0 ? 6 : dow - 1];
+    counts[key]++;
+  });
+  return counts;
+}
+
+function statsCalcCreatedVsCompleted(start, end) {
+  const completedBuckets = {}, createdBuckets = {};
+  const bucket = d => { const w = new Date(d); w.setDate(w.getDate() - w.getDay()); return dateToLocalStr(w); };
+  statsCompletedInRange(start, end).forEach(t => { const k = bucket(new Date(t.completedAt)); completedBuckets[k] = (completedBuckets[k]||0)+1; });
+  statsCreatedInRange(start, end).forEach(t => { const k = bucket(new Date(t.createdAt)); createdBuckets[k] = (createdBuckets[k]||0)+1; });
+  return { completedBuckets, createdBuckets };
+}
+
+function statsCalcHeatmap(start, end) {
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const grid = {};
+  days.forEach(d => { grid[d] = new Array(24).fill(0); });
+  tasks.forEach(t => {
+    statsSessionsInRange(t, start, end).forEach(s => {
+      const d = new Date(s.start);
+      const dow = days[d.getDay() === 0 ? 6 : d.getDay() - 1];
+      grid[dow][d.getHours()] += Math.round((s.elapsed || 0) / 60);
+    });
+  });
+  const allVals = days.flatMap(d => grid[d]);
+  const maxVal = Math.max(...allVals, 1);
+  const intensity = v => v === 0 ? 0 : v <= maxVal * 0.25 ? 1 : v <= maxVal * 0.5 ? 2 : v <= maxVal * 0.75 ? 3 : 4;
+  return { grid, intensity };
+}
+
+function statsCalcTimeByTag(start, end) {
+  const tagTotals = {};
+  let untaggedSecs = 0;
+  statsCompletedInRange(start, end).forEach(t => {
+    const secs = statsTaskTimeInRange(t, start, end);
+    if (!secs) return;
+    const tags = t.tags || [];
+    if (!tags.length) { untaggedSecs += secs; return; }
+    tags.forEach(tag => { tagTotals[tag] = (tagTotals[tag] || 0) + secs; });
+  });
+  const sorted = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
+  return { sorted, untaggedSecs };
+}
+
+function statsCalcEstimateScatter(start, end) {
+  return statsCompletedInRange(start, end)
+    .filter(t => t.estimate > 0 && (t.timeSessions || []).length > 0)
+    .map(t => {
+      const actualMins = (t.timeLogged || 0) / 60;
+      const onBand = Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
+      return { estimate: t.estimate, actual: actualMins, onBand };
+    });
+}
+
+function statsCalcEstimateBreakdown(start, end) {
+  const scatter = statsCalcEstimateScatter(start, end);
+  let onCount = 0, earlyCount = 0, overCount = 0;
+  scatter.forEach(p => {
+    const ratio = (p.actual - p.estimate) / p.estimate;
+    if (Math.abs(ratio) <= 0.20) onCount++;
+    else if (ratio < -0.20) earlyCount++;
+    else overCount++;
+  });
+  return { onCount, earlyCount, overCount, total: scatter.length };
+}
+
+function statsCalcStreakPanel(start, end, totalDays) {
+  const done = statsCompletedInRange(start, end);
+  const daySet = new Set(done.map(t => dateToLocalStr(new Date(t.completedAt))));
+  const activeDays = daySet.size;
+  return {
+    current: calcStreak(),
+    longest: calcLongestStreak(),
+    activeDays,
+    totalDays,
+    avgPerActiveDay: activeDays > 0 ? (done.length / activeDays) : 0
+  };
+}
+
+function statsChartBuckets(start, end, range) {
+  const throughput = statsCalcThroughput(start, end, range);
+  const buckets = [];
+  if (range === 'year') {
+    const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endM = new Date(end.getFullYear(), end.getMonth(), 1);
+    while (cur <= endM) {
+      const key = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`;
+      buckets.push({ key, label: cur.toLocaleDateString('en-GB',{month:'short'}), count: throughput[key]||0 });
+      cur.setMonth(cur.getMonth()+1);
+    }
+  } else if (range === '90d') {
+    const cur = new Date(start); cur.setDate(cur.getDate()-cur.getDay());
+    while (cur <= end) {
+      const key = dateToLocalStr(cur);
+      buckets.push({ key, label: cur.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), count: throughput[key]||0 });
+      cur.setDate(cur.getDate()+7);
+    }
+  } else {
+    const cur = new Date(start);
+    while (cur <= end) {
+      const key = dateToLocalStr(cur);
+      buckets.push({ key, label: cur.toLocaleDateString('en-GB',{day:'numeric',month:'short'}), count: throughput[key]||0 });
+      cur.setDate(cur.getDate()+1);
+    }
+  }
+  return buckets;
+}
+
+function statsLineSvg(points, maxVal, color, W, H, PL, PT, PB, dashed) {
+  if (!points.length) return '';
+  const xP = i => PL + (points.length <= 1 ? W/2 : (i/(points.length-1))*W);
+  const yP = v => PT + H - (v/Math.max(maxVal,1))*H;
+  const base = PT+H;
+  const line = points.map((p,i) => `${i===0?'M':'L'} ${xP(i).toFixed(1)},${yP(p).toFixed(1)}`).join(' ');
+  const area = `M ${xP(0).toFixed(1)},${base} `+points.map((p,i)=>`L ${xP(i).toFixed(1)},${yP(p).toFixed(1)}`).join(' ')+` L ${xP(points.length-1).toFixed(1)},${base} Z`;
+  return (dashed ? '' : `<path d="${area}" fill="${color}" opacity="0.12"/>`) +
+    `<path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"${dashed?' stroke-dasharray="4,3"':''}/>`;
+}
+
+// Range picker (web omits desktop's 'today' range — no daily-tick layout)
+function statsRangeLabel(range) {
+  return { '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
+}
+
+function statsRangePicker(active) {
+  return ['7d','30d','90d','year'].map(r =>
+    `<button class="stats-range-btn${r === active ? ' active' : ''}" onclick="statsSetRange('${r}')">${statsRangeLabel(r)}</button>`
+  ).join('');
+}
+
+function statsSetRange(range) {
+  statsCurrentRange = range;
+  renderStatsView();
+}
+
+function statsKpiRow(profile, start, end, range) {
+  const comp   = statsCalcCompleted(start, end);
+  const active = statsCalcActiveDays(start, end, statsDateRange(range).totalDays);
+  const dl = comp.delta > 0 ? `<div class="stats-kpi-delta up">+${comp.delta} vs previous ${range}</div>`
+    : comp.delta < 0 ? `<div class="stats-kpi-delta down">${comp.delta} vs previous ${range}</div>`
+    : `<div class="stats-kpi-delta">no change vs previous ${range}</div>`;
+  const cols = profile === 'PROFILE_BASIC' ? 2 : 4;
+  let html = `
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed</div><div class="stats-kpi-value">${comp.count}</div>${dl}</div>
+    <div class="stats-kpi"><div class="stats-kpi-label">Active days</div><div class="stats-kpi-value">${active.activeDays}<span class="stats-kpi-unit">/ ${active.totalDays}</span></div><div class="stats-kpi-delta">${active.avg.toFixed(1)} tasks per active day</div></div>`;
+  if (profile !== 'PROFILE_BASIC') {
+    const tt = statsCalcTimeTracked(start, end);
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(tt.totalSecs)}</div><div class="stats-kpi-delta">across ${tt.sessionCount} session${tt.sessionCount !== 1 ? 's' : ''}</div></div>`;
+  }
+  if (profile === 'PROFILE_TIMER') {
+    const avg = statsCalcAvgTime(start, end);
+    const avgVal = avg.mean > 0 ? `${Math.round(avg.mean/60)}<span class="stats-kpi-unit">min</span>` : `<span style="color:var(--text3)">—</span>`;
+    const avgDelta = avg.mean > 0 ? `median ${Math.round(avg.median/60)} min` : 'no timed tasks yet';
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">Avg time per task</div><div class="stats-kpi-value">${avgVal}</div><div class="stats-kpi-delta">${avgDelta}</div></div>`;
+  }
+  if (profile === 'PROFILE_FULL') {
+    const est = statsCalcOnEstimate(start, end);
+    const estVal = est.eligibleCount > 0 ? `${est.rate}<span class="stats-kpi-unit">%</span>` : `<span style="color:var(--text3)">—</span>`;
+    const estDelta = est.eligibleCount > 0 ? `within ±20% · ${est.onCount} of ${est.eligibleCount} eligible` : 'no tasks with estimates yet';
+    html += `<div class="stats-kpi"><div class="stats-kpi-label">On-estimate rate</div><div class="stats-kpi-value">${estVal}</div><div class="stats-kpi-delta">${estDelta}</div></div>`;
+  }
+  return `<div class="stats-kpi-row stats-kpi-cols-${cols}">${html}</div>`;
+}
+
+function renderStatsThroughputCard(start, end, range) {
+  const buckets = statsChartBuckets(start, end, range);
+  const maxVal = Math.max(...buckets.map(b=>b.count), 1);
+  const PL=28, PT=8, PB=20, W=560, H=155, TW=PL+W, TH=PT+H+PB;
+  const yStep = maxVal<=5?1:maxVal<=10?2:maxVal<=20?5:10;
+  let grid='';
+  for (let v=yStep; v<=maxVal; v+=yStep) {
+    const y=(PT+H-(v/maxVal)*H).toFixed(1);
+    grid+=`<line x1="${PL}" y1="${y}" x2="${TW}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
+      <text x="${PL-3}" y="${+y+3}" fill="var(--text3)" font-size="9" text-anchor="end">${v}</text>`;
+  }
+  const base=(PT+H).toFixed(1);
+  grid+=`<line x1="${PL}" y1="${base}" x2="${TW}" y2="${base}" stroke="var(--border2)" stroke-width="1"/>`;
+  const labelAt = buckets.length<=7 ? buckets.map((_,i)=>i) : [0,Math.floor(buckets.length/2),buckets.length-1];
+  const xP = i => PL+(buckets.length<=1?W/2:(i/(buckets.length-1))*W);
+  const labels = labelAt.map(i=>`<text x="${xP(i).toFixed(1)}" y="${TH}" fill="var(--text3)" font-size="10" text-anchor="middle">${buckets[i].label}</text>`).join('');
+  const totalDone = buckets.reduce((a,b)=>a+(b.count||0),0);
+  const peak = Math.max(0, ...buckets.map(b=>b.count||0));
+  const svg = `<svg viewBox="0 0 ${TW} ${TH+4}" style="width:100%;height:180px;overflow:visible" role="img" aria-labelledby="stats-throughput-title"><title id="stats-throughput-title">Tasks completed over time. Total: ${totalDone}. Peak: ${peak} on a single day.</title>${grid}${statsLineSvg(buckets.map(b=>b.count),maxVal,'var(--accent)',W,H,PL,PT,PB,false)}${labels}</svg>`;
+  const hint = {'7d':'Daily · last 7 days','30d':'Daily · last 30 days','90d':'Weekly · last 90 days','year':'Monthly · last year'}[range]||'';
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Tasks completed over time</div><div class="stats-card-hint">${hint}</div></div>${svg}</div>`;
+}
+
+function renderStatsStreakPanel(start, end, totalDays) {
+  const s = statsCalcStreakPanel(start, end, totalDays);
+  return `<div class="stats-streak-big">${s.current}</div><div class="stats-streak-label">day current streak</div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Longest streak</div><div class="stats-stat-value">${s.longest} days</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">This period</div><div class="stats-stat-value">${s.activeDays} / ${s.totalDays} days</div></div>
+    <div class="stats-stat-row"><div class="stats-stat-label">Avg per active day</div><div class="stats-stat-value">${s.avgPerActiveDay.toFixed(1)} tasks</div></div>`;
+}
+
 function renderStatsView() {
   const container = document.getElementById('stats-container');
   if (!container) return;
@@ -5672,12 +5948,20 @@ function renderStatsView() {
     container.innerHTML = renderStatsWelcome();
     return;
   }
-  // Charts land in the next commit (E2). For now, returning users see a
-  // placeholder so the view isn't blank.
-  container.innerHTML = `<div class="stats-page">
-    <div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div></div>
-    <div class="stats-empty-msg">Charts coming in the next update — your data's safe and will fill in here once the dashboard ships.</div>
-  </div>`;
+
+  const range = statsCurrentRange;
+  const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div></div></div>`;
+
+  const { start, end, totalDays } = statsDateRange(range);
+  const profile = statsDetectProfile(start, end);
+  const noData = statsCompletedInRange(start, end).length === 0;
+
+  let rows = '';
+  if (noData) rows += `<div class="stats-empty-range">No completed tasks in this period — numbers will fill in once you start wrapping things up.</div>`;
+  rows += `<div class="stats-grid" style="margin-bottom:16px">${renderStatsThroughputCard(start, end, range)}<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Streak</div></div>${renderStatsStreakPanel(start, end, totalDays)}</div></div>`;
+  rows += `<div class="stats-empty-msg">More cards (created vs completed, day of week, heatmap, time by tag, estimate accuracy) land in the next update.</div>`;
+
+  container.innerHTML = `<div class="stats-page">${header}${statsKpiRow(profile, start, end, range)}${rows}<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div></div>`;
 }
 
 // ── Lists (V4 NEW: kanban-style boards with categories) ─────────────────────
