@@ -51,6 +51,8 @@ const api = {
   eventsSave:    (args) => eventsSaveWeb(args),
   eventsLoad:    (args) => eventsLoadWeb(args),
   winsLoad:      (args) => winsLoadWeb(args),
+  listsSave:     (args) => listsSaveWeb(args),
+  listsLoad:     (args) => listsLoadWeb(args),
   archiveAppend: (args) => archiveAppendWeb(args),
   moodAppend:    (args) => moodAppendWeb(args),
   // OAuth handled in-browser
@@ -246,7 +248,7 @@ async function sheetsRequest(method, path, accessToken, body) {
 }
 
 async function sheetsEnsureWeb({ accessToken, spreadsheetId }) {
-  const tabs = ['Tasks','Ideas','Habits','Wins','Archive','Mood','Events'];
+  const tabs = ['Tasks','Ideas','Habits','Wins','Archive','Mood','Events','Lists'];
   const meta = await sheetsRequest('GET', `/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`, accessToken);
   const existing = (meta.sheets||[]).map(s => s.properties.title);
   const missing  = tabs.filter(t => !existing.includes(t));
@@ -406,6 +408,31 @@ async function winsLoadWeb({ accessToken, spreadsheetId }) {
     return (res.values||[]).filter(r => r[0]).map(r => ({
       id: r[0], quote: r[1]||'', source: r[2]||'', category: r[3]||'',
       date: r[4]||'', mood: r[5]||'proud', createdAt: r[6]||''
+    }));
+  } catch { return []; }
+}
+
+async function listsSaveWeb({ accessToken, spreadsheetId, lists }) {
+  await sheetsRequest('POST', `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Lists!A2:E100000')}:clear`, accessToken);
+  if (lists.length) {
+    const rows = lists.map(l => [
+      String(l.id), l.name||'', l.createdAt||'',
+      JSON.stringify(l.categories||[]), JSON.stringify(l.items||[])
+    ]);
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Lists!A2')}?valueInputOption=RAW`,
+      accessToken, { range: 'Lists!A2', values: rows, majorDimension: 'ROWS' });
+  }
+}
+
+async function listsLoadWeb({ accessToken, spreadsheetId }) {
+  try {
+    const res = await sheetsRequest('GET',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Lists!A2:E10000')}`, accessToken);
+    const safeJson = (s, fb) => { try { return JSON.parse(s||'null') ?? fb; } catch { return fb; } };
+    return (res.values||[]).filter(r => r[0]).map(r => ({
+      id: parseInt(r[0]), name: r[1]||'', createdAt: r[2]||'',
+      categories: safeJson(r[3], []), items: safeJson(r[4], [])
     }));
   } catch { return []; }
 }
@@ -684,6 +711,13 @@ let undoStack    = [];
 // View mode
 let kanbanMode = false;
 let ideasMode  = false;
+let listsMode  = false;
+let lists = [];
+let editingListId = null;
+let currentOpenListId = null;
+let _listCategoryTargetId = null;
+let _listDragListId = null;
+let _listDragItemId = null;
 let budgetViewMode = false;
 let calendarViewMode = false;
 
@@ -780,6 +814,7 @@ const DEFAULT_SETTINGS = {
   ideasEnabled:      true,
   habitsEnabled:     true,
   winsEnabled:       true,
+  listsEnabled:      true,
   streakWeekends:    false,  // include weekends in streak count
   graceDayEnabled:   true,   // allow one missed day per streak
   vacationMode:      false,  // pause streak while away
@@ -1035,6 +1070,7 @@ async function init() {
         await loadIdeas();
         await loadHabits();
         await loadWins();
+        await loadLists();
         if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
         setTimeout(showWorkspaceSetupModal, 800);
       } else {
@@ -1073,6 +1109,7 @@ async function init() {
     await loadIdeas();
     await loadHabits();
     await loadWins();
+    await loadLists();
   } else {
     showAuth();
   }
@@ -1488,6 +1525,7 @@ function renderAll() {
   else if (ideasMode) renderIdeas();
   else if (habitsMode) renderHabits();
   else if (winsMode) renderWins();
+  else if (listsMode) renderLists();
   else if (budgetViewMode) renderBudgetView();
   else if (calendarViewMode) renderCalendarView();
   else renderTasks();
@@ -1878,60 +1916,78 @@ function setView(view, el) {
     if (match) match.classList.add('active');
   }
   if (view === 'kanban') {
-    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.remove('active');
     const bvcK = document.getElementById('budget-view-container'); if (bvcK) { bvcK.classList.remove('active'); }
     const cvcK = document.getElementById('calendar-view-container'); if (cvcK) { cvcK.classList.remove('active'); }
     const mainElK = document.getElementById('main');
     if (mainElK) { mainElK.style.display = ''; mainElK.style.flexDirection = ''; }
     switchViewMode('kanban');
   } else if (view === 'ideas') {
-    ideasMode = true; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    ideasMode = true; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
     const cvcI = document.getElementById('calendar-view-container'); if (cvcI) { cvcI.classList.remove('active'); }
     const bvcI = document.getElementById('budget-view-container'); if (bvcI) bvcI.classList.remove('active');
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.remove('active');
     document.getElementById('ideas-container').classList.add('active');
     renderIdeas();
   } else if (view === 'wins') {
-    winsMode = true; ideasMode = false; habitsMode = false; budgetViewMode = false; calendarViewMode = false;
+    winsMode = true; ideasMode = false; habitsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
     const cvW = document.getElementById('calendar-view-container'); if (cvW) { cvW.classList.remove('active'); }
     const bvcW = document.getElementById('budget-view-container'); if (bvcW) bvcW.classList.remove('active');
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.remove('active');
     document.getElementById('wins-container').classList.add('active');
     renderWins();
+  } else if (view === 'lists') {
+    listsMode = true; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    const cvL = document.getElementById('calendar-view-container'); if (cvL) cvL.classList.remove('active');
+    const bvcL = document.getElementById('budget-view-container'); if (bvcL) bvcL.classList.remove('active');
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.add('active');
+    currentOpenListId = null;
+    renderLists();
   } else if (view === 'budget-view') {
-    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; calendarViewMode = false;
+    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; calendarViewMode = false;
     const cvc = document.getElementById('calendar-view-container'); if (cvc) { cvc.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.remove('active');
     const bvc = document.getElementById('budget-view-container'); if (bvc) bvc.classList.add('active');
     renderBudgetView();
   } else if (view === 'calendar-view') {
-    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false;
+    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false;
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.remove('active');
     const bvcC = document.getElementById('budget-view-container'); if (bvcC) bvcC.classList.remove('active');
     const cvcC = document.getElementById('calendar-view-container'); if (cvcC) cvcC.classList.add('active');
     loadCalEvents().then(() => renderCalendarView());
   } else {
-    ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.remove('active');
     const bvcE = document.getElementById('budget-view-container'); if (bvcE) bvcE.classList.remove('active');
     const cvcE = document.getElementById('calendar-view-container');
     if (cvcE) { cvcE.classList.remove('active'); }
@@ -4377,6 +4433,9 @@ function applySettings() {
   // Break sub-settings depend on breakEnabled
   const breakSub = document.getElementById('break-sub-settings');
   if (breakSub) breakSub.style.display = s.breakEnabled ? '' : 'none';
+  // Lists sidebar item — only visible when listsEnabled
+  const listsSidebar = document.getElementById('sidebar-lists');
+  if (listsSidebar) listsSidebar.style.display = s.listsEnabled !== false ? '' : 'none';
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
@@ -4530,6 +4589,7 @@ async function openSettings() {
   if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
   if (document.getElementById('set-wins-enabled'))      document.getElementById('set-wins-enabled').checked      = s.winsEnabled !== false;
+  if (document.getElementById('set-lists-enabled'))     document.getElementById('set-lists-enabled').checked     = s.listsEnabled !== false;
   if (document.getElementById('set-workspaces-enabled')) document.getElementById('set-workspaces-enabled').checked = s.workspacesEnabled !== false;
   if (document.getElementById('set-break-enabled-general')) document.getElementById('set-break-enabled-general').checked = s.breakEnabled;
   if (document.getElementById('set-budget-enabled'))  document.getElementById('set-budget-enabled').checked  = s.budgetEnabled !== false;
@@ -4876,6 +4936,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-ideas-enabled'))     settings.ideasEnabled     = document.getElementById('set-ideas-enabled').checked;
   if (document.getElementById('set-habits-enabled'))    settings.habitsEnabled    = document.getElementById('set-habits-enabled').checked;
   if (document.getElementById('set-wins-enabled'))      settings.winsEnabled      = document.getElementById('set-wins-enabled').checked;
+  if (document.getElementById('set-lists-enabled'))     settings.listsEnabled     = document.getElementById('set-lists-enabled').checked;
   if (document.getElementById('set-workspaces-enabled')) settings.workspacesEnabled = document.getElementById('set-workspaces-enabled').checked;
   if (document.getElementById('set-budget-group-tags')) settings.budgetGroupByTags = document.getElementById('set-budget-group-tags').checked;
   if (document.getElementById('set-attachments-enabled')) settings.attachmentsEnabled = document.getElementById('set-attachments-enabled').checked;
@@ -5416,6 +5477,357 @@ function showWinsView() {
   if (winsBtn) winsBtn.classList.add('active');
   document.getElementById('view-title').textContent = 'Wins Board';
   renderWins();
+}
+
+// ── Lists (V4 NEW: kanban-style boards with categories) ─────────────────────
+function renderLists() {
+  const container = document.getElementById('lists-container');
+  if (!container) return;
+
+  if (currentOpenListId !== null) {
+    const list = lists.find(l => l.id === currentOpenListId);
+    if (list) { renderListDetail(list, container); return; }
+    currentOpenListId = null;
+  }
+
+  if (!lists.length) {
+    container.innerHTML = `
+      <div class="lists-header">
+        <div></div>
+        <button class="btn-primary" onclick="openListModal()">+ New List</button>
+      </div>
+      <div class="lists-empty">
+        <div class="lists-empty-icon">☑</div>
+        <div class="lists-empty-text">No lists yet</div>
+        <div class="lists-empty-sub">Create a list to keep track of anything — shopping, reading, errands…</div>
+      </div>`;
+    return;
+  }
+
+  const cards = lists.map(list => {
+    const total     = list.items.length;
+    const done      = list.items.filter(i => i.done).length;
+    const remaining = total - done;
+    const previewItems = list.items.slice(0, 3);
+    const previewHtml = previewItems.length
+      ? previewItems.map(item => `
+          <div class="list-card-preview-item">
+            <span class="list-card-preview-dot${item.done ? ' done' : ''}"></span>
+            <span class="list-card-preview-text${item.done ? ' done' : ''}">${esc(item.text)}</span>
+          </div>`).join('') +
+        (list.items.length > 3 ? `<div class="list-card-preview-more">+${list.items.length - 3} more</div>` : '')
+      : `<div class="list-card-preview-empty">No items yet</div>`;
+    return `
+      <div class="list-card" onclick="openList(${list.id})">
+        <div class="list-card-name">${esc(list.name)}</div>
+        <div class="list-card-meta">${remaining} remaining · ${total} item${total !== 1 ? 's' : ''}</div>
+        <div class="list-card-preview">${previewHtml}</div>
+        <div class="list-card-actions" onclick="event.stopPropagation()">
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px" onclick="openListModal(${list.id})">Edit</button>
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red);border-color:var(--red)" onclick="deleteList(${list.id})">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="lists-header">
+      <div style="font-size:13px;color:var(--text3)">${lists.length} list${lists.length !== 1 ? 's' : ''}</div>
+      <button class="btn-primary" onclick="openListModal()">+ New List</button>
+    </div>
+    <div class="lists-grid">${cards}</div>`;
+}
+
+function openList(id) { currentOpenListId = id; renderLists(); }
+function backToLists() { currentOpenListId = null; renderLists(); }
+
+function _listItemRowHtml(listId, item) {
+  return `
+    <div class="list-item-row">
+      <input type="checkbox" class="list-item-check" ${item.done ? 'checked' : ''} onchange="toggleListItem(${listId},${item.id})">
+      <span class="list-item-text${item.done ? ' done' : ''}" id="list-item-text-${item.id}" ondblclick="startEditListItem(${listId},${item.id})" title="Double-click to edit">${esc(item.text)}</span>
+      <button class="list-item-del" onclick="deleteListItem(${listId},${item.id})" title="Remove">×</button>
+    </div>`;
+}
+
+function _listAddRowHtml(listId, categoryId) {
+  const safeId = categoryId === null ? 'null' : categoryId;
+  const placeholder = categoryId === null ? 'Add item…' : 'Add item to category…';
+  return `
+    <div class="list-add-item-row">
+      <input class="list-add-item-input" id="list-add-input-${safeId}" placeholder="${placeholder}" onkeydown="handleListItemKey(event,${listId},${categoryId})">
+      <button class="btn-primary" style="padding:6px 12px;font-size:12px" onclick="addListItem(${listId},${categoryId})">Add</button>
+    </div>`;
+}
+
+function renderListDetail(list, container) {
+  const hasCategories = list.categories && list.categories.length > 0;
+  const total = list.items.length;
+  const done  = list.items.filter(i => i.done).length;
+
+  const header = `
+    <div class="list-detail-header">
+      <button class="list-back-btn" onclick="backToLists()">← Back</button>
+      <div class="list-detail-title">${esc(list.name)}</div>
+      <div style="font-size:12px;color:var(--text3)">${done}/${total} done</div>
+    </div>`;
+
+  if (!hasCategories) {
+    const itemsHtml = list.items.map(item => _listItemRowHtml(list.id, item)).join('') ||
+      '<div style="font-size:13px;color:var(--text3);padding:8px 0">No items yet — add one below</div>';
+    container.innerHTML = `
+      ${header}
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div class="list-category-block" style="flex:1">${itemsHtml}${_listAddRowHtml(list.id, null)}</div>
+        <div class="list-kanban-add-col" style="min-height:60px" onclick="openListCategoryModal(${list.id})">+ Add Category</div>
+      </div>`;
+    return;
+  }
+
+  const columns = [{ id: null, name: 'General' }, ...list.categories];
+  const columnsHtml = columns.map(col => {
+    const colId    = col.id;
+    const colItems = list.items.filter(i => (i.categoryId || null) === colId);
+    const cards    = colItems.map(item => `
+      <div class="list-kanban-card${item.done ? ' done' : ''}"
+        draggable="true"
+        data-item-id="${item.id}"
+        ondragstart="onListItemDragStart(event,${list.id},${item.id})"
+        ondragend="onListItemDragEnd(event)">
+        <div class="list-kanban-card-row">
+          <input type="checkbox" class="list-item-check" ${item.done ? 'checked' : ''} onchange="toggleListItem(${list.id},${item.id})">
+          <span class="list-item-text${item.done ? ' done' : ''}" id="list-item-text-${item.id}" ondblclick="startEditListItem(${list.id},${item.id})" title="Double-click to edit">${esc(item.text)}</span>
+          <button class="list-item-del" onclick="deleteListItem(${list.id},${item.id})">×</button>
+        </div>
+      </div>`).join('');
+    const removeBtn = colId !== null
+      ? `<button class="list-kanban-col-del" title="Remove category" onclick="deleteListCategory(${list.id},${colId})">×</button>`
+      : '';
+    return `
+      <div class="list-kanban-col"
+        ondragover="onListItemDragOver(event)"
+        ondragleave="onListItemDragLeave(event)"
+        ondrop="onListItemDrop(event,${list.id},${colId})">
+        <div class="list-kanban-col-header">
+          <span>${esc(col.name)}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="kanban-col-count">${colItems.length}</span>
+            ${removeBtn}
+          </div>
+        </div>
+        <div class="list-kanban-col-body">${cards}</div>
+        ${_listAddRowHtml(list.id, colId)}
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    ${header}
+    <div class="list-kanban">
+      ${columnsHtml}
+      <div class="list-kanban-add-col" onclick="openListCategoryModal(${list.id})">+ Add Category</div>
+    </div>`;
+}
+
+function openListModal(id = null) {
+  editingListId = id;
+  document.getElementById('list-modal-title').textContent = id ? '📋 Edit List' : '📋 New List';
+  const input = document.getElementById('list-name-input');
+  if (id) {
+    const list = lists.find(l => l.id === id);
+    input.value = list ? list.name : '';
+  } else { input.value = ''; }
+  document.getElementById('list-modal-overlay').classList.add('open');
+  setTimeout(() => input.focus(), 50);
+}
+
+let _savingList = false;
+function saveList() {
+  if (_savingList) return;
+  _savingList = true;
+  setTimeout(() => { _savingList = false; }, 800);
+  const name = document.getElementById('list-name-input').value.trim();
+  if (!name) { showToast('Please enter a name'); return; }
+  if (editingListId) {
+    const list = lists.find(l => l.id === editingListId);
+    if (list) list.name = name;
+  } else {
+    lists.push({ id: Date.now(), name, createdAt: new Date().toISOString(), categories: [], items: [] });
+  }
+  closeModal('list-modal-overlay');
+  saveLists();
+  renderLists();
+}
+
+function deleteList(id) {
+  const list = lists.find(l => l.id === id);
+  showConfirmModal(
+    'Delete List',
+    list ? `Delete <strong>${esc(list.name)}</strong> and all its items? This cannot be undone.` : 'Delete this list?',
+    'Delete',
+    () => {
+      lists = lists.filter(l => l.id !== id);
+      if (currentOpenListId === id) currentOpenListId = null;
+      saveLists();
+      renderLists();
+    },
+    true
+  );
+}
+
+function addListItem(listId, categoryId) {
+  const safeId  = categoryId === null ? 'null' : categoryId;
+  const input   = document.getElementById(`list-add-input-${safeId}`);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items.push({ id: Date.now(), text, done: false, categoryId: categoryId || null });
+  saveLists();
+  renderLists();
+  setTimeout(() => {
+    const refocused = document.getElementById(`list-add-input-${safeId}`);
+    if (refocused) refocused.focus();
+  }, 0);
+}
+
+function handleListItemKey(e, listId, categoryId) {
+  if (e.key === 'Enter') { e.preventDefault(); addListItem(listId, categoryId); }
+}
+
+function toggleListItem(listId, itemId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (!item) return;
+  item.done = !item.done;
+  saveLists();
+  renderLists();
+}
+
+function deleteListItem(listId, itemId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items = list.items.filter(i => i.id !== itemId);
+  saveLists();
+  renderLists();
+}
+
+function openListCategoryModal(listId) {
+  _listCategoryTargetId = listId;
+  const input = document.getElementById('list-category-name-input');
+  input.value = '';
+  document.getElementById('list-category-modal-overlay').classList.add('open');
+  setTimeout(() => input.focus(), 50);
+}
+
+function saveListCategory() {
+  const name = document.getElementById('list-category-name-input').value.trim();
+  if (!name) { showToast('Please enter a category name'); return; }
+  const list = lists.find(l => l.id === _listCategoryTargetId);
+  if (!list) return;
+  list.categories.push({ id: Date.now(), name });
+  closeModal('list-category-modal-overlay');
+  saveLists();
+  renderLists();
+}
+
+function deleteListCategory(listId, catId) {
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  list.items.forEach(i => { if (i.categoryId === catId) i.categoryId = null; });
+  list.categories = list.categories.filter(c => c.id !== catId);
+  saveLists();
+  renderLists();
+}
+
+function onListItemDragStart(e, listId, itemId) {
+  _listDragListId = listId;
+  _listDragItemId = itemId;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => {
+    const card = e.target.closest('.list-kanban-card');
+    if (card) card.classList.add('dragging');
+  }, 0);
+}
+
+function onListItemDragEnd(e) {
+  document.querySelectorAll('.list-kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
+  document.querySelectorAll('.list-kanban-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+  _listDragItemId = null;
+  _listDragListId = null;
+}
+
+function onListItemDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onListItemDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onListItemDrop(e, listId, categoryId) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!_listDragItemId || _listDragListId !== listId) return;
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === _listDragItemId);
+  if (!item) return;
+  item.categoryId = categoryId || null;
+  saveLists();
+  renderLists();
+}
+
+function startEditListItem(listId, itemId) {
+  const span = document.getElementById(`list-item-text-${itemId}`);
+  if (!span) return;
+  const currentText = span.textContent;
+  const input = document.createElement('input');
+  input.value = currentText;
+  input.style.cssText = 'flex:1;background:var(--surface2);border:1px solid var(--accent);border-radius:6px;padding:2px 6px;font-size:13px;color:var(--text);outline:none;width:100%';
+  input.onkeydown = e => {
+    if (e.key === 'Enter')  { e.preventDefault(); saveEditListItem(listId, itemId, input.value.trim()); }
+    if (e.key === 'Escape') { renderLists(); }
+  };
+  input.onblur = () => saveEditListItem(listId, itemId, input.value.trim());
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+function saveEditListItem(listId, itemId, newText) {
+  if (!newText) { renderLists(); return; }
+  const list = lists.find(l => l.id === listId);
+  if (!list) return;
+  const item = list.items.find(i => i.id === itemId);
+  if (!item || item.text === newText) { renderLists(); return; }
+  item.text = newText;
+  saveLists();
+  renderLists();
+}
+
+async function loadLists() {
+  if (offlineMode || !accessToken || !spreadsheetId) {
+    const cfg = await api.loadConfig();
+    if (cfg && Array.isArray(cfg.lists)) lists = cfg.lists;
+    return;
+  }
+  try {
+    await ensureToken();
+    const loaded = await api.listsLoad({ accessToken, spreadsheetId });
+    if (Array.isArray(loaded)) lists = loaded;
+  } catch (e) { console.warn('Lists load failed:', e); }
+}
+
+async function saveLists() {
+  if (offlineMode) { api.saveConfig({ lists }); return; }
+  if (!accessToken || !spreadsheetId) return;
+  try {
+    await ensureToken();
+    await api.listsSave({ accessToken, spreadsheetId, lists });
+  } catch (e) { console.error('Lists save error:', e); setSyncStatus('error', 'Lists sync failed'); }
 }
 
 function renderWins() {
