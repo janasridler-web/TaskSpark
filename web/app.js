@@ -481,6 +481,22 @@ function toggleTimerPause() {
   else pauseTimer();
 }
 
+// Favicon "timer running" indicator — visible in the browser tab strip
+// even when TaskSpark isn't the active tab.
+function setFaviconRunning(running) {
+  const link = document.querySelector('link[rel="icon"]');
+  if (!link) return;
+  if (!link.dataset.original) link.dataset.original = link.getAttribute('href') || '';
+  if (running) {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+              + '<circle cx="16" cy="16" r="14" fill="#10b981"/>'
+              + '<circle cx="16" cy="16" r="5" fill="#fff"/></svg>';
+    link.href = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  } else {
+    link.href = link.dataset.original;
+  }
+}
+
 // ── Handle OAuth callback (code in URL params after redirect) ───────────────
 async function handleOAuthCallback() {
   // Read code from sessionStorage (set by callback.html to avoid Mod_Security blocking)
@@ -3884,6 +3900,7 @@ function toggleTimer(id) {
 
   if (settings.focusModeEnabled) showFocusOverlay(task);
   else                            showInPageTimer(task.title, task.timeLogged || 0);
+  setFaviconRunning(true);
 
   // Start local tick for task card badge updates
   timerInterval = setInterval(tickTimer, 1000);
@@ -3945,6 +3962,7 @@ function stopTimer() {
   api.timerHide();
   hideFocusOverlay();
   hideInPageTimer();
+  setFaviconRunning(false);
   clearBreakTimer();
   saveTasks();
   renderAll();
