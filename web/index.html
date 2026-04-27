@@ -1691,8 +1691,27 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   box-shadow:0 6px 16px rgba(0,0,0,.22);z-index:250;
   display:none;align-items:center;justify-content:center;padding:0}
 #mobile-fab:active{transform:scale(.96)}
-#mobile-fab[hidden]{display:none}
-body.mobile-essentials #mobile-fab{display:flex}
+
+/* On /m the toolbar (search/sort/whatnow/new-task) and the bottom stats
+   bar are hidden — the FAB picker handles "add", and the in-view Today/
+   Upcoming/All toggle handles filtering. */
+body.mobile-essentials #toolbar{display:none}
+body.mobile-essentials #stats-bar{display:none}
+body.mobile-essentials #sync-bar{display:none}
+
+/* Mobile task-list toggle: Today / Upcoming / All pills. Only visible on
+   /m when the current view is one of those three. */
+#mobile-task-toggle{display:none}
+body.mobile-essentials #mobile-task-toggle.show{
+  display:flex;gap:6px;padding:14px 12px 4px;justify-content:center}
+.mobile-task-toggle-btn{
+  flex:1;max-width:120px;padding:8px 10px;font-size:13px;font-weight:600;
+  font-family:'Outfit',sans-serif;border:1px solid var(--border);
+  background:var(--surface);color:var(--text2);
+  border-radius:999px;cursor:pointer;transition:background .15s,color .15s,border-color .15s;
+  -webkit-tap-highlight-color:transparent}
+.mobile-task-toggle-btn:hover{background:var(--surface2);color:var(--text)}
+.mobile-task-toggle-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
 
 #mobile-add-picker{position:fixed;inset:0;z-index:1200;display:none;
   align-items:flex-end;justify-content:center;background:rgba(0,0,0,.4);
@@ -1917,6 +1936,12 @@ body.mobile-essentials #mobile-fab{display:flex}
     <div id="budget-view-container"></div>
     <div id="calendar-view-container"></div>
     <div id="task-list-container">
+      <!-- /m only: Today / Upcoming / All toggle, shown when one of these is the active view -->
+      <div id="mobile-task-toggle" role="tablist" aria-label="Task view">
+        <button class="mobile-task-toggle-btn" type="button" role="tab" data-mobile-tab="today" onclick="setView('today')">Today</button>
+        <button class="mobile-task-toggle-btn" type="button" role="tab" data-mobile-tab="upcoming" onclick="setView('upcoming')">Upcoming</button>
+        <button class="mobile-task-toggle-btn" type="button" role="tab" data-mobile-tab="all" onclick="setView('all')">All</button>
+      </div>
       <div id="archive-bulk-bar" style="display:none;padding:8px 0 12px;display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:13px;color:var(--text2)">Select tasks to restore</span>
         <button class="btn-secondary" onclick="unarchiveSelected()" style="font-size:12px;padding:6px 12px">↩ Restore Selected</button>
@@ -3204,9 +3229,9 @@ if (window.MOBILE_ESSENTIALS && typeof applyMobileEssentials === 'function') {
 // ── Mobile nav ───────────────────────────────────────────────────────────────
 function mobileNav(view) {
   document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.remove('active'));
-  // V3 layout (Tasks / Calendar / Tools)
-  if (view === 'tasks') {
-    document.getElementById('mobile-nav-tasks')?.classList.add('active');
+  // V3 layout (still used on / on phone-sized viewports)
+  if (view === 'tasks' && document.getElementById('mobile-nav-tasks') && !window.MOBILE_ESSENTIALS) {
+    document.getElementById('mobile-nav-tasks').classList.add('active');
     setView('all');
   } else if (view === 'calendar') {
     document.getElementById('mobile-nav-calendar')?.classList.add('active');
@@ -3216,13 +3241,11 @@ function mobileNav(view) {
     document.getElementById('mobile-nav-tools')?.classList.add('active');
     openMobileDrawer('tools');
   }
-  // V4 layout on /m (Today / All / Lists / Habits / More)
-  else if (view === 'today') {
-    document.getElementById('mobile-nav-today')?.classList.add('active');
+  // V4 /m layout — Tasks tab opens to "today" by default, with the
+  // Today / Upcoming / All toggle handling in-view filtering.
+  else if (view === 'tasks' && window.MOBILE_ESSENTIALS) {
+    document.getElementById('mobile-nav-tasks')?.classList.add('active');
     setView('today');
-  } else if (view === 'all') {
-    document.getElementById('mobile-nav-all')?.classList.add('active');
-    setView('all');
   } else if (view === 'lists') {
     document.getElementById('mobile-nav-lists')?.classList.add('active');
     setView('lists');

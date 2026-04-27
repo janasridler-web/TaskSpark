@@ -45,20 +45,25 @@ function goToMobileVersion() {
 function applyMobileEssentials() {
   if (!window.MOBILE_ESSENTIALS) return;
   document.body.classList.add('mobile-essentials');
+  // Default Tasks tab to "today" — but only set if no explicit view yet,
+  // so deep-links and back-button restores still work.
+  if (!currentView || currentView === 'all') {
+    setTimeout(() => { try { setView('today'); } catch(_){} }, 0);
+  }
   const nav = document.getElementById('mobile-nav');
   if (nav) {
     nav.innerHTML = `
-      <button class="mobile-nav-item active" id="mobile-nav-today" onclick="mobileNav('today')">
-        <span class="nav-icon">◷</span><span>Today</span>
-      </button>
-      <button class="mobile-nav-item" id="mobile-nav-all" onclick="mobileNav('all')">
-        <span class="nav-icon">☰</span><span>All</span>
-      </button>
-      <button class="mobile-nav-item" id="mobile-nav-lists" onclick="mobileNav('lists')">
-        <span class="nav-icon">☑</span><span>Lists</span>
+      <button class="mobile-nav-item active" id="mobile-nav-tasks" onclick="mobileNav('tasks')">
+        <span class="nav-icon">☰</span><span>Tasks</span>
       </button>
       <button class="mobile-nav-item" id="mobile-nav-habits" onclick="mobileNav('habits')">
         <span class="nav-icon">⊕</span><span>Habits</span>
+      </button>
+      <button class="mobile-nav-item nav-add" aria-label="Add" onclick="openMobileAddPicker()">
+        <span>+</span>
+      </button>
+      <button class="mobile-nav-item" id="mobile-nav-lists" onclick="mobileNav('lists')">
+        <span class="nav-icon">☑</span><span>Lists</span>
       </button>
       <button class="mobile-nav-item" id="mobile-nav-more" onclick="openMobileDrawer()">
         <span class="nav-icon">···</span><span>More</span>
@@ -1608,6 +1613,12 @@ function filterTasks() {
     const v = currentView;
     if (v === 'all')             return !task.completed && !task.archived && !isDeferred(task);
     if (v === 'today')           return !task.completed && !task.archived && task.due === t && !isDeferred(task);
+    if (v === 'upcoming')        {
+      // Next 3 days inclusive of today: today through today+3
+      const upTo = new Date(); upTo.setDate(upTo.getDate() + 3);
+      const upToStr = dateToLocalStr(upTo);
+      return !task.completed && !task.archived && task.due && task.due >= t && task.due <= upToStr && !isDeferred(task);
+    }
     if (v === 'overdue')         return !task.completed && !task.archived && task.due && task.due < t;
     if (v === 'deferred')        return !task.completed && !task.archived && isDeferred(task);
     if (v === 'completed')       return task.completed && !task.archived;
@@ -2023,7 +2034,26 @@ function calcLongestStreak() {
 // ── View ───────────────────────────────────────────────────────────────────
 function setView(view, el) {
   currentView = view;
-  const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', lists:'Lists', stats:'Stats', deferred:'Deferred', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
+  // Mobile-essentials Tasks-tab toggle: show the Today/Upcoming/All pill
+  // bar when the current view is one of those three; hide otherwise.
+  if (window.MOBILE_ESSENTIALS) {
+    const toggle = document.getElementById('mobile-task-toggle');
+    if (toggle) {
+      const showToggle = view === 'today' || view === 'upcoming' || view === 'all';
+      toggle.classList.toggle('show', showToggle);
+      toggle.querySelectorAll('.mobile-task-toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mobileTab === view);
+      });
+    }
+    // Keep the bottom-nav Tasks button active for any of the three sub-views.
+    const tasksTabActive = view === 'today' || view === 'upcoming' || view === 'all';
+    const tasksTabBtn = document.getElementById('mobile-nav-tasks');
+    if (tasksTabBtn && tasksTabActive) {
+      document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.remove('active'));
+      tasksTabBtn.classList.add('active');
+    }
+  }
+  const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', lists:'Lists', stats:'Stats', deferred:'Deferred', today:'Due Today', upcoming:'Upcoming', overdue:'Overdue', completed:'Completed', archived:'Archived',
     'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
     'status-not-started':'Not Started', 'status-in-progress':'In Progress',
     'status-blocked':'Blocked', 'status-on-hold':'On Hold',
