@@ -691,6 +691,7 @@ const DEFAULT_SETTINGS = {
   eodShowTomorrow:   true,
   eodShowStreak:     true,
   timerEnabled:      true,
+  focusModeEnabled:  false,
   budgetEnabled:     true,
   currencySymbol:    '£',
   budgetGroupByTags: false,
@@ -3754,6 +3755,88 @@ function clearDueTime() {
   if (clearBtn) clearBtn.style.display = 'none';
 }
 
+// ── Focus mode overlay (in-window full-viewport timer view) ──────────────────
+function showFocusOverlay(task) {
+  const titleEl = document.getElementById('focus-title');
+  const descEl = document.getElementById('focus-desc');
+  if (!titleEl) return;
+  titleEl.textContent = task.title;
+  if (descEl) {
+    descEl.textContent = task.desc || '';
+    descEl.style.display = task.desc ? '' : 'none';
+  }
+  renderFocusSubtasks(task.id);
+  updateFocusTime(task.timeLogged || 0);
+  updateFocusPauseUI();
+  document.getElementById('focus-overlay').classList.add('active');
+}
+
+function hideFocusOverlay() {
+  const el = document.getElementById('focus-overlay');
+  if (el) el.classList.remove('active');
+}
+
+function isFocusOverlayActive() {
+  const el = document.getElementById('focus-overlay');
+  return !!(el && el.classList.contains('active'));
+}
+
+function renderFocusSubtasks(taskId) {
+  const task = tasks.find(t => t.id === taskId);
+  const el = document.getElementById('focus-subtasks');
+  if (!el) return;
+  if (!task || !task.subtasks || !task.subtasks.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  el.style.display = 'flex';
+  el.innerHTML = task.subtasks.map(s => `
+    <div class="focus-sub-row" onclick="toggleFocusSubtask(${task.id}, ${s.id})">
+      <div class="focus-sub-check ${s.done ? 'done' : ''}">${s.done ? '✓' : ''}</div>
+      <div class="focus-sub-text ${s.done ? 'done' : ''}">${esc(s.title)}</div>
+    </div>
+  `).join('');
+}
+
+function toggleFocusSubtask(taskId, subtaskId) {
+  toggleSubtask(taskId, subtaskId);
+  renderFocusSubtasks(taskId);
+}
+
+function updateFocusTime(totalSecs) {
+  if (!isFocusOverlayActive()) return;
+  const t = Math.max(0, Math.floor(totalSecs || 0));
+  const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+  const pad = n => String(n).padStart(2,'0');
+  const el = document.getElementById('focus-time');
+  if (el) el.textContent = h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function updateFocusPauseUI() {
+  if (!isFocusOverlayActive()) return;
+  const btn   = document.getElementById('focus-pause-btn');
+  const time  = document.getElementById('focus-time');
+  const label = document.getElementById('focus-paused-label');
+  if (!btn || !time || !label) return;
+  if (timerPaused) {
+    btn.textContent = '▶ Resume';
+    btn.classList.add('paused');
+    time.classList.add('paused');
+    label.textContent = 'Paused';
+  } else {
+    btn.textContent = '‖ Pause';
+    btn.classList.remove('paused');
+    time.classList.remove('paused');
+    label.textContent = '';
+  }
+}
+
+function toggleFocusPause() {
+  if (timerPaused) resumeTimer();
+  else             pauseTimer();
+}
+
 // ── Timer ──────────────────────────────────────────────────────────────────
 function toggleTimer(id) {
   if (activeTimerId === id) { stopTimer(); return; }
@@ -3777,6 +3860,8 @@ function toggleTimer(id) {
     baseLogged: task.timeLogged || 0,
   });
 
+  if (settings.focusModeEnabled) showFocusOverlay(task);
+
   // Start local tick for task card badge updates
   timerInterval = setInterval(tickTimer, 1000);
 
@@ -3797,6 +3882,7 @@ function pauseTimer() {
   clearInterval(timerInterval);
   // Only reset the break countdown — task time is preserved
   clearBreakTimer();
+  updateFocusPauseUI();
 }
 
 function resumeTimer() {
@@ -3808,6 +3894,7 @@ function resumeTimer() {
   timerInterval = setInterval(tickTimer, 1000);
   // Restart break countdown from zero (fresh work session after pause)
   scheduleBreak();
+  updateFocusPauseUI();
 }
 
 function tickTimer() {
@@ -3819,12 +3906,15 @@ function tickTimer() {
   // Update live badge in task card
   const badge = document.getElementById(`time-badge-${activeTimerId}`);
   if (badge) badge.textContent = `◷ ${fmtSecs(total)}`;
+  // Mirror time onto the focus overlay if it's active
+  updateFocusTime(total);
 }
 
 function stopTimer() {
   // Close the separate timer window — the 'timer-stopped' IPC event
   // will fire back and handle saving + restoring the main window
   api.timerHide();
+  hideFocusOverlay();
   // Also clear local state immediately so UI updates
   clearInterval(timerInterval); timerInterval = null;
   clearBreakTimer();
@@ -4275,6 +4365,7 @@ async function openSettings() {
   if (document.getElementById('set-attachments-enabled')) document.getElementById('set-attachments-enabled').checked = s.attachmentsEnabled !== false;
   if (document.getElementById('set-calendar-enabled')) document.getElementById('set-calendar-enabled').checked = s.calendarEnabled !== false;
   if (document.getElementById('set-defer-enabled')) document.getElementById('set-defer-enabled').checked = s.deferEnabled === true;
+  if (document.getElementById('set-focus-mode-enabled')) document.getElementById('set-focus-mode-enabled').checked = s.focusModeEnabled === true;
   if (document.getElementById('set-tag-custom-colors')) document.getElementById('set-tag-custom-colors').checked = s.tagCustomColorsEnabled === true;
   if (typeof toggleTagColorSection === 'function') toggleTagColorSection();
   if (document.getElementById('set-sod-enabled'))         document.getElementById('set-sod-enabled').checked         = s.sodEnabled !== false;
@@ -4617,6 +4708,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-attachments-enabled')) settings.attachmentsEnabled = document.getElementById('set-attachments-enabled').checked;
   if (document.getElementById('set-calendar-enabled')) settings.calendarEnabled = document.getElementById('set-calendar-enabled').checked;
   if (document.getElementById('set-defer-enabled')) settings.deferEnabled = document.getElementById('set-defer-enabled').checked;
+  if (document.getElementById('set-focus-mode-enabled')) settings.focusModeEnabled = document.getElementById('set-focus-mode-enabled').checked;
   if (document.getElementById('set-tag-custom-colors')) settings.tagCustomColorsEnabled = document.getElementById('set-tag-custom-colors').checked;
   if (document.getElementById('set-break-enabled-general')) settings.breakEnabled = document.getElementById('set-break-enabled-general').checked;
   if (document.getElementById('set-budget-enabled'))  settings.budgetEnabled   = document.getElementById('set-budget-enabled').checked;

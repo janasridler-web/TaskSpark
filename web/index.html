@@ -1452,6 +1452,49 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   color:transparent;transition:all .2s}
 .gs-item.done .gs-check{background:var(--accent);border-color:var(--accent);color:#fff}
 
+/* V4 Focus mode overlay (in-window full-viewport timer view) */
+#focus-overlay{position:fixed;inset:0;background:#0f0e0d;color:#ede9e3;z-index:820;
+  display:none;flex-direction:column;font-family:'Outfit',sans-serif;user-select:none}
+#focus-overlay.active{display:flex;animation:fadeIn .25s ease}
+.focus-header{position:absolute;top:20px;left:24px;font-size:11px;color:#2d2a26;
+  font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.focus-main{flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:80px 48px 0}
+.focus-label{font-size:11px;color:#d97706;font-weight:600;letter-spacing:3px;
+  text-transform:uppercase;margin-bottom:20px}
+.focus-title{font-size:36px;font-weight:700;color:#ede9e3;text-align:center;
+  line-height:1.2;max-width:800px;margin-bottom:12px}
+.focus-desc{font-size:15px;color:#6a6358;text-align:center;max-width:600px;
+  line-height:1.5;margin-bottom:28px}
+.focus-subtasks{display:flex;flex-direction:column;gap:6px;max-width:480px;
+  width:100%;margin-bottom:48px}
+.focus-sub-row{display:flex;align-items:center;gap:12px;cursor:pointer;
+  padding:8px 12px;border-radius:8px;transition:background .15s}
+.focus-sub-row:hover{background:#1a1814}
+.focus-sub-check{width:18px;height:18px;border-radius:4px;border:1.5px solid #3d3830;
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;
+  font-weight:700;color:#fff;transition:background .15s,border-color .15s}
+.focus-sub-check.done{background:#2d6a4f;border-color:#2d6a4f}
+.focus-sub-text{font-size:14px;color:#a09888}
+.focus-sub-text.done{color:#3d3830;text-decoration:line-through}
+.focus-footer{display:flex;flex-direction:column;align-items:center;
+  padding:0 0 52px;gap:16px}
+.focus-time{font-size:72px;font-weight:700;color:#fff;font-family:var(--font-mono);
+  letter-spacing:4px;line-height:1;transition:color .2s}
+.focus-time.paused{color:#3d3830}
+.focus-paused-label{font-size:11px;color:#6a6358;letter-spacing:2px;
+  text-transform:uppercase;height:16px}
+.focus-controls{display:flex;gap:12px}
+.focus-btn{border:none;font-size:14px;font-weight:700;padding:12px 28px;
+  border-radius:10px;cursor:pointer;font-family:'Outfit',sans-serif;
+  transition:background .15s}
+.focus-pause{background:#1a1814;color:#a09888}
+.focus-pause:hover{background:#252220}
+.focus-pause.paused{background:#2d6a4f;color:#fff}
+.focus-pause.paused:hover{background:#1b4d38}
+.focus-stop{background:#c0392b;color:#fff}
+.focus-stop:hover{background:#9b2c2c}
+
 </style>
 </head>
 <body>
@@ -2041,6 +2084,10 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Task timer</div><div class="setting-desc">Show the start timer button on task cards</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-timer-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Focus mode</div><div class="setting-desc">When you start a timer, take over the screen with a distraction-free overlay</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-focus-mode-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
           <div class="settings-section">
@@ -2687,6 +2734,25 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <script src="oauth-config.js"></script>
 <script>window._appStartTime = Date.now();</script>
 <script src="app.js"></script>
+<!-- V4 Focus mode overlay (in-window full-viewport timer view) -->
+<div id="focus-overlay">
+  <div class="focus-header">TaskSpark</div>
+  <div class="focus-main">
+    <div class="focus-label">Focusing on</div>
+    <div class="focus-title" id="focus-title"></div>
+    <div class="focus-desc" id="focus-desc"></div>
+    <div class="focus-subtasks" id="focus-subtasks"></div>
+  </div>
+  <div class="focus-footer">
+    <div class="focus-time" id="focus-time">00:00</div>
+    <div class="focus-paused-label" id="focus-paused-label"></div>
+    <div class="focus-controls">
+      <button class="focus-btn focus-pause" id="focus-pause-btn" onclick="toggleFocusPause()">‖ Pause</button>
+      <button class="focus-btn focus-stop" onclick="stopTimer()">■ Stop</button>
+    </div>
+  </div>
+</div>
+
 <!-- Web: In-page timer panel (replaces Electron always-on-top timer window) -->
 <div id="web-timer-panel" style="display:none;position:fixed;bottom:20px;right:20px;z-index:1000;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;box-shadow:var(--shadow-lg);min-width:220px">
   <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Timer running</div>
