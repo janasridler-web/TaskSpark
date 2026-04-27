@@ -1273,9 +1273,14 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   input,textarea,select,.form-input{font-size:16px !important}
   /* iOS native date/time inputs have intrinsic min-widths from their
      segmented controls. Clamp them so they don't push the modal wider
-     than the viewport. */
+     than the viewport. appearance:none strips the native UI shell —
+     tapping still opens the native picker (a separate iOS modal). */
   input[type="time"],input[type="date"],input[type="datetime-local"]{
-    min-width:0;max-width:100%;box-sizing:border-box}
+    -webkit-appearance:none;appearance:none;
+    min-width:0;width:100%;max-width:100%;box-sizing:border-box;
+    display:block}
+  input[type="time"]::-webkit-date-and-time-value{text-align:left;min-width:0}
+  input[type="time"]::-webkit-calendar-picker-indicator{margin-left:auto}
   /* Stack two-column form rows on phones — each field gets the full
      row width, sidestepping iOS native input min-widths entirely
      and giving the form more breathing room. */
