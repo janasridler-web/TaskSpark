@@ -65,7 +65,7 @@ function applyMobileEssentials() {
       <button class="mobile-nav-item" id="mobile-nav-lists" onclick="mobileNav('lists')">
         <span class="nav-icon">▤</span><span>Lists</span>
       </button>
-      <button class="mobile-nav-item" id="mobile-nav-more" onclick="openMobileDrawer()">
+      <button class="mobile-nav-item" id="mobile-nav-more" onclick="openMorePopup()">
         <span class="nav-icon">···</span><span>More</span>
       </button>`;
   }
@@ -116,6 +116,49 @@ function _mobileAddPick(key) {
   if (!opt || opt.disabled) return;
   closeMobileAddPicker();
   setTimeout(() => { try { opt.run(); } catch(e) { console.warn('mobile add', key, e); } }, 80);
+}
+
+// V4 More popup — replaces the heavyweight slide-out drawer on /m. The
+// only views not already in the bottom nav are Ideas and Wins; everything
+// else in the popup is a utility action (mood, settings, etc.).
+function openMorePopup() {
+  buildMorePopup();
+  document.getElementById('more-popup-backdrop').classList.add('open');
+  document.getElementById('more-popup').classList.add('open');
+}
+function closeMorePopup() {
+  document.getElementById('more-popup-backdrop').classList.remove('open');
+  document.getElementById('more-popup').classList.remove('open');
+}
+function buildMorePopup() {
+  const popup = document.getElementById('more-popup');
+  if (!popup) return;
+  const s = settings || {};
+  const items = [];
+  if (s.ideasEnabled !== false) items.push({ icon:'❋', label:'Ideas', run:() => { setView('ideas'); }});
+  if (s.winsEnabled  !== false) items.push({ icon:'✪', label:'Wins Board', run:() => { setView('wins'); }});
+  if (items.length) items.push({ divider:true });
+  if (s.moodEnabled !== false) items.push({ icon:'♥', label:"How are you feeling?", run:() => openMoodModal() });
+  if (s.changelogEnabled !== false) items.push({ icon:'★', label:"What's New", run:() => openChangelog() });
+  items.push({ icon:'⚙', label:'Settings', run:() => openSettings() });
+  items.push({ divider:true });
+  items.push({ icon:'↗', label:'Use full version', run:() => goToFullVersion() });
+  if (!offlineMode) items.push({ icon:'⏏', label:'Sign out', run:() => signOut() });
+  // Build with id-based event wiring (drawerItem-style).
+  popup.innerHTML = items.map((item, i) => {
+    if (item.divider) return '<div class="more-popup-divider" role="separator"></div>';
+    return `<button id="more-popup-item-${i}" class="more-popup-item" type="button" role="menuitem">
+      <span class="icon" aria-hidden="true">${item.icon}</span>
+      <span>${esc(item.label)}</span>
+    </button>`;
+  }).join('');
+  setTimeout(() => {
+    items.forEach((item, i) => {
+      if (item.divider) return;
+      const el = document.getElementById('more-popup-item-' + i);
+      if (el) el.addEventListener('click', () => { closeMorePopup(); setTimeout(() => { try { item.run(); } catch(e) { console.warn('more popup', e); } }, 80); });
+    });
+  }, 0);
 }
 
 const api = {
@@ -2413,6 +2456,10 @@ function openTaskModal(id = null) {
   const dupBtn = document.getElementById('tm-duplicate-btn');
   if (dupBtn) dupBtn.style.display = id ? '' : 'none';
   document.getElementById('task-modal-overlay').classList.add('open');
+  // Ensure the modal opens scrolled to the top — long forms on tall
+  // viewports otherwise leave the user mid-form on iOS Safari.
+  const _modalEl = document.getElementById('task-modal');
+  if (_modalEl) _modalEl.scrollTop = 0;
   setTimeout(() => document.getElementById('tm-title').focus(), 100);
 }
 
@@ -3347,6 +3394,10 @@ function openTaskModal(id = null) {
   const dupBtn = document.getElementById('tm-duplicate-btn');
   if (dupBtn) dupBtn.style.display = id ? '' : 'none';
   document.getElementById('task-modal-overlay').classList.add('open');
+  // Ensure the modal opens scrolled to the top — long forms on tall
+  // viewports otherwise leave the user mid-form on iOS Safari.
+  const _modalEl = document.getElementById('task-modal');
+  if (_modalEl) _modalEl.scrollTop = 0;
   setTimeout(() => document.getElementById('tm-title').focus(), 100);
 }
 

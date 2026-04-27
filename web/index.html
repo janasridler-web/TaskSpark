@@ -1290,8 +1290,13 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
   /* Modal — full screen on mobile */
   .modal-overlay{align-items:flex-end;padding:0}
-  .modal{width:100%;max-width:100%;border-radius:20px 20px 0 0;max-height:92vh;
-    overflow-y:auto;padding:20px 16px 32px}
+  .modal{width:100%;max-width:100%;border-radius:20px 20px 0 0;
+    /* Use 100dvh so the height tracks the address bar showing/hiding
+       on iOS Safari — fixes "can't scroll to the top of a tall modal"
+       when the URL bar is visible. */
+    max-height:calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+    overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding:20px 16px 32px;padding-bottom:calc(32px + env(safe-area-inset-bottom, 0px))}
   .modal-header{margin-bottom:16px}
 
   /* Bottom nav bar */
@@ -1726,6 +1731,28 @@ body.mobile-essentials #mobile-task-toggle.show{
   -webkit-tap-highlight-color:transparent}
 .mobile-task-toggle-btn:hover{background:var(--surface2);color:var(--text)}
 .mobile-task-toggle-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* V4 More popup (replaces the slide-out drawer on /m). Pops up from the
+   More button bottom-right, compact menu of items not in the bottom nav. */
+#more-popup-backdrop{position:fixed;inset:0;z-index:249;background:transparent;display:none}
+#more-popup-backdrop.open{display:block}
+#more-popup{position:fixed;
+  bottom:calc(60px + 8px + env(safe-area-inset-bottom, 0px));
+  right:8px;z-index:250;display:none;
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  box-shadow:0 8px 22px rgba(0,0,0,.18);
+  min-width:240px;max-width:90vw;padding:6px 0;
+  transform-origin:bottom right;font-family:'Outfit',sans-serif}
+#more-popup.open{display:block;animation:morePopupOpen .14s ease}
+@keyframes morePopupOpen{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.more-popup-item{display:flex;align-items:center;gap:12px;
+  padding:11px 16px;cursor:pointer;font-size:14px;color:var(--text);
+  border:none;background:none;width:100%;text-align:left;
+  font-family:inherit;-webkit-tap-highlight-color:transparent}
+.more-popup-item:hover,.more-popup-item:focus-visible{background:var(--surface2)}
+.more-popup-item:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.more-popup-item .icon{width:20px;text-align:center;font-size:14px;color:var(--text2)}
+.more-popup-divider{height:1px;background:var(--border);margin:6px 8px}
 
 #mobile-add-picker{position:fixed;inset:0;z-index:1200;display:none;
   align-items:flex-end;justify-content:center;background:rgba(0,0,0,.4);
@@ -3164,6 +3191,10 @@ body.mobile-essentials #mobile-task-toggle.show{
 <!-- Mobile bottom nav bar -->
 <!-- V4 mobile FAB — visible on /m only (body.mobile-essentials) -->
 <button id="mobile-fab" type="button" aria-label="Add" onclick="openMobileAddPicker()">+</button>
+
+<!-- V4 More popup (replaces the slide-out drawer on /m) -->
+<div id="more-popup-backdrop" onclick="closeMorePopup()"></div>
+<div id="more-popup" role="menu" aria-label="More options"></div>
 
 <!-- V4 universal "what would you like to add?" picker -->
 <div id="mobile-add-picker" role="dialog" aria-modal="true" aria-labelledby="mobile-add-title" onclick="if(event.target===this)closeMobileAddPicker()">
