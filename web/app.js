@@ -1529,6 +1529,7 @@ function renderAll() {
   else if (habitsMode) renderHabits();
   else if (winsMode) renderWins();
   else if (listsMode) renderLists();
+  else if (statsMode) renderStatsView();
   else if (budgetViewMode) renderBudgetView();
   else if (calendarViewMode) renderCalendarView();
   else renderTasks();
@@ -1905,7 +1906,7 @@ function calcLongestStreak() {
 // ── View ───────────────────────────────────────────────────────────────────
 function setView(view, el) {
   currentView = view;
-  const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
+  const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', lists:'Lists', stats:'Stats', deferred:'Deferred', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
     'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
     'status-not-started':'Not Started', 'status-in-progress':'In Progress',
     'status-blocked':'Blocked', 'status-on-hold':'On Hold',
@@ -1919,18 +1920,19 @@ function setView(view, el) {
     if (match) match.classList.add('active');
   }
   if (view === 'kanban') {
-    ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
+    ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     document.getElementById('lists-container')?.classList.remove('active');
+    document.getElementById('stats-container')?.classList.remove('active');
     const bvcK = document.getElementById('budget-view-container'); if (bvcK) { bvcK.classList.remove('active'); }
     const cvcK = document.getElementById('calendar-view-container'); if (cvcK) { cvcK.classList.remove('active'); }
     const mainElK = document.getElementById('main');
     if (mainElK) { mainElK.style.display = ''; mainElK.style.flexDirection = ''; }
     switchViewMode('kanban');
   } else if (view === 'ideas') {
-    ideasMode = true; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
+    ideasMode = true; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
     const cvcI = document.getElementById('calendar-view-container'); if (cvcI) { cvcI.classList.remove('active'); }
     const bvcI = document.getElementById('budget-view-container'); if (bvcI) bvcI.classList.remove('active');
     switchViewMode('list');
@@ -1938,10 +1940,11 @@ function setView(view, el) {
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     document.getElementById('lists-container')?.classList.remove('active');
+    document.getElementById('stats-container')?.classList.remove('active');
     document.getElementById('ideas-container').classList.add('active');
     renderIdeas();
   } else if (view === 'wins') {
-    winsMode = true; ideasMode = false; habitsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
+    winsMode = true; ideasMode = false; habitsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
     const cvW = document.getElementById('calendar-view-container'); if (cvW) { cvW.classList.remove('active'); }
     const bvcW = document.getElementById('budget-view-container'); if (bvcW) bvcW.classList.remove('active');
     switchViewMode('list');
@@ -1949,10 +1952,11 @@ function setView(view, el) {
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('lists-container')?.classList.remove('active');
+    document.getElementById('stats-container')?.classList.remove('active');
     document.getElementById('wins-container').classList.add('active');
     renderWins();
   } else if (view === 'lists') {
-    listsMode = true; ideasMode = false; habitsMode = false; winsMode = false; budgetViewMode = false; calendarViewMode = false;
+    listsMode = true; ideasMode = false; habitsMode = false; winsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
     const cvL = document.getElementById('calendar-view-container'); if (cvL) cvL.classList.remove('active');
     const bvcL = document.getElementById('budget-view-container'); if (bvcL) bvcL.classList.remove('active');
     switchViewMode('list');
@@ -1960,11 +1964,24 @@ function setView(view, el) {
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('stats-container')?.classList.remove('active');
     document.getElementById('lists-container')?.classList.add('active');
     currentOpenListId = null;
     renderLists();
+  } else if (view === 'stats') {
+    statsMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
+    const cvS = document.getElementById('calendar-view-container'); if (cvS) cvS.classList.remove('active');
+    const bvcS = document.getElementById('budget-view-container'); if (bvcS) bvcS.classList.remove('active');
+    switchViewMode('list');
+    document.getElementById('task-list-container').style.display = 'none';
+    document.getElementById('habits-container').classList.remove('active');
+    document.getElementById('ideas-container').classList.remove('active');
+    document.getElementById('wins-container').classList.remove('active');
+    document.getElementById('lists-container')?.classList.remove('active');
+    document.getElementById('stats-container')?.classList.add('active');
+    renderStatsView();
   } else if (view === 'budget-view') {
-    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; calendarViewMode = false;
+    budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; calendarViewMode = false;
     const cvc = document.getElementById('calendar-view-container'); if (cvc) { cvc.classList.remove('active'); }
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
@@ -1972,25 +1989,28 @@ function setView(view, el) {
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     document.getElementById('lists-container')?.classList.remove('active');
+    document.getElementById('stats-container')?.classList.remove('active');
     const bvc = document.getElementById('budget-view-container'); if (bvc) bvc.classList.add('active');
     renderBudgetView();
   } else if (view === 'calendar-view') {
-    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false;
+    calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false;
     switchViewMode('list');
     document.getElementById('task-list-container').style.display = 'none';
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     document.getElementById('lists-container')?.classList.remove('active');
+    document.getElementById('stats-container')?.classList.remove('active');
     const bvcC = document.getElementById('budget-view-container'); if (bvcC) bvcC.classList.remove('active');
     const cvcC = document.getElementById('calendar-view-container'); if (cvcC) cvcC.classList.add('active');
     loadCalEvents().then(() => renderCalendarView());
   } else {
-    ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
+    ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
     document.getElementById('ideas-container').classList.remove('active');
     document.getElementById('habits-container').classList.remove('active');
     document.getElementById('wins-container').classList.remove('active');
     document.getElementById('lists-container')?.classList.remove('active');
+    document.getElementById('stats-container')?.classList.remove('active');
     const bvcE = document.getElementById('budget-view-container'); if (bvcE) bvcE.classList.remove('active');
     const cvcE = document.getElementById('calendar-view-container');
     if (cvcE) { cvcE.classList.remove('active'); }
@@ -4439,6 +4459,9 @@ function applySettings() {
   // Lists sidebar item — only visible when listsEnabled
   const listsSidebar = document.getElementById('sidebar-lists');
   if (listsSidebar) listsSidebar.style.display = s.listsEnabled !== false ? '' : 'none';
+  // Stats sidebar item — only visible when statsEnabled
+  const statsSidebar = document.getElementById('sidebar-stats');
+  if (statsSidebar) statsSidebar.style.display = s.statsEnabled !== false ? '' : 'none';
   // Kanban sub-settings depend on kanbanEnabled
   const kanbanSub = document.getElementById('kanban-sub-settings');
   if (kanbanSub) kanbanSub.style.display = s.kanbanEnabled !== false ? '' : 'none';
@@ -4599,6 +4622,7 @@ async function openSettings() {
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
   if (document.getElementById('set-wins-enabled'))      document.getElementById('set-wins-enabled').checked      = s.winsEnabled !== false;
   if (document.getElementById('set-lists-enabled'))     document.getElementById('set-lists-enabled').checked     = s.listsEnabled !== false;
+  if (document.getElementById('set-stats-enabled'))     document.getElementById('set-stats-enabled').checked     = s.statsEnabled !== false;
   if (document.getElementById('set-workspaces-enabled')) document.getElementById('set-workspaces-enabled').checked = s.workspacesEnabled !== false;
   if (document.getElementById('set-break-enabled-general')) document.getElementById('set-break-enabled-general').checked = s.breakEnabled;
   if (document.getElementById('set-budget-enabled'))  document.getElementById('set-budget-enabled').checked  = s.budgetEnabled !== false;
@@ -4946,6 +4970,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-habits-enabled'))    settings.habitsEnabled    = document.getElementById('set-habits-enabled').checked;
   if (document.getElementById('set-wins-enabled'))      settings.winsEnabled      = document.getElementById('set-wins-enabled').checked;
   if (document.getElementById('set-lists-enabled'))     settings.listsEnabled     = document.getElementById('set-lists-enabled').checked;
+  if (document.getElementById('set-stats-enabled'))     settings.statsEnabled     = document.getElementById('set-stats-enabled').checked;
   if (document.getElementById('set-workspaces-enabled')) settings.workspacesEnabled = document.getElementById('set-workspaces-enabled').checked;
   if (document.getElementById('set-budget-group-tags')) settings.budgetGroupByTags = document.getElementById('set-budget-group-tags').checked;
   if (document.getElementById('set-attachments-enabled')) settings.attachmentsEnabled = document.getElementById('set-attachments-enabled').checked;
@@ -5486,6 +5511,173 @@ function showWinsView() {
   if (winsBtn) winsBtn.classList.add('active');
   document.getElementById('view-title').textContent = 'Wins Board';
   renderWins();
+}
+
+// ── Stats (V4 NEW: dashboard with day-X-of-7 welcome + charts) ──────────────
+// Helpers (calculations and time math). Charts are added in a follow-up commit.
+function statsFmtTime(secs) {
+  secs = Math.max(0, Math.floor(secs));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function statsDateRange(range) {
+  const days = { '7d': 7, '30d': 30, '90d': 90, 'year': 365 }[range] || 30;
+  const end = new Date(); end.setHours(23, 59, 59, 999);
+  const start = new Date(end); start.setDate(start.getDate() - days + 1); start.setHours(0, 0, 0, 0);
+  let totalDays = days;
+  if (!settings.streakWeekends) {
+    let wd = 0; const c = new Date(start);
+    while (c <= end) { const d = c.getDay(); if (d !== 0 && d !== 6) wd++; c.setDate(c.getDate()+1); }
+    totalDays = wd;
+  }
+  return { start, end, totalDays };
+}
+
+function statsPrevRange(range) {
+  const { start, end } = statsDateRange(range);
+  const dur = end.getTime() - start.getTime();
+  const prevEnd = new Date(start.getTime() - 1);
+  const prevStart = new Date(prevEnd.getTime() - dur + 1);
+  return { start: prevStart, end: prevEnd };
+}
+
+function statsSessionsInRange(task, start, end) {
+  return (task.timeSessions || []).filter(s => {
+    const d = new Date(s.start);
+    return d >= start && d <= end;
+  });
+}
+
+function statsRunningSecsForTask(task, start, end) {
+  if (activeTimerId !== task.id || !timerStart) return 0;
+  const runStart = new Date(timerStart * 1000);
+  if (runStart < start || runStart > end) return 0;
+  return Math.floor(Date.now() / 1000 - timerStart) + (timerPausedElapsed || 0);
+}
+
+function statsTaskTimeInRange(task, start, end) {
+  const fromSessions = statsSessionsInRange(task, start, end).reduce((s, sess) => s + (sess.elapsed || 0), 0);
+  return fromSessions + statsRunningSecsForTask(task, start, end);
+}
+
+function statsCompletedInRange(start, end) {
+  return tasks.filter(t => t.completed && t.completedAt &&
+    new Date(t.completedAt) >= start && new Date(t.completedAt) <= end);
+}
+
+function statsCreatedInRange(start, end) {
+  return tasks.filter(t => t.createdAt &&
+    new Date(t.createdAt) >= start && new Date(t.createdAt) <= end);
+}
+
+function statsDetectProfile(start, end) {
+  if (settings.timerEnabled === false) return 'PROFILE_BASIC';
+  const hasSessions = tasks.some(t =>
+    statsSessionsInRange(t, start, end).length > 0 ||
+    statsRunningSecsForTask(t, start, end) > 0
+  );
+  if (!hasSessions) return 'PROFILE_BASIC';
+  if (settings.estimatesEnabled === false) return 'PROFILE_TIMER';
+  const eligibleCount = statsCompletedInRange(start, end).filter(t =>
+    t.estimate > 0 && (t.timeSessions || []).length > 0
+  ).length;
+  return eligibleCount >= 3 ? 'PROFILE_FULL' : 'PROFILE_TIMER';
+}
+
+function statsIsNewUser() {
+  const withDates = tasks.filter(t => t.createdAt);
+  if (!withDates.length) return true;
+  const first = Math.min(...withDates.map(t => new Date(t.createdAt).getTime()));
+  return (Date.now() - first) / 86400000 < 7;
+}
+
+function statsNewUserDay() {
+  const withDates = tasks.filter(t => t.createdAt);
+  if (!withDates.length) return 1;
+  const first = Math.min(...withDates.map(t => new Date(t.createdAt).getTime()));
+  return Math.min(7, Math.floor((Date.now() - first) / 86400000) + 1);
+}
+
+function renderStatsWelcome() {
+  const day = statsNewUserDay();
+  const remaining = 7 - day;
+  const pct = Math.round((day / 7) * 100);
+  const timerOn = settings.timerEnabled !== false;
+  const estimatesOn = settings.estimatesEnabled !== false;
+  const totalCompleted = tasks.filter(t => t.completed).length;
+  const streak = calcStreak();
+  const totalSecs = tasks.reduce((s, t) => s + (t.timeLogged || 0), 0);
+  const sessionCount = tasks.reduce((n, t) => n + (t.timeSessions || []).length, 0);
+
+  const titleCopy = day <= 1 ? 'Off to a great start.'
+    : day <= 3 ? 'Building momentum.'
+    : day <= 5 ? 'Stats are filling in.'
+    : 'Almost a full week of data.';
+  const bodyCopy = day <= 1
+    ? 'Stats get more interesting after a few days. Keep completing tasks and come back to watch this page fill in.'
+    : day <= 5
+    ? `You're on day ${day}. Each completed task adds a data point — a few more days and the trends will start to emerge.`
+    : "You're nearly at a full week. The main trends will unlock soon — hang tight.";
+
+  const tiles = [
+    `<div class="stats-tile"><div class="stats-tile-label">Tasks completed</div><div class="stats-tile-value">${totalCompleted}</div><div class="stats-tile-delta">since you started</div></div>`,
+    `<div class="stats-tile"><div class="stats-tile-label">Current streak</div><div class="stats-tile-value">${streak}<span class="stats-tile-unit">day${streak !== 1 ? 's' : ''}</span></div><div class="stats-tile-delta">${streak > 0 ? 'nice — keep it going' : 'complete a task to start one'}</div></div>`,
+  ];
+  if (timerOn) tiles.push(`<div class="stats-tile"><div class="stats-tile-label">Time tracked</div><div class="stats-tile-value">${statsFmtTime(totalSecs)}</div><div class="stats-tile-delta">${sessionCount} session${sessionCount !== 1 ? 's' : ''}</div></div>`);
+
+  const coming = [
+    { when: '7 days', what: 'Throughput trends and day-of-week patterns' },
+    { when: '2 weeks', what: 'Created vs completed comparison' },
+    { when: '30 days', what: 'Monthly trends and long-term patterns' },
+  ];
+  if (timerOn) {
+    coming.splice(1, 0, { when: '10 sessions', what: 'Productivity heatmap — when you work best' });
+    coming.push({ when: 'anytime', what: "Time by tag — once you've tagged some tasks" });
+  }
+  if (timerOn && estimatesOn) coming.push({ when: '3 estimates', what: "Estimate accuracy — how well you're calibrating" });
+
+  const bars = [[30,.35],[55,.5],[75,.7],[90,.85],[60,.55],[45,.4],[80,.7]];
+  const preview = bars.map(([w, op]) => `<div class="stats-preview-bar" style="width:${w}%;opacity:${op}"></div>`).join('');
+
+  return `<div class="stats-page">
+    <div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div></div>
+    <div class="stats-welcome-card">
+      <div>
+        <div class="stats-welcome-title">${titleCopy}</div>
+        <div class="stats-welcome-body">${bodyCopy}</div>
+        <div class="stats-welcome-progress">
+          <div class="stats-welcome-progress-row"><span>Day ${day} of 7</span><span class="stats-welcome-progress-count">${remaining > 0 ? remaining + ' more day' + (remaining > 1 ? 's' : '') : 'Almost there!'}</span></div>
+          <div class="stats-progress-track"><div class="stats-progress-fill" style="width:${pct}%"></div></div>
+        </div>
+      </div>
+      <div class="stats-welcome-visual">${preview}<div class="stats-preview-label">A preview of what's coming</div></div>
+    </div>
+    <div class="stats-section-label">What we can show you so far</div>
+    <div class="stats-tiles" style="grid-template-columns:repeat(${tiles.length},1fr)">${tiles.join('')}</div>
+    <div class="stats-coming-card">
+      <div class="stats-coming-title">What unlocks as you keep going</div>
+      <div class="stats-coming-list">${coming.map(i=>`<div class="stats-coming-item"><div class="stats-coming-when">${i.when}</div><div class="stats-coming-what">${i.what}</div></div>`).join('')}</div>
+    </div>
+    <div class="stats-footnote">No pressure — just a heads up about what's ahead.</div>
+  </div>`;
+}
+
+function renderStatsView() {
+  const container = document.getElementById('stats-container');
+  if (!container) return;
+  if (statsIsNewUser()) {
+    container.innerHTML = renderStatsWelcome();
+    return;
+  }
+  // Charts land in the next commit (E2). For now, returning users see a
+  // placeholder so the view isn't blank.
+  container.innerHTML = `<div class="stats-page">
+    <div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div></div>
+    <div class="stats-empty-msg">Charts coming in the next update — your data's safe and will fill in here once the dashboard ships.</div>
+  </div>`;
 }
 
 // ── Lists (V4 NEW: kanban-style boards with categories) ─────────────────────
