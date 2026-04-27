@@ -1706,6 +1706,13 @@ body.mobile-essentials #toolbar{display:none}
 body.mobile-essentials #stats-bar{display:none}
 body.mobile-essentials #sync-bar{display:none}
 
+/* /m view restrictions: CSV import/export are hidden in Settings ->
+   Account & Data -> Data. Calendar / Kanban / Stats / Budget items
+   are filtered out of the mobile drawer in JS (buildMobileDrawer). */
+body.mobile-essentials #settings-row-export-csv,
+body.mobile-essentials #settings-row-import-csv,
+body.mobile-essentials input#import-file-input{display:none}
+
 /* Mobile task-list toggle: Today / Upcoming / All pills. Only visible on
    /m when the current view is one of those three. */
 #mobile-task-toggle{display:none}
@@ -2614,11 +2621,11 @@ body.mobile-essentials #mobile-task-toggle.show{
           </div>
           <div class="settings-section">
             <div class="settings-section-title">Data</div>
-            <div class="setting-row">
+            <div class="setting-row" id="settings-row-export-csv">
               <div><div class="setting-label">Export task list</div><div class="setting-desc">Download your tasks as a CSV file</div></div>
               <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(openExportModal,150)" style="font-size:12px;padding:6px 12px">Export</button>
             </div>
-            <div class="setting-row">
+            <div class="setting-row" id="settings-row-import-csv">
               <div><div class="setting-label">Import from template</div><div class="setting-desc">Add tasks from a TaskSpark CSV template file</div></div>
               <button class="btn-secondary" onclick="triggerImport()" style="font-size:12px;padding:6px 12px">Import</button>
             </div>
@@ -3302,22 +3309,28 @@ function buildMobileDrawer(section) {
     sections.push(`<div style="height:1px;background:var(--border);margin:8px 16px"></div>`);
   }
 
-  // Views
+  // Views — Calendar / Kanban hidden on /m essentials (desktop / non-/m
+  // phone gets the full set).
+  const onM = !!window.MOBILE_ESSENTIALS;
   sections.push(`<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;margin-top:8px">Views</div>`);
   sections.push(drawerItem('☑', 'All Tasks', () => { setView('all'); closeMobileDrawer(); }));
-  sections.push(drawerItem('▦', 'Calendar', () => { setView('calendar-view'); closeMobileDrawer(); }));
-  if (s.kanbanEnabled !== false) sections.push(drawerItem('⊞', 'Kanban', () => { setView('kanban'); closeMobileDrawer(); }));
+  if (!onM) sections.push(drawerItem('▦', 'Calendar', () => { setView('calendar-view'); closeMobileDrawer(); }));
+  if (!onM && s.kanbanEnabled !== false) sections.push(drawerItem('⊞', 'Kanban', () => { setView('kanban'); closeMobileDrawer(); }));
   sections.push(drawerItem('◷', 'Due Today', () => { setView('today'); closeMobileDrawer(); }));
   sections.push(drawerItem('⚠', 'Overdue', () => { setView('overdue'); closeMobileDrawer(); }));
   sections.push(drawerItem('✓', 'Completed', () => { setView('completed'); closeMobileDrawer(); }));
   sections.push(drawerItem('▣', 'Archived', () => { setView('archived'); closeMobileDrawer(); }));
 
-  // Tools
-  if (s.winsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false) {
+  // Tools — Stats / Budget hidden on /m essentials.
+  const anyTool = s.winsEnabled !== false || s.ideasEnabled !== false || s.habitsEnabled !== false
+    || (!onM && s.statsEnabled !== false) || (!onM && s.budgetEnabled !== false);
+  if (anyTool) {
     sections.push(`<div style="padding:8px 16px 4px;font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;margin-top:8px">Tools</div>`);
+    if (!onM && s.statsEnabled !== false) sections.push(drawerItem('▲', 'Stats', () => { setView('stats'); closeMobileDrawer(); }));
     if (s.ideasEnabled !== false) sections.push(drawerItem('💡', 'Ideas', () => { setView('ideas'); closeMobileDrawer(); }));
     if (s.habitsEnabled !== false) sections.push(drawerItem('🔄', 'Habits', () => { setView('habits'); closeMobileDrawer(); }));
     if (s.winsEnabled !== false) sections.push(drawerItem('⭐', 'Wins Board', () => { setView('wins'); closeMobileDrawer(); }));
+    if (!onM && s.budgetEnabled !== false) sections.push(drawerItem('$', 'Budget View', () => { setView('budget-view'); closeMobileDrawer(); }));
   }
 
   // Priority filters
