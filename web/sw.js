@@ -5,6 +5,8 @@ const CACHE_NAME = 'taskspark-v4.0.0';
 const ASSETS = [
   '/',
   '/index.html',
+  '/m/',
+  '/m/index.html',
   '/app.js',
   '/oauth-config.js',
   '/manifest.json',
@@ -65,6 +67,9 @@ self.addEventListener('fetch', e => {
     || url.pathname.endsWith('.js');
 
   if (isAppShell) {
+    // Fall back to /m/index.html when the user is on the /m route, otherwise
+    // to /index.html. Keeps the experience right when offline on either path.
+    const fallbackHtml = url.pathname.startsWith('/m') ? '/m/index.html' : '/index.html';
     e.respondWith(
       fetch(e.request).then(response => {
         if (response && response.status === 200 && response.type === 'basic') {
@@ -73,7 +78,7 @@ self.addEventListener('fetch', e => {
         }
         return response;
       }).catch(() =>
-        caches.match(e.request).then(c => c || caches.match('/index.html'))
+        caches.match(e.request).then(c => c || caches.match(fallbackHtml))
       )
     );
     return;

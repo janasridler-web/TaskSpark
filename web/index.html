@@ -3,6 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<!-- Mobile auto-redirect — runs before any UI paints. Phone-shaped UA + small
+     viewport, no remembered preference for full → /m. iPad stays on / by
+     screen real estate. Users who explicitly chose "use full version" are
+     remembered via localStorage and not redirected. -->
+<script>
+(function(){
+  try {
+    if (location.pathname === '/m' || location.pathname === '/m/') return;
+    var pref = null;
+    try { pref = localStorage.getItem('preferredView'); } catch(_){}
+    if (pref === 'full') return;
+    var ua = navigator.userAgent || '';
+    var phoneUA = /Mobi|Android|iPhone|iPod/i.test(ua);
+    // iPadOS reports as Mac since iOS 13. Exclude iPads from auto-redirect.
+    var isIPad = ua.indexOf('Macintosh') !== -1 && navigator.maxTouchPoints > 1;
+    var smallVp = Math.min(window.innerWidth, window.innerHeight) < 768;
+    if (phoneUA && !isIPad && smallVp) location.replace('/m/');
+  } catch(_){}
+})();
+</script>
 <title>TaskSpark — Focus · Flow · Finish</title>
 <link rel="icon" href="assets/taskspark.ico">
 <link rel="manifest" href="manifest.json">
@@ -2538,6 +2558,17 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Replay onboarding</div><div class="setting-desc">Pick a feature preset again or open Settings to choose toggles by hand</div></div>
               <button class="btn-secondary" onclick="closeModal('settings-modal-overlay');setTimeout(startOnboarding,150)" style="font-size:12px;padding:6px 14px">Replay</button>
+            </div>
+          </div>
+          <div class="settings-section" id="view-mode-section">
+            <div class="settings-section-title">View Mode</div>
+            <div class="setting-row" id="view-mode-row-mobile">
+              <div><div class="setting-label">Open mobile version</div><div class="setting-desc">Switch to the slimmed-down essentials view at /m</div></div>
+              <button class="btn-secondary" onclick="goToMobileVersion()" style="font-size:12px;padding:6px 14px">Open</button>
+            </div>
+            <div class="setting-row" id="view-mode-row-full" style="display:none">
+              <div><div class="setting-label">Use full version</div><div class="setting-desc">Switch to the full TaskSpark experience (calendar, kanban, stats, etc.)</div></div>
+              <button class="btn-secondary" onclick="goToFullVersion()" style="font-size:12px;padding:6px 14px">Use full version</button>
             </div>
           </div>
         </div>

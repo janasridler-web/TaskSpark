@@ -4,6 +4,36 @@ const WEB_VERSION = '4.0.0';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
+// Mobile mode detection. Set by either:
+//   1. /m/index.html redirected to /?_m=1 (so the redirector hop survives).
+//   2. The user landed directly on /m or /m/ (rare — most arrive via
+//      auto-redirect, which uses /m/ as the destination).
+// Once detected, we put /m/ back in the address bar via history.replaceState
+// so the URL stays clean and shareable.
+(function detectMobileMode(){
+  try {
+    var params = new URLSearchParams(location.search);
+    var fromFlag = params.get('_m') === '1';
+    var fromPath = location.pathname === '/m' || location.pathname === '/m/';
+    if (fromFlag || fromPath) {
+      window.MOBILE_ESSENTIALS = true;
+      try { localStorage.setItem('preferredView', 'mobile'); } catch(_){}
+      try { history.replaceState(null, '', '/m/'); } catch(_){}
+    }
+  } catch(_){}
+})();
+
+// Override-link handlers — wired to the View Mode rows in Settings >
+// Account & Data. Both persist the choice so the auto-redirect respects it.
+function goToFullVersion() {
+  try { localStorage.setItem('preferredView', 'full'); } catch(_){}
+  location.href = '/';
+}
+function goToMobileVersion() {
+  try { localStorage.setItem('preferredView', 'mobile'); } catch(_){}
+  location.href = '/m/';
+}
+
 const api = {
   loadConfig: () => {
     try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || 'null'); } catch { return null; }
@@ -4602,6 +4632,11 @@ function applySettings() {
 
 async function openSettings() {
   const s = settings;
+  // View Mode rows: show "Use full" on /m, "Open mobile" on /
+  const vmRowMobile = document.getElementById('view-mode-row-mobile');
+  const vmRowFull   = document.getElementById('view-mode-row-full');
+  if (vmRowMobile) vmRowMobile.style.display = window.MOBILE_ESSENTIALS ? 'none' : '';
+  if (vmRowFull)   vmRowFull.style.display   = window.MOBILE_ESSENTIALS ? '' : 'none';
   // Sync dark mode toggle to current theme
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   if (document.getElementById('set-darkmode')) document.getElementById('set-darkmode').checked = isDark;
