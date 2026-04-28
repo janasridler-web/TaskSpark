@@ -27,7 +27,7 @@ jobs:
       - name: Verify version matches package.json
         shell: node {0}
         run: |
-          const pkg = require('./package.json');
+          const pkg = require(require('path').join(process.cwd(), 'package.json'));
           const input = '${{ github.event.inputs.version }}';
           if (pkg.version !== input) {
             console.error(`Version mismatch: package.json says ${pkg.version} but input was ${input}`);
