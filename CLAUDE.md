@@ -87,6 +87,13 @@ The companion lives in `web/` and is a single-file SPA — `web/app.js`
 (~7,800 lines) plus `web/index.html`. It ships as a PWA with a versioned
 service worker (`web/sw.js`).
 
+> **Two reference docs live alongside this file:**
+> - `WEB-WORKFLOW.md` — plain-English walkthrough of the change-and-deploy
+>   loop (staging auto-deploy, manual live, when to bump versions, how to
+>   force a staging refresh). Read this first when working on the web app.
+> - `WEB-DEPLOY.md` — terser reference: going-live procedure, OAuth
+>   redirect URIs, manual cPanel fallback, optional gzip `.htaccess`.
+
 ### Versioning
 
 `WEB_VERSION` lives at the top of `web/app.js`. The service worker's
