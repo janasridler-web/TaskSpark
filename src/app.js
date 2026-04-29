@@ -499,6 +499,8 @@ async function init() {
   if (verEl) verEl.textContent = `v${ver}`;
   // Check if we should show the what's new modal
   await checkWhatsNew(ver);
+  // Pull today's mood from the cloud so we don't re-prompt on a fresh device
+  await syncTodayMoodFromCloud();
   // Update mood sidebar button on load
   updateMoodSidebarBtn();
   // Init Outlook
@@ -6589,6 +6591,26 @@ async function saveMoodHistory(date, mood) {
     await api.moodAppend({ accessToken, spreadsheetId, date, mood });
   } catch (e) {
     console.warn('Failed to save mood history:', e);
+  }
+}
+
+async function syncTodayMoodFromCloud() {
+  if (offlineMode || !accessToken || !spreadsheetId) return;
+  const today = todayStr();
+  // If localStorage already has today's mood, no need to fetch.
+  try {
+    const stored = JSON.parse(localStorage.getItem('taskspark_mood') || '{}');
+    if (stored.date === today && stored.mood) return;
+  } catch {}
+  try {
+    await ensureToken();
+    const cloudMood = await api.moodGetToday({ accessToken, spreadsheetId, date: today });
+    if (cloudMood) {
+      try { localStorage.setItem('taskspark_mood', JSON.stringify({ date: today, mood: cloudMood })); } catch {}
+      updateMoodSidebarBtn();
+    }
+  } catch (e) {
+    console.warn('Failed to sync today\'s mood from cloud:', e);
   }
 }
 

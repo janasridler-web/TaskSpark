@@ -53,6 +53,7 @@ const api = {
   winsLoad:      (args) => winsLoadWeb(args),
   archiveAppend: (args) => archiveAppendWeb(args),
   moodAppend:    (args) => moodAppendWeb(args),
+  moodGetToday:  (args) => moodGetTodayWeb(args),
   // OAuth handled in-browser
   oauthStart:    () => oauthStartWeb(),
   oauthExchange: (args) => oauthExchangeWeb(args),
@@ -246,7 +247,7 @@ async function sheetsRequest(method, path, accessToken, body) {
 }
 
 async function sheetsEnsureWeb({ accessToken, spreadsheetId }) {
-  const tabs = ['Tasks','Ideas','Habits','Wins','Archive','Mood','Events'];
+  const tabs = ['Tasks','Ideas','Habits','Wins','Archive','Mood History','Events'];
   const meta = await sheetsRequest('GET', `/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`, accessToken);
   const existing = (meta.sheets||[]).map(s => s.properties.title);
   const missing  = tabs.filter(t => !existing.includes(t));
@@ -254,6 +255,11 @@ async function sheetsEnsureWeb({ accessToken, spreadsheetId }) {
     await sheetsRequest('POST', `/v4/spreadsheets/${spreadsheetId}:batchUpdate`, accessToken, {
       requests: missing.map(title => ({ addSheet: { properties: { title } } }))
     });
+    if (missing.includes('Mood History')) {
+      await sheetsRequest('PUT',
+        `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Mood History!A1')}?valueInputOption=RAW`,
+        accessToken, { range: 'Mood History!A1', values: [['Date', 'Mood']], majorDimension: 'ROWS' });
+    }
   }
 }
 
@@ -423,9 +429,29 @@ async function archiveAppendWeb({ accessToken, spreadsheetId, tasks }) {
 }
 
 async function moodAppendWeb({ accessToken, spreadsheetId, date, mood }) {
-  await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Mood!A1')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    accessToken, { range: 'Mood!A1', values: [[date, mood]], majorDimension: 'ROWS' });
+  // Upsert: if today's row exists, update it; otherwise append.
+  const existing = await sheetsRequest('GET',
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Mood History!A2:B1000')}`, accessToken);
+  const rows = (existing.values || []);
+  const todayRow = rows.findIndex(r => r[0] === date);
+  if (todayRow >= 0) {
+    const rowNum = todayRow + 2;
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Mood History!A${rowNum}`)}?valueInputOption=RAW`,
+      accessToken, { range: `Mood History!A${rowNum}`, values: [[date, mood]], majorDimension: 'ROWS' });
+  } else {
+    await sheetsRequest('POST',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Mood History!A:B')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      accessToken, { values: [[date, mood]], majorDimension: 'ROWS' });
+  }
+}
+
+async function moodGetTodayWeb({ accessToken, spreadsheetId, date }) {
+  const data = await sheetsRequest('GET',
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Mood History!A2:B1000')}`, accessToken);
+  const rows = (data.values || []);
+  const row = rows.find(r => r[0] === date);
+  return row ? row[1] : null;
 }
 
 function safeJSON(str, fallback) {
@@ -966,6 +992,8 @@ async function init() {
   if (verEl) verEl.textContent = `v${ver}`;
   // Check if we should show the what's new modal
   await checkWhatsNew(ver);
+  // Pull today's mood from the cloud so we don't re-prompt on a fresh device
+  await syncTodayMoodFromCloud();
   // Update mood sidebar button on load
   updateMoodSidebarBtn();
   // Init Outlook
@@ -5630,6 +5658,25 @@ async function saveMoodHistory(date, mood) {
     await api.moodAppend({ accessToken, spreadsheetId, date, mood });
   } catch (e) {
     console.warn('Failed to save mood history:', e);
+  }
+}
+
+async function syncTodayMoodFromCloud() {
+  if (offlineMode || !accessToken || !spreadsheetId) return;
+  const today = todayStr();
+  try {
+    const stored = JSON.parse(localStorage.getItem('taskspark_mood') || '{}');
+    if (stored.date === today && stored.mood) return;
+  } catch {}
+  try {
+    await ensureToken();
+    const cloudMood = await api.moodGetToday({ accessToken, spreadsheetId, date: today });
+    if (cloudMood) {
+      try { localStorage.setItem('taskspark_mood', JSON.stringify({ date: today, mood: cloudMood })); } catch {}
+      updateMoodSidebarBtn();
+    }
+  } catch (e) {
+    console.warn('Failed to sync today\'s mood from cloud:', e);
   }
 }
 
