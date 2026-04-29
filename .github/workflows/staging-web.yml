@@ -1,0 +1,74 @@
+name: Deploy Web Companion to Staging
+
+# Auto-deploys web/ to staging.taskspark.tech on every push to the V4
+# rebuild branch. Mirrors deploy-web.yml (production, manual trigger) but
+# uses STAGING_FTP_* secrets and includes assets/ for first-time uploads.
+# STAGING_FTP_REMOTE_DIR should be "./" when the FTP user is chrooted to
+# the staging document root. Excludes cPanel-managed files and
+# assets/break-chime files that may have stricter ownership.
+
+on:
+  push:
+    branches:
+      - claude/rebuild-web-companion-v4-3MuP2
+    paths:
+      - 'web/**'
+      - '.github/workflows/staging-web.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: staging-web-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Inject OAuth credentials
+        run: |
+          sed -i "s/YOUR_GOOGLE_CLIENT_ID_HERE/${{ secrets.WEB_GOOGLE_CLIENT_ID }}/g" web/oauth-config.js
+          sed -i "s/YOUR_GOOGLE_CLIENT_SECRET_HERE/${{ secrets.WEB_GOOGLE_CLIENT_SECRET }}/g" web/oauth-config.js
+
+      - name: Normalise remote dir
+        id: normalise
+        run: |
+          DIR="${{ secrets.STAGING_FTP_REMOTE_DIR }}"
+          if [ -z "$DIR" ]; then DIR="./"; fi
+          case "$DIR" in
+            */) ;;
+            *) DIR="${DIR}/" ;;
+          esac
+          echo "remote_dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to staging via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.STAGING_FTP_SERVER }}
+          username: ${{ secrets.STAGING_FTP_USERNAME }}
+          password: ${{ secrets.STAGING_FTP_PASSWORD }}
+          local-dir: ./web/
+          server-dir: ${{ steps.normalise.outputs.remote_dir }}
+          # Fresh state file forces a full re-upload on next deploy
+          # to recover from a desynced state. Future deploys reuse it
+          # for normal incremental syncing.
+          state-name: '.deploy-state.json'
+          log-level: verbose
+          # assets/ is excluded for the same reason production excludes it —
+          # files there have historical ownership the FTP user can't
+          # overwrite. Update them manually via cPanel File Manager when
+          # they need to change.
+          exclude: |
+            **/cgi-bin/**
+            **/.well-known/**
+            **/.ftpquota
+            **/.htpasswds/**
+            **/.htaccess
+            **/error_log
+            **/assets/**
+
+      - name: Done
+        run: echo "Staging deploy finished. Open https://staging.taskspark.tech in incognito to bypass any cached SW."

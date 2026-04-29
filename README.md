@@ -1,8 +1,25 @@
-# TaskSpark
+# TaskSpark V4
 
-**Focus · Flow · Finish** — A Windows desktop task manager built for ADHD and AuDHD minds.
+**Focus · Flow · Finish** — A task manager built for ADHD and AuDHD minds. Available as a Windows desktop app and a browser web companion at app.taskspark.tech (with a phone-essentials view at app.taskspark.tech/m).
 
-TaskSpark combines smart task prioritisation, a built-in focus timer, automatic break reminders, habit tracking, and streak tracking to help you stay focused, manage your energy, and actually finish what you start. Everything syncs to your Google Sheets so your data is always yours.
+## What's new in V4
+
+- **Lists** — kanban-style boards with custom categories for anything that isn't a task: shopping, packing, reading, project boards.
+- **Stats dashboard** — throughput, streaks, day-of-week patterns, productivity heatmap, time-by-tag, estimate accuracy. New users get a "Day X of 7" welcome that fills in over their first week.
+- **Focus mode redesigned** — in-window full-viewport overlay instead of a separate window; works cleanly across multi-monitor setups.
+- **Mobile essentials route** (web only) — visit /m on a phone for a Today-focused landing, 5-tab bottom nav, and a universal "+" picker for adding tasks, lists, ideas, habits, wins, or mood.
+- **V4 onboarding** — preset chooser (Keep it simple / Full setup / I'll choose) replaces the old 10-step tutorial. Plus a "Get started" inline checklist for the first four milestones.
+- **Settings reorganised** into seven thematic tabs: Task Organisation, Focus & Productivity, Wellbeing, Tools, Daily Flow, Appearance, Account & Data.
+- Smaller V4 additions: per-tag custom colours, defer/hide-until, browser notifications for breaks, refresh-for-new-version banner, focus-running favicon dot.
+
+See `CHANGELOG.md` for the full V4 entries (desktop and web companion). Web deploy notes live in `WEB-DEPLOY.md` and `WEB-WORKFLOW.md`. Every feature is catalogued in `features.md`.
+
+## What was new in V3
+- **Workspaces** — create separate workspaces (e.g. Work, Personal) each with their own Google Sheet, all under one Google account
+- **Workspace switcher** — dropdown in the sidebar to switch between workspaces instantly
+- **Per-workspace settings** — choose whether each workspace shares global settings or has its own
+- **Active workspace indicator** — colour-coded workspace name shown in the toolbar
+- All V2 features carried over
 
 ---
 
@@ -19,8 +36,8 @@ TaskSpark combines smart task prioritisation, a built-in focus timer, automatic 
 - **Lists** — Kanban-style custom boards for anything that isn't a task
 - **Statistics** — Throughput, completion trends, and time tracking heatmap
 - **Workspaces** — Separate workspaces (e.g. Work, Personal), each with its own Google Sheet
-- **Offline mode** — Works without a Google account; syncs when reconnected
-- **Auto-updater** — Silent background updates via GitHub Releases
+- **Offline mode** — Works without a Google account; syncs when reconnected (desktop only)
+- **Auto-updater** — Silent background updates via GitHub Releases (desktop only)
 
 ---
 
