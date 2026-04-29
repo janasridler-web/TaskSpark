@@ -1000,6 +1000,14 @@ ipcMain.handle('mood-append', async (_, { accessToken, spreadsheetId, date, mood
   return true;
 });
 
+ipcMain.handle('mood-get-today', async (_, { accessToken, spreadsheetId, date }) => {
+  const data = await sheetsRequest('GET',
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Mood History!A2:B1000')}`, accessToken);
+  const rows = (data.values || []);
+  const row = rows.find(r => r[0] === date);
+  return row ? row[1] : null;
+});
+
 ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
   const data = await sheetsRequest('GET',
     `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AA10000')}`, accessToken);
