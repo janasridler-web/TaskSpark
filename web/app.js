@@ -1,6 +1,6 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.0.0';
+const WEB_VERSION = '4.0.1';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
@@ -418,10 +418,10 @@ async function sheetsEnsureWeb({ accessToken, spreadsheetId }) {
 
 async function sheetsLoadWeb({ accessToken, spreadsheetId }) {
   const res = await sheetsRequest('GET',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:Y10000')}`, accessToken);
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AA10000')}`, accessToken);
   const rows = res.values || [];
   return rows.map(r => {
-    while (r.length < 25) r.push('');
+    while (r.length < 27) r.push('');
     return {
       id: Number(r[0]) || Date.now(),
       title: r[1] || '',
@@ -448,13 +448,15 @@ async function sheetsLoadWeb({ accessToken, spreadsheetId }) {
       budget: parseFloat(r[22]) || 0,
       spent: parseFloat(r[23]) || 0,
       attachments: safeJSON(r[24], []),
+      hideUntilDays: parseInt(r[25]) || 0,
+      overdueAlert: r[26] === '1',
     };
   });
 }
 
 async function sheetsSaveWeb({ accessToken, spreadsheetId, tasks }) {
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:Y10000')}:clear`, accessToken);
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AA10000')}:clear`, accessToken);
   if (tasks.length) {
     const rows = tasks.map(t => [
       String(t.id), t.title, t.desc||'', t.priority||'medium', t.due||'',
@@ -471,6 +473,8 @@ async function sheetsSaveWeb({ accessToken, spreadsheetId, tasks }) {
       String(t.budget||0),
       String(t.spent||0),
       JSON.stringify(t.attachments||[]),
+      String(t.hideUntilDays||0),
+      t.overdueAlert ? '1' : '0',
     ]);
     await sheetsRequest('PUT',
       `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2')}?valueInputOption=RAW`,
