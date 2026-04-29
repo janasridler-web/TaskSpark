@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('api', {
   // Google Sheets
   sheetsEnsure: (data) => ipcRenderer.invoke('sheets-ensure', data),
   moodAppend:    (data) => ipcRenderer.invoke('mood-append', data),
+  moodGetToday:  (data) => ipcRenderer.invoke('mood-get-today', data),
   archiveAppend: (data) => ipcRenderer.invoke('archive-append', data),
   ideasSave:     (data) => ipcRenderer.invoke('ideas-save', data),
   ideasLoad:     (data) => ipcRenderer.invoke('ideas-load', data),
