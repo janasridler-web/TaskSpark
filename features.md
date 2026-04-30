@@ -229,6 +229,12 @@ Active workspace name is colour-coded in the toolbar.
 ### Per-workspace settings
 **Both · V3.5** — Each workspace can share global settings or have its own.
 
+### Move task between workspaces
+**Both · V4.0.0** — Move an existing task from the active workspace into
+another of your workspaces, taking everything on the task with it (subtasks,
+time logs, attachments, recurrence, budget, snooze). Read-only workspaces
+are excluded as both source and target.
+
 ### Offline mode
 **Desktop · V3.5** — Use TaskSpark without a Google account. Local storage
 only.
