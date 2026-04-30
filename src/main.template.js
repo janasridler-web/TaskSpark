@@ -128,10 +128,14 @@ function createWindow() {
     return { action: 'deny' };
   });
   // Refuse navigation away from the bundled HTML — an injected <a href> or
-  // location.href cannot escape the app's own files.
+  // location.href cannot escape the app's own files. Use pathToFileURL so the
+  // expected URL matches Electron's actual file:/// representation on every
+  // platform (the previous string concat produced "file://C:/..." on Windows
+  // — two slashes — while Electron uses "file:///C:/..." with three, which
+  // silently blocked location.reload() during sign-out).
+  const indexFileUrl = url.pathToFileURL(path.join(__dirname, 'index.html')).href;
   mainWindow.webContents.on('will-navigate', (e, navUrl) => {
-    const expectedPrefix = 'file://' + path.join(__dirname, 'index.html').replace(/\\/g, '/');
-    if (!navUrl.startsWith(expectedPrefix)) {
+    if (!navUrl.startsWith(indexFileUrl)) {
       e.preventDefault();
     }
   });
