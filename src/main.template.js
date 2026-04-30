@@ -646,7 +646,7 @@ ipcMain.handle('drive-find-sheet', async (_, { accessToken }) => {
     const query = encodeURIComponent("name='TaskSpark' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false");
     const req = https.request({
       hostname: 'www.googleapis.com',
-      path: `/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`,
+      path: `/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime%20desc`,
       method: 'GET',
       headers: { 'Authorization': `Bearer ${accessToken}` },
     }, (res) => {
