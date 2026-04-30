@@ -2487,6 +2487,11 @@ function openTaskModal(id = null) {
   refreshDueBtn();
   const dupBtn = document.getElementById('tm-duplicate-btn');
   if (dupBtn) dupBtn.style.display = id ? '' : 'none';
+  const moveBtn = document.getElementById('tm-move-btn');
+  if (moveBtn) {
+    const canMove = !!id && getMoveTargetWorkspaces().length > 0;
+    moveBtn.style.display = canMove ? '' : 'none';
+  }
   document.getElementById('task-modal-overlay').classList.add('open');
   // Ensure the modal opens scrolled to the top — long forms on tall
   // viewports otherwise leave the user mid-form on iOS Safari.
@@ -3425,6 +3430,11 @@ function openTaskModal(id = null) {
   refreshDueBtn();
   const dupBtn = document.getElementById('tm-duplicate-btn');
   if (dupBtn) dupBtn.style.display = id ? '' : 'none';
+  const moveBtn = document.getElementById('tm-move-btn');
+  if (moveBtn) {
+    const canMove = !!id && getMoveTargetWorkspaces().length > 0;
+    moveBtn.style.display = canMove ? '' : 'none';
+  }
   document.getElementById('task-modal-overlay').classList.add('open');
   // Ensure the modal opens scrolled to the top — long forms on tall
   // viewports otherwise leave the user mid-form on iOS Safari.
@@ -3927,6 +3937,69 @@ function duplicateTask(id) {
   // Close current modal and open the new task for editing
   closeModal('task-modal-overlay');
   setTimeout(() => openTaskModal(newTask.id), 50);
+}
+
+function getMoveTargetWorkspaces() {
+  const active = getActiveWorkspace();
+  if (!active || active.readOnly) return [];
+  return workspaces.filter(w => w.id !== activeWorkspaceId && !w.readOnly);
+}
+
+function openMoveTaskPicker(taskId) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  const targets = getMoveTargetWorkspaces();
+  if (!targets.length) {
+    showToast('No editable workspaces to move to');
+    return;
+  }
+  const list = document.getElementById('ws-move-picker-list');
+  if (!list) return;
+  list.innerHTML = targets.map(w => {
+    const c = WORKSPACE_COLOURS.find(x => x.id === w.colour) || WORKSPACE_COLOURS[0];
+    const sharedBadge = w.shared ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface2);color:var(--text3);border:1px solid var(--border);margin-left:6px">⇄ Shared</span>` : '';
+    return `<button class="btn-secondary" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 14px;width:100%" onclick="moveTaskToWorkspace(${task.id},'${w.id}')">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c.hex};flex-shrink:0"></span>
+      <span style="flex:1">${esc(w.name)}</span>
+      ${sharedBadge}
+    </button>`;
+  }).join('');
+  document.getElementById('ws-move-picker-overlay').classList.add('open');
+}
+
+async function moveTaskToWorkspace(taskId, targetWorkspaceId) {
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  const target = workspaces.find(w => w.id === targetWorkspaceId);
+  if (!target || target.readOnly || target.id === activeWorkspaceId) return;
+  const active = getActiveWorkspace();
+  if (!active || active.readOnly) { showToast('This workspace is read-only'); return; }
+  if (offlineMode) { showToast('Move requires sign-in'); return; }
+
+  closeModal('ws-move-picker-overlay');
+  if (activeTimerId === taskId) cancelTimer();
+
+  setSyncStatus('syncing');
+  try {
+    await ensureToken();
+    // Fetch target's current tasks fresh (don't trust cache; target may have changed elsewhere)
+    const targetTasks = await api.sheetsLoad({ accessToken, spreadsheetId: target.spreadsheetId });
+    targetTasks.push({ ...task });
+    // Write target first. If this fails, source is untouched.
+    await api.sheetsSave({ accessToken, spreadsheetId: target.spreadsheetId, tasks: targetTasks });
+    // Then remove from source and persist source.
+    tasks = tasks.filter(t => t.id !== taskId);
+    await api.saveCache(tasks);
+    await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    if (_wsCache && _wsCache[target.id]) _wsCache[target.id].tasks = targetTasks;
+    setSyncStatus('ok');
+    showToast(`Moved to ${target.name}`);
+    closeModal('task-modal-overlay');
+    renderAll();
+  } catch (e) {
+    setSyncStatus('error', (e.message || 'Move failed').slice(0, 50));
+    showToast('Move failed — task not moved');
+  }
 }
 
 function deleteTask(id) {
