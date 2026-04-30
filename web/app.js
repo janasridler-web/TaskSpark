@@ -779,18 +779,24 @@ function setFaviconRunning(running) {
 }
 
 // ── Handle OAuth callback (code in URL params after redirect) ───────────────
+// As soon as we know we're handling a sign-in callback, reveal the auth
+// screen and remove the startup splash. Without this the splash (z-index
+// 9999) sits on top of everything, so any error mid-flow leaves the user on
+// a permanently spinning splash with no way to retry.
 async function handleOAuthCallback() {
   // Read code from sessionStorage (set by callback.html to avoid Mod_Security blocking)
   const code  = sessionStorage.getItem('oauth_code');
   const state = sessionStorage.getItem('oauth_callback_state');
   const error = sessionStorage.getItem('oauth_error');
+  if (!code && !error) return false;
+  showAuth();
   if (error) {
     sessionStorage.removeItem('oauth_error');
     document.getElementById('auth-error').textContent = 'Sign-in cancelled. Please try again.';
     document.getElementById('auth-error').style.display = 'block';
+    document.getElementById('btn-google-signin').disabled = false;
     return true;
   }
-  if (!code) return false;
   // Clear sessionStorage
   sessionStorage.removeItem('oauth_code');
   sessionStorage.removeItem('oauth_callback_state');
@@ -798,6 +804,7 @@ async function handleOAuthCallback() {
   if (state && savedState && state !== savedState) {
     document.getElementById('auth-error').textContent = 'Sign-in failed: state mismatch. Please try again.';
     document.getElementById('auth-error').style.display = 'block';
+    document.getElementById('btn-google-signin').disabled = false;
     return true;
   }
   sessionStorage.removeItem('oauth_state');
@@ -874,9 +881,11 @@ async function handleOAuthCallback() {
       throw new Error(tokens.error_description || 'No access token received');
     }
   } catch(e) {
+    showAuth();
     document.getElementById('auth-error').textContent = `Sign-in failed: ${e.message}`;
     document.getElementById('auth-error').style.display = 'block';
     document.getElementById('auth-waiting').style.display = 'none';
+    document.getElementById('btn-google-signin').disabled = false;
   }
   return true;
 }
