@@ -1,6 +1,6 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.0.0';
+const WEB_VERSION = '4.0.1';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
@@ -1766,8 +1766,8 @@ function renderTasks() {
   const filtered = sortTasks(filterTasks());
 
   if (!filtered.length) {
-    const msg = currentView === 'completed' ? 'No completed tasks yet' : 'All clear!';
-    const sub = currentView === 'completed' ? 'Complete a task to see it here' : 'Add a new task to get started';
+    const msg = currentView === 'completed' ? 'Nothing checked off yet' : 'All clear!';
+    const sub = currentView === 'completed' ? 'Your wins will show up here as you finish tasks.' : 'Nothing on your plate. Add something when you\'re ready.';
     const html = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
@@ -5375,7 +5375,7 @@ function renderHabits() {
       <div class="habits-empty">
         <div style="font-size:40px;margin-bottom:12px">🔄</div>
         <div style="font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px">No habits yet</div>
-        <div style="font-size:13px">Add your first habit to start tracking</div>
+        <div style="font-size:13px">Pick one small thing to repeat. Tiny counts.</div>
       </div>`;
     return;
   }
@@ -6394,7 +6394,7 @@ function renderStatsView() {
   const noData = statsCompletedInRange(start, end).length === 0;
 
   let rows = '';
-  if (noData) rows += `<div class="stats-empty-range">No completed tasks in this period — numbers will fill in once you start wrapping things up.</div>`;
+  if (noData) rows += `<div class="stats-empty-range">Nothing wrapped up in this stretch yet — the numbers will fill in as you go.</div>`;
   // Always: throughput + streak panel.
   rows += `<div class="stats-grid" style="margin-bottom:16px">${renderStatsThroughputCard(start, end, range)}<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Streak</div></div>${renderStatsStreakPanel(start, end, totalDays)}</div></div>`;
   // Range-gated: created-vs-completed + day-of-week need at least 14 days
@@ -6433,7 +6433,7 @@ function renderLists() {
       <div class="lists-empty">
         <div class="lists-empty-icon" aria-hidden="true">▤</div>
         <div class="lists-empty-text">No lists yet</div>
-        <div class="lists-empty-sub">Create a list to keep track of anything — shopping, reading, errands…</div>
+        <div class="lists-empty-sub">Lists are good for the small stuff — shopping, reading, errands. Make one when you need it.</div>
       </div>`;
     return;
   }
@@ -7443,7 +7443,7 @@ function showEndOfDayModal() {
     if (completedToday.length) {
       html += completedToday.map(t => `<div style="padding:8px 12px;background:var(--surface2);border-radius:var(--radius);font-size:13px;color:var(--text);margin-bottom:6px;text-align:left;border-left:3px solid var(--accent)">✓ ${esc(t.title)}</div>`).join('');
     } else {
-      html += `<div style="font-size:13px;color:var(--text3);padding:8px 0">No tasks completed today</div>`;
+      html += `<div style="font-size:13px;color:var(--text3);padding:8px 0">Nothing checked off today.</div>`;
     }
     html += `</div>`;
   }
