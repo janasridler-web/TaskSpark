@@ -1,8 +1,17 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.0.1';
+const WEB_VERSION = '4.0.2';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
+
+// ── Lucide icon helper ─────────────────────────────────────────────────────
+// Symbol defs live in web/index.html (top of body). This helper returns the
+// SVG <use/> string for use in dynamic templates. See `.lc-icon` in the
+// stylesheet for size/colour rules.
+function icon(name, extraClass = '') {
+  const cls = extraClass ? `lc-icon ${extraClass}` : 'lc-icon';
+  return `<svg class="${cls}" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+}
 
 // Mobile mode detection. Set by either:
 //   1. /m/index.html redirected to /?_m=1 (so the redirector hop survives).
@@ -54,19 +63,19 @@ function applyMobileEssentials() {
   if (nav) {
     nav.innerHTML = `
       <button class="mobile-nav-item active" id="mobile-nav-tasks" onclick="mobileNav('tasks')">
-        <span class="nav-icon">☰</span><span>Tasks</span>
+        <span class="nav-icon">${icon('menu')}</span><span>Tasks</span>
       </button>
       <button class="mobile-nav-item" id="mobile-nav-habits" onclick="mobileNav('habits')">
-        <span class="nav-icon">⊕</span><span>Habits</span>
+        <span class="nav-icon">${icon('plus')}</span><span>Habits</span>
       </button>
       <button class="mobile-nav-item nav-add" aria-label="Add" onclick="openMobileAddPicker()">
-        <span>+</span>
+        ${icon('plus')}
       </button>
       <button class="mobile-nav-item" id="mobile-nav-lists" onclick="mobileNav('lists')">
-        <span class="nav-icon">▤</span><span>Lists</span>
+        <span class="nav-icon">${icon('list-checks')}</span><span>Lists</span>
       </button>
       <button class="mobile-nav-item" id="mobile-nav-more" onclick="openMorePopup()">
-        <span class="nav-icon">···</span><span>More</span>
+        <span class="nav-icon">${icon('more-horizontal')}</span><span>More</span>
       </button>`;
   }
 }
@@ -81,24 +90,24 @@ function openMobileAddPicker() {
     catch { return false; }
   })();
   const options = [
-    { key:'task',   label:'Task',           icon:'✓', show:true,
+    { key:'task',   label:'Task',           icon:'check',       show:true,
       run:() => openTaskModal() },
-    { key:'list',   label:'List',           icon:'☑', show:s.listsEnabled !== false,
+    { key:'list',   label:'List',           icon:'list-checks', show:s.listsEnabled !== false,
       run:() => openListModal() },
-    { key:'idea',   label:'Idea',           icon:'❋', show:s.ideasEnabled !== false,
+    { key:'idea',   label:'Idea',           icon:'lightbulb',   show:s.ideasEnabled !== false,
       run:() => openIdeaModal() },
-    { key:'habit',  label:'Habit',          icon:'⊕', show:s.habitsEnabled !== false,
+    { key:'habit',  label:'Habit',          icon:'plus',        show:s.habitsEnabled !== false,
       run:() => openHabitModal() },
-    { key:'win',    label:'Win',            icon:'✪', show:s.winsEnabled  !== false,
+    { key:'win',    label:'Win',            icon:'star',        show:s.winsEnabled  !== false,
       run:() => openWinModal() },
     { key:'mood',   label:moodSetToday ? "Today's mood (already set)" : "Today's mood",
-      icon:'♥', show:s.moodEnabled !== false, disabled: moodSetToday,
+      icon:'heart', show:s.moodEnabled !== false, disabled: moodSetToday,
       run:() => openMoodModal() },
   ].filter(o => o.show);
   optionsEl.innerHTML = options.map(o => `
     <button class="mobile-add-option" type="button"${o.disabled ? ' disabled aria-disabled="true"' : ''}
       onclick="_mobileAddPick('${o.key}')">
-      <span class="mobile-add-icon" aria-hidden="true">${o.icon}</span>
+      <span class="mobile-add-icon" aria-hidden="true">${icon(o.icon)}</span>
       <span>${o.label}</span>
     </button>`).join('');
   // Stash actions for the click handler (using a closure-friendly map).
@@ -135,20 +144,20 @@ function buildMorePopup() {
   if (!popup) return;
   const s = settings || {};
   const items = [];
-  if (s.ideasEnabled !== false) items.push({ icon:'❋', label:'Ideas', run:() => { setView('ideas'); }});
-  if (s.winsEnabled  !== false) items.push({ icon:'✪', label:'Wins Board', run:() => { setView('wins'); }});
+  if (s.ideasEnabled !== false) items.push({ icon:'lightbulb', label:'Ideas', run:() => { setView('ideas'); }});
+  if (s.winsEnabled  !== false) items.push({ icon:'star',      label:'Wins Board', run:() => { setView('wins'); }});
   if (items.length) items.push({ divider:true });
-  if (s.moodEnabled !== false) items.push({ icon:'♥', label:"How are you feeling?", run:() => openMoodModal() });
-  if (s.changelogEnabled !== false) items.push({ icon:'★', label:"What's New", run:() => openChangelog() });
-  items.push({ icon:'⚙', label:'Settings', run:() => openSettings() });
+  if (s.moodEnabled !== false) items.push({ icon:'heart',    label:"How are you feeling?", run:() => openMoodModal() });
+  if (s.changelogEnabled !== false) items.push({ icon:'sparkles', label:"What's New", run:() => openChangelog() });
+  items.push({ icon:'settings', label:'Settings', run:() => openSettings() });
   items.push({ divider:true });
-  items.push({ icon:'↗', label:'Use full version', run:() => goToFullVersion() });
-  if (!offlineMode) items.push({ icon:'⏏', label:'Sign out', run:() => signOut() });
+  items.push({ icon:'external-link', label:'Use full version', run:() => goToFullVersion() });
+  if (!offlineMode) items.push({ icon:'log-out', label:'Sign out', run:() => signOut() });
   // Build with id-based event wiring (drawerItem-style).
   popup.innerHTML = items.map((item, i) => {
     if (item.divider) return '<div class="more-popup-divider" role="separator"></div>';
     return `<button id="more-popup-item-${i}" class="more-popup-item" type="button" role="menuitem">
-      <span class="icon" aria-hidden="true">${item.icon}</span>
+      <span class="icon" aria-hidden="true">${icon(item.icon)}</span>
       <span>${esc(item.label)}</span>
     </button>`;
   }).join('');
@@ -688,7 +697,7 @@ function updateInPageTimer(totalSecs) {
 
 function updateInPageTimerPauseUI() {
   const btn = document.getElementById('wtp-pause-btn');
-  if (btn) btn.textContent = timerPaused ? '▶ Resume' : '⏸ Pause';
+  if (btn) btn.innerHTML = timerPaused ? `${icon('play')} Resume` : `${icon('pause')} Pause`;
 }
 
 function toggleTimerPause() {
@@ -1161,7 +1170,7 @@ function setSyncStatus(state, msg = '') {
 function applyTheme(mode) {
   document.documentElement.setAttribute('data-theme', mode);
   const btn = document.getElementById('theme-toggle-btn');
-  if (btn) btn.textContent = mode === 'dark' ? '☀ Light mode' : '☽ Dark mode';
+  if (btn) btn.textContent = mode === 'dark' ? 'Light mode' : 'Dark mode';
 }
 
 const ACCENT_NAMES = {
@@ -1768,7 +1777,7 @@ function renderTasks() {
   if (!filtered.length) {
     const msg = currentView === 'completed' ? 'Nothing checked off yet' : 'All clear!';
     const sub = currentView === 'completed' ? 'Your wins will show up here as you finish tasks.' : 'Nothing on your plate. Add something when you\'re ready.';
-    const html = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
+    const html = `<div class="empty-state"><div class="empty-icon">${icon('check')}</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
     return;
@@ -1859,8 +1868,8 @@ function taskCardHTML(task) {
       <div class="task-meta">
         ${dueBadge}<span class="badge badge-priority-${task.priority}">${task.priority.charAt(0).toUpperCase()+task.priority.slice(1)}</span>
         ${settings.statusEnabled !== false ? (task.status ? `<span class="badge badge-status status-${task.status || 'not-started'}">${(task.status || 'not-started').replace(/-/g,' ')}</span>` : '<span class="badge badge-status status-not-started">not started</span>') : ''}
-        ${settings.energyEnabled !== false ? `<span class="badge badge-energy energy-${task.energy || 'medium'}">${task.energy==='high'?'⚡ high':task.energy==='low'?'🌿 low':'◆ medium'}</span>` : ''}
-        ${task.recur && task.recur !== 'none' ? `<span class="badge badge-recur">↺ ${task.recur === 'custom' ? 'every ' + (task.recurInterval||1) + 'd' : task.recur}</span>` : ''}
+        ${settings.energyEnabled !== false ? `<span class="badge badge-energy energy-${task.energy || 'medium'}">${task.energy==='high'?icon('zap')+' high':task.energy==='low'?icon('leaf')+' low':icon('diamond')+' medium'}</span>` : ''}
+        ${task.recur && task.recur !== 'none' ? `<span class="badge badge-recur">${icon('refresh-cw')} ${task.recur === 'custom' ? 'every ' + (task.recurInterval||1) + 'd' : task.recur}</span>` : ''}
         ${tagBadges}${timeBadge}${liveTimeBadge}${budgetBadge}${renderAttachmentBadges(task)}
       </div>
       ${completionDetail}
@@ -1868,7 +1877,7 @@ function taskCardHTML(task) {
     </div>
     ${ro ? '' : `<div class="task-actions">
       ${timerBtn}
-      ${task.archived ? `<button class="action-btn" onclick="unarchiveTask(${task.id})" title="Restore" style="color:var(--accent)">↩</button>` : `<button class="action-btn" onclick="openTaskModal(${task.id})" title="Edit">✎</button>`}
+      ${task.archived ? `<button class="action-btn" onclick="unarchiveTask(${task.id})" title="Restore" style="color:var(--accent)">${icon('undo')}</button>` : `<button class="action-btn" onclick="openTaskModal(${task.id})" title="Edit">${icon('pencil')}</button>`}
       <button class="action-btn delete" onclick="deleteTask(${task.id})" title="Delete">✕</button>
       ${currentView === 'archived' ? `<input type="checkbox" class="archive-select-cb" data-id="${task.id}" style="margin-left:4px;accent-color:var(--accent);cursor:pointer">` : ''}
     </div>`}
@@ -1950,7 +1959,7 @@ function checkGraceDayPrompt() {
   // Show prompt
   setTimeout(() => {
     showConfirmModal(
-      '⚡ Streak at risk',
+      'Streak at risk',
       'You missed yesterday and your <strong>' + streakBeforeYesterday + ' day streak</strong> is at risk.<br><br>Would you like to use your grace day to protect it? You get one grace day per streak.',
       'Use Grace Day',
       () => { showToast('Grace day used — streak protected!'); }
@@ -1978,10 +1987,10 @@ function calcStreakBeforeDate(date) {
 }
 
 function updateStreak() {
-  const icon    = document.getElementById('streak-icon');
-  const text    = document.getElementById('streak-text');
-  const best    = document.getElementById('streak-best');
-  const daily   = document.getElementById('streak-daily');
+  const streakIcon = document.getElementById('streak-icon');
+  const text       = document.getElementById('streak-text');
+  const best       = document.getElementById('streak-best');
+  const daily      = document.getElementById('streak-daily');
 
   // Line 1 — did user complete a task today?
   const completedToday = tasks.some(t => t.completed && t.completedAt && dateToLocalStr(new Date(t.completedAt)) === todayStr());
@@ -1995,9 +2004,9 @@ function updateStreak() {
     const today = todayStr();
     if (today < settings.vacationReturn) {
       const streak = calcStreak();
-      icon.textContent = '⏸';
+      streakIcon.innerHTML = icon('pause');
       text.textContent = `Current: ${streak} day${streak !== 1 ? 's' : ''} (paused)`;
-      text.style.color = 'var(--text3)'; icon.style.color = 'var(--text3)';
+      text.style.color = 'var(--text3)'; streakIcon.style.color = 'var(--text3)';
       best.textContent = '';
       return;
     } else {
@@ -2010,11 +2019,11 @@ function updateStreak() {
 
   // Line 2 — current streak
   if (streak > 0) {
-    icon.textContent = '★';
+    streakIcon.innerHTML = icon('star');
     text.textContent = `Current: ${streak} day${streak !== 1 ? 's' : ''}`;
-    text.style.color = 'var(--amber)'; icon.style.color = '';
+    text.style.color = 'var(--amber)'; streakIcon.style.color = '';
   } else {
-    icon.textContent = '○';
+    streakIcon.textContent = '○';
     text.textContent = 'No streak yet';
     text.style.color = 'var(--text2)';
   }
@@ -2037,7 +2046,7 @@ function promptVacationReturn() {
         settings._vacationPromptShown = false;
         api.saveConfig({ settings });
         updateStreak();
-        showToast('Streak resumed! Welcome back ★');
+        showToast('Streak resumed! Welcome back');
       }
     );
   }, 1000);
@@ -2618,7 +2627,7 @@ function renderCalendarView() {
     ${outlookConnected
       ? `<button class="cal-nav-btn" onclick="loadOutlookEvents()" style="margin-left:4px" title="Sync Outlook">⟳ Outlook</button>
          <button class="cal-nav-btn" onclick="disconnectOutlook()" style="margin-left:2px;color:var(--text3)" title="Disconnect Outlook">✕</button>`
-      : `<button class="cal-nav-btn" onclick="connectOutlook()" style="margin-left:4px">⊕ Outlook</button>`
+      : `<button class="cal-nav-btn" onclick="connectOutlook()" style="margin-left:4px">${icon('plus')} Outlook</button>`
     }
   </div>`;
 
@@ -4366,12 +4375,12 @@ function updateFocusPauseUI() {
   const label = document.getElementById('focus-paused-label');
   if (!btn || !time || !label) return;
   if (timerPaused) {
-    btn.textContent = '▶ Resume';
+    btn.innerHTML = `${icon('play')} Resume`;
     btn.classList.add('paused');
     time.classList.add('paused');
     label.textContent = 'Paused';
   } else {
-    btn.textContent = '‖ Pause';
+    btn.innerHTML = `${icon('pause')} Pause`;
     btn.classList.remove('paused');
     time.classList.remove('paused');
     label.textContent = '';
@@ -5048,7 +5057,7 @@ function activateVacationMode() {
   api.saveConfig({ settings });
   updateVacationUI();
   updateStreak();
-  showToast('Vacation mode on — streak paused until ' + returnDate + ' ⏸');
+  showToast('Vacation mode on — streak paused until ' + returnDate);
   closeModal('settings-modal-overlay');
 }
 
@@ -5172,7 +5181,7 @@ function _createRecurrenceOccurrence(task) {
   tasks.push(newTask);
   saveTasks();
   renderAll();
-  showToast('Next occurrence created ↺');
+  showToast('Next occurrence created');
 }
 
 function calcNextDueDate(task) {
@@ -5448,7 +5457,7 @@ function renderHabitCard(habit) {
             </div>
           </div>
           <div class="habit-actions">
-            <button class="action-btn" onclick="openHabitModal('${habit.id}')" title="Edit">✎</button>
+            <button class="action-btn" onclick="openHabitModal('${habit.id}')" title="Edit">${icon('pencil')}</button>
             <button class="action-btn delete" onclick="deleteHabit('${habit.id}')" title="Delete">✕</button>
           </div>
         </div>
@@ -5560,7 +5569,7 @@ function setHabitFreqMode(mode) {
 
 function openHabitModal(id = null) {
   editingHabitId = id || null;
-  document.getElementById('habit-modal-title').textContent = id ? '✎ Edit Habit' : '＋ New Habit';
+  document.getElementById('habit-modal-title').innerHTML = id ? `${icon('pencil')} Edit Habit` : `${icon('plus')} New Habit`;
   // Reset day buttons
   document.querySelectorAll('#habit-day-picker .day-btn').forEach(b => b.classList.remove('selected'));
   if (id) {
@@ -5673,7 +5682,7 @@ function renderIdeas() {
         <button class="btn-primary" onclick="openIdeaModal()">+ New Idea</button>
       </div>
       <div class="idea-empty">
-        <div class="idea-empty-icon">💡</div>
+        <div class="idea-empty-icon">${icon('lightbulb')}</div>
         <div class="idea-empty-text">No ideas yet</div>
         <div class="idea-empty-sub">Capture thoughts here and turn them into tasks when you're ready</div>
       </div>`;
@@ -5707,7 +5716,7 @@ function renderIdeas() {
 function openIdeaModal(id = null) {
   editingIdeaId = id;
   ideaTags = [];
-  document.getElementById('idea-modal-title').textContent = id ? '💡 Edit Idea' : '💡 New Idea';
+  document.getElementById('idea-modal-title').innerHTML = id ? `${icon('lightbulb')} Edit Idea` : `${icon('lightbulb')} New Idea`;
   if (id) {
     const idea = ideas.find(i => i.id === id);
     if (!idea) return;
@@ -5819,11 +5828,11 @@ async function loadIdeas() {
 
 // ── Wins Board ────────────────────────────────────────────────────────────────
 const WIN_MOODS = [
-  { key: 'proud',    emoji: '💪', label: 'Proud' },
-  { key: 'grateful', emoji: '🙏', label: 'Grateful' },
-  { key: 'excited',  emoji: '🎉', label: 'Excited' },
-  { key: 'relieved', emoji: '😌', label: 'Relieved' },
-  { key: 'inspired', emoji: '✨', label: 'Inspired' },
+  { key: 'proud',    iconName: 'trophy',       label: 'Proud' },
+  { key: 'grateful', iconName: 'hand-heart',   label: 'Grateful' },
+  { key: 'excited',  iconName: 'party-popper', label: 'Excited' },
+  { key: 'relieved', iconName: 'smile',        label: 'Relieved' },
+  { key: 'inspired', iconName: 'sparkles',     label: 'Inspired' },
 ];
 const WIN_CATEGORIES = ['Work', 'Personal', 'Client', 'Milestone', 'Health', 'Learning', 'Other'];
 
@@ -6431,7 +6440,7 @@ function renderLists() {
         <button class="btn-primary" onclick="openListModal()">+ New List</button>
       </div>
       <div class="lists-empty">
-        <div class="lists-empty-icon" aria-hidden="true">▤</div>
+        <div class="lists-empty-icon" aria-hidden="true">${icon('list-checks')}</div>
         <div class="lists-empty-text">No lists yet</div>
         <div class="lists-empty-sub">Lists are good for the small stuff — shopping, reading, errands. Make one when you need it.</div>
       </div>`;
@@ -6563,7 +6572,7 @@ function renderListDetail(list, container) {
 
 function openListModal(id = null) {
   editingListId = id;
-  document.getElementById('list-modal-title').textContent = id ? '📋 Edit List' : '📋 New List';
+  document.getElementById('list-modal-title').innerHTML = id ? `${icon('list-checks')} Edit List` : `${icon('list-checks')} New List`;
   const input = document.getElementById('list-name-input');
   if (id) {
     const list = lists.find(l => l.id === id);
@@ -6786,7 +6795,7 @@ function renderWins() {
         <button class="btn-primary" onclick="openWinModal()">+ Add Win</button>
       </div>
       <div class="wins-empty">
-        <div class="wins-empty-icon">⭐</div>
+        <div class="wins-empty-icon">${icon('star')}</div>
         <div class="wins-empty-title">Your Wins Board is empty</div>
         <div class="wins-empty-sub">Capture praise, achievements and moments you're proud of.<br>Come back here whenever you need a reminder of how far you've come.</div>
       </div>`;
@@ -6795,7 +6804,7 @@ function renderWins() {
 
   const cards = wins.slice().reverse().map(win => {
     const mood = WIN_MOODS.find(m => m.key === win.mood);
-    const moodBadge = mood ? `<span class="badge wins-mood-badge wins-mood-${win.mood}">${mood.emoji} ${mood.label}</span>` : '';
+    const moodBadge = mood ? `<span class="badge wins-mood-badge wins-mood-${win.mood}">${icon(mood.iconName)} ${mood.label}</span>` : '';
     const catBadge  = win.category ? `<span class="badge wins-cat-badge">${esc(win.category)}</span>` : '';
     const dateStr   = win.date ? fmtDate(win.date) : '';
     const source    = win.source ? `<div class="win-card-source">— ${esc(win.source)}</div>` : '';
@@ -6808,7 +6817,7 @@ function renderWins() {
           ${dateStr ? `<span class="badge wins-date-badge">📅 ${dateStr}</span>` : ''}
         </div>
         <div class="win-card-actions">
-          <button class="action-btn" onclick="openWinModal('${win.id}')" title="Edit">✎</button>
+          <button class="action-btn" onclick="openWinModal('${win.id}')" title="Edit">${icon('pencil')}</button>
           <button class="action-btn delete" onclick="deleteWin('${win.id}')" title="Delete">✕</button>
         </div>
       </div>`;
@@ -6822,11 +6831,11 @@ function showRandomWin() {
   const win = wins[Math.floor(Math.random() * wins.length)];
   const mood = WIN_MOODS.find(m => m.key === win.mood);
   const overlay = document.getElementById('random-win-overlay');
-  document.getElementById('rw-emoji').textContent  = mood ? mood.emoji : '⭐';
+  document.getElementById('rw-emoji').innerHTML    = icon(mood ? mood.iconName : 'star');
   document.getElementById('rw-quote').textContent  = `"${win.quote}"`;
   document.getElementById('rw-source').textContent = win.source ? `— ${win.source}` : '';
   document.getElementById('rw-source').style.display = win.source ? '' : 'none';
-  const moodBadge = mood ? `<span class="badge wins-mood-badge wins-mood-${win.mood}">${mood.emoji} ${mood.label}</span>` : '';
+  const moodBadge = mood ? `<span class="badge wins-mood-badge wins-mood-${win.mood}">${icon(mood.iconName)} ${mood.label}</span>` : '';
   const catBadge  = win.category ? `<span class="badge wins-cat-badge">${esc(win.category)}</span>` : '';
   const dateStr   = win.date ? fmtDate(win.date) : '';
   const dateBadge = dateStr ? `<span class="badge wins-date-badge">📅 ${dateStr}</span>` : '';
@@ -6837,7 +6846,7 @@ function showRandomWin() {
 function openWinModal(id = null) {
   editingWinId = id || null;
   const isEdit = !!id;
-  document.getElementById('win-modal-title').textContent = isEdit ? '✎ Edit Win' : '⭐ Add a Win';
+  document.getElementById('win-modal-title').innerHTML = isEdit ? `${icon('pencil')} Edit Win` : `${icon('star')} Add a Win`;
 
   if (isEdit) {
     const win = wins.find(w => w.id === id);
@@ -6912,7 +6921,7 @@ function addWinFromTask(taskTitle) {
   const proudBtn = document.querySelector('.win-mood-btn[data-mood="proud"]');
   if (proudBtn) proudBtn.classList.add('selected');
   editingWinId = null;
-  document.getElementById('win-modal-title').textContent = '⭐ Add a Win';
+  document.getElementById('win-modal-title').innerHTML = `${icon('star')} Add a Win`;
   document.getElementById('win-modal-overlay').classList.add('open');
   setTimeout(() => document.getElementById('win-quote').focus(), 50);
 }
@@ -7290,10 +7299,9 @@ function updateMoodSidebarBtn() {
   if (!btn) return;
   const mood = getTodayMood();
   if (mood) {
-    const icons = { sad: '😔', okay: '😐', good: '😊' };
-    btn.textContent = `${icons[mood] || '♥'} \u00a0You're feeling ${mood === 'sad' ? 'not great' : mood} today`;
+    btn.innerHTML = `${icon('heart')} \u00a0You're feeling ${mood === 'sad' ? 'not great' : mood} today`;
   } else {
-    btn.innerHTML = '\u2665 \u00a0How are you feeling?';
+    btn.innerHTML = `${icon('heart')} \u00a0How are you feeling?`;
   }
 }
 
