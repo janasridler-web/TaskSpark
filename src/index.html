@@ -223,7 +223,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-card.priority-low{border-left:3.5px solid var(--blue)}
 
 .task-check-wrap{display:flex;align-items:center;padding:16px 4px 16px 14px;flex-shrink:0}
-.task-checkbox{width:20px;height:20px;border:2px solid var(--border2);border-radius:6px;
+.task-checkbox{width:20px;height:20px;border:2px solid var(--border2);border-radius:50%;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
   transition:all .15s;flex-shrink:0;background:var(--surface);font-size:12px}
 .task-checkbox:hover{border-color:var(--accent);background:var(--accent-l)}
@@ -1047,7 +1047,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .subtask-item{display:flex;align-items:center;gap:8px;padding:4px 0;
   border-bottom:1px solid var(--border)}
 .subtask-item:last-of-type{border-bottom:none}
-.subtask-check{width:16px;height:16px;border:1.5px solid var(--border2);border-radius:3px;
+.subtask-check{width:16px;height:16px;border:1.5px solid var(--border2);border-radius:50%;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
   font-size:10px;flex-shrink:0;color:var(--accent);transition:all .15s}
 .subtask-check.checked{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -1448,10 +1448,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   <nav id="sidebar">
     <div id="sidebar-scroll">
       <div class="sidebar-logo">
-        <div class="ts-lockup">
-          <svg class="ts-logo-mark" width="34" height="34" viewBox="0 0 120 120" aria-hidden="true"><use href="#ts-logo-mark"/></svg>
-          <span class="ts-wordmark" style="font-size:20px">Task<span class="ts-wm-accent">Spark</span></span>
-        </div>
+        <svg class="ts-logo-mark" width="64" height="64" viewBox="0 0 120 120" aria-hidden="true"><use href="#ts-logo-mark"/></svg>
+        <span class="ts-wordmark" style="font-size:22px;margin-top:6px">Task<span class="ts-wm-accent">Spark</span></span>
         <div style="font-size:11px;font-weight:600;color:var(--text3);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-top:6px">Focus · Flow · Finish</div>
       </div>
 
