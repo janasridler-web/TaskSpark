@@ -1,6 +1,6 @@
 // CACHE_NAME must be bumped whenever WEB_VERSION in app.js bumps.
 // Cache name change is what forces clients onto fresh assets.
-const CACHE_NAME = 'taskspark-v4.0.2';
+const CACHE_NAME = 'taskspark-v4.0.3';
 
 const ASSETS = [
   '/',
