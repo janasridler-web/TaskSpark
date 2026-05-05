@@ -201,7 +201,8 @@ Slate, Moss. Click a swatch to apply instantly.
 
 ### Per-tag custom colours
 **Both · V4.0.0** — Pick a colour for each individual tag in
-Settings → Appearance.
+Settings → Appearance. On Desktop, colours are stored on the
+workspace and follow you between computers automatically.
 
 ### State-coloured task cards
 **Both · V4.0.0** — Overdue tasks tint red, today's tasks tint amber,

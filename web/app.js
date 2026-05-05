@@ -1779,8 +1779,17 @@ function renderTasks() {
   const filtered = sortTasks(filterTasks());
 
   if (!filtered.length) {
-    const msg = currentView === 'completed' ? 'Nothing checked off yet' : 'All clear!';
-    const sub = currentView === 'completed' ? 'Your wins will show up here as you finish tasks.' : 'Nothing on your plate. Add something when you\'re ready.';
+    let msg, sub;
+    if (currentView === 'completed') {
+      msg = 'Nothing checked off yet';
+      sub = 'Your wins will show up here as you finish tasks.';
+    } else if (currentView === 'today') {
+      msg = 'Nothing due today';
+      sub = 'Enjoy the breathing room — or add something for today.';
+    } else {
+      msg = 'All clear!';
+      sub = 'Nothing on your plate. Add something when you\'re ready.';
+    }
     const html = `<div class="empty-state"><div class="empty-icon">${icon('check')}</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
