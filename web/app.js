@@ -1,6 +1,6 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.0.6';
+const WEB_VERSION = '4.0.7';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
@@ -1895,12 +1895,9 @@ function rerenderTaskCard(taskId) {
 function updateStats() {
   const total = tasks.length;
   const done  = tasks.filter(t => t.completed).length;
-  const pct   = total ? Math.round(done/total*100) : 0;
   document.getElementById('stat-total').textContent  = total;
   document.getElementById('stat-active').textContent = total - done;
   document.getElementById('stat-done').textContent   = done;
-  document.getElementById('progress-bar-inner').style.width = pct + '%';
-  document.getElementById('progress-pct').textContent = pct + '%';
 }
 
 function updateCounts() {

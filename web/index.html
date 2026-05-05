@@ -213,11 +213,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .15s;white-space:nowrap}
 .btn-new-task:hover{background:var(--accent-h)}
 
-/* Sync indicator */
-#sync-bar{height:28px;background:var(--surface);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;justify-content:flex-end;padding:0 20px;flex-shrink:0}
-#sync-lbl{font-size:12px;font-family:var(--font-mono);color:var(--text3)}
-
 /* Task list */
 #task-list-container{display:block;flex:1;overflow-y:auto;padding:20px 24px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
 
@@ -309,10 +304,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .stat{font-size:12px;font-family:var(--font-mono);color:var(--text3);
   display:flex;align-items:center;gap:5px}
 .stat-val{color:var(--text);font-weight:500}
-#progress-wrap{margin-left:auto;display:flex;align-items:center;gap:10px}
-#progress-bar-outer{width:130px;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
-#progress-bar-inner{height:100%;background:var(--accent);border-radius:3px;transition:width .4s}
-#progress-pct{font-size:12px;font-family:var(--font-mono);color:var(--text3)}
 
 /* ── Modals ────────────────────────────────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);
@@ -1381,8 +1372,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   /* Add bottom padding so content isn't hidden behind nav bar */
   #task-list-container{padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}
 
-  /* Sync bar smaller on mobile */
-  #sync-bar{font-size:12px;padding:0 12px}
 
   /* Settings modal full screen */
   .settings-modal .modal{border-radius:20px 20px 0 0;max-height:95vh}
@@ -1431,7 +1420,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   }
   #stats-bar{flex-shrink:0}
   #toolbar{flex-shrink:0}
-  #sync-bar{flex-shrink:0}
 
   /* Ideas / Wins / Habits panels */
   #ideas-panel,#wins-panel,#habits-panel{padding:12px 12px 80px}
@@ -1742,7 +1730,6 @@ body.mobile-essentials .lists-empty-icon{font-size:22px}
    Upcoming/All toggle handles filtering. */
 body.mobile-essentials #toolbar{display:none}
 body.mobile-essentials #stats-bar{display:none}
-body.mobile-essentials #sync-bar{display:none}
 
 /* /m view restrictions: CSV import/export are hidden in Settings ->
    Account & Data -> Data. Calendar / Kanban / Stats / Budget items
@@ -2034,7 +2021,6 @@ body.mobile-essentials #task-list-container{padding-top:0}
 
   <!-- Main -->
   <div id="main">
-    <div id="sync-bar"><span id="sync-lbl">● Synced</span><button id="open-sheet-btn" onclick="openCurrentSheet()" style="display:none;margin-left:10px;font-size:11px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);background:none;color:var(--text2);cursor:pointer;font-family:inherit"><svg class="lc-icon" aria-hidden="true"><use href="#icon-external-link"/></svg> Open Sheet</button></div>
 
 
     <div id="toolbar">
@@ -2081,10 +2067,8 @@ body.mobile-essentials #task-list-container{padding-top:0}
       <div class="stat">Total <span class="stat-val" id="stat-total">0</span></div>
       <div class="stat">Active <span class="stat-val" id="stat-active">0</span></div>
       <div class="stat">Completed <span class="stat-val" id="stat-done">0</span></div>
-      <div id="progress-wrap">
-        <div id="progress-bar-outer"><div id="progress-bar-inner" style="width:0%"></div></div>
-        <span id="progress-pct">0%</span>
-      </div>
+      <span class="stat" id="sync-lbl" style="margin-left:auto">● Synced</span>
+      <button id="open-sheet-btn" onclick="openCurrentSheet()" style="display:none;font-size:11px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);background:none;color:var(--text2);cursor:pointer;font-family:inherit"><svg class="lc-icon" aria-hidden="true"><use href="#icon-external-link"/></svg> Open Sheet</button>
     </div>
   </div>
 </div>
