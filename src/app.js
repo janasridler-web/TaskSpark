@@ -6487,6 +6487,13 @@ function handleImportFile(event) {
   reader.onload = (e) => {
     try {
       const anchorDate = (document.getElementById('import-anchor-date') || {}).value || '';
+      // T-offset dates need an anchor to resolve. Without one, every T-N
+      // would silently become a blank due-date — block the import and
+      // tell the user instead of importing dateless tasks.
+      if (!anchorDate && /(^|,)T[+-]?\d+(,|$)/m.test(e.target.result)) {
+        showToast('This template uses T-offset dates. Set the Anchor Date (your launch / reference day) before importing.');
+        return;
+      }
       const imported = parseTemplateCSV(e.target.result, anchorDate);
       if (!imported.length) {
         showToast('No tasks found in file — check it is a valid TaskSpark CSV');
