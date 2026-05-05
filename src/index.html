@@ -96,11 +96,11 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 #app{display:flex;height:100vh;max-height:100vh;background:var(--bg);overflow:hidden}
 #titlebar{position:fixed;top:0;left:0;right:0;height:36px;display:flex;align-items:center;
   justify-content:flex-end;padding:0 8px;z-index:2000;-webkit-app-region:drag;gap:4px;cursor:move;
-  background:var(--bg);border-bottom:1px solid var(--border)}
+  background:var(--accent)}
 .tb-btn{-webkit-app-region:no-drag;width:28px;height:28px;border-radius:6px;border:none;
   background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  color:var(--text3);font-size:14px;transition:background .15s,color .15s}
-.tb-btn:hover{background:var(--border);color:var(--text)}
+  color:var(--accent-text);font-size:14px;transition:background .15s,color .15s}
+.tb-btn:hover{background:var(--accent-h);color:var(--accent-text)}
 .tb-btn.close:hover{background:var(--red);color:#fff}
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
