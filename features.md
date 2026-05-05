@@ -218,6 +218,12 @@ gains two orange sparkles that fly out of the checkbox when a task
 is ticked, echoing the logo mark. Driven by the existing celebration
 animation toggle.
 
+### Visual streak widget
+**Both · V4.0.0** — A 7-day mini grid sits below the streak number
+showing which of the last seven days had a task completed. The
+streak indicator also picks up a flame icon (instead of a star) when
+a streak is active. Toggleable in Settings → Appearance.
+
 ### Window size and position memory
 **Desktop · V3.5** — TaskSpark reopens at the size and position you left it.
 

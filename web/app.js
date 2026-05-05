@@ -1,6 +1,6 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.0.9';
+const WEB_VERSION = '4.0.10';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
@@ -1004,6 +1004,7 @@ const DEFAULT_SETTINGS = {
   estimatesEnabled:  true,
   stateColorsEnabled: true,
   cardDepthEnabled:  true,
+  streakGridEnabled: true,
   dueEnabled:        true,
   dueTimeEnabled:    true,
   quickAddEnabled:   true,
@@ -2020,17 +2021,40 @@ function updateStreak() {
 
   // Line 2 — current streak
   if (streak > 0) {
-    streakIcon.innerHTML = icon('star');
+    streakIcon.innerHTML = icon('flame');
     text.textContent = `Current: ${streak} day${streak !== 1 ? 's' : ''}`;
-    text.style.color = 'var(--amber)'; streakIcon.style.color = '';
+    text.style.color = 'var(--amber)'; streakIcon.style.color = 'var(--amber)';
   } else {
     streakIcon.textContent = '○';
     text.textContent = 'No streak yet';
     text.style.color = 'var(--text2)';
+    streakIcon.style.color = '';
   }
+  renderStreakGrid();
 
   // Line 3 — best streak
   best.textContent = longest > 0 ? `Best: ${longest} day${longest !== 1 ? 's' : ''}` : '';
+}
+
+function renderStreakGrid() {
+  const grid = document.getElementById('streak-grid');
+  if (!grid) return;
+  const completionDates = new Set(
+    tasks.filter(t => t.completed && t.completedAt)
+         .map(t => dateToLocalStr(new Date(t.completedAt)))
+  );
+  const today = new Date();
+  const cells = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = dateToLocalStr(d);
+    const done = completionDates.has(dateStr);
+    const isToday = i === 0;
+    const cls = ['streak-cell', done ? 'done' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
+    cells.push(`<div class="${cls}" title="${dateStr}"></div>`);
+  }
+  grid.innerHTML = cells.join('');
 }
 
 function promptVacationReturn() {
@@ -4743,6 +4767,7 @@ function toggleTagColorSection() {
 function applyVisualSettings() {
   document.body.classList.toggle('state-colors-enabled', settings.stateColorsEnabled !== false);
   document.body.classList.toggle('card-depth-enabled',   settings.cardDepthEnabled   !== false);
+  document.body.classList.toggle('streak-grid-enabled',  settings.streakGridEnabled  !== false);
 }
 
 function applySettings() {
@@ -4961,6 +4986,7 @@ async function openSettings() {
   if (document.getElementById('set-recurrence-enabled')) document.getElementById('set-recurrence-enabled').checked = s.recurrenceEnabled !== false;
   if (document.getElementById('set-state-colors-enabled')) document.getElementById('set-state-colors-enabled').checked = s.stateColorsEnabled !== false;
   if (document.getElementById('set-card-depth-enabled'))   document.getElementById('set-card-depth-enabled').checked   = s.cardDepthEnabled !== false;
+  if (document.getElementById('set-streak-grid-enabled'))  document.getElementById('set-streak-grid-enabled').checked  = s.streakGridEnabled !== false;
   if (document.getElementById('set-kanban-enabled'))    document.getElementById('set-kanban-enabled').checked    = s.kanbanEnabled !== false;
   if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
   if (document.getElementById('set-kanban-show-completed')) document.getElementById('set-kanban-show-completed').checked = s.kanbanShowCompleted === true;
@@ -5311,6 +5337,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-recurrence-enabled')) settings.recurrenceEnabled = document.getElementById('set-recurrence-enabled').checked;
   if (document.getElementById('set-state-colors-enabled')) settings.stateColorsEnabled = document.getElementById('set-state-colors-enabled').checked;
   if (document.getElementById('set-card-depth-enabled'))   settings.cardDepthEnabled   = document.getElementById('set-card-depth-enabled').checked;
+  if (document.getElementById('set-streak-grid-enabled'))  settings.streakGridEnabled  = document.getElementById('set-streak-grid-enabled').checked;
   if (document.getElementById('set-kanban-enabled'))    settings.kanbanEnabled    = document.getElementById('set-kanban-enabled').checked;
   if (document.getElementById('set-kanban-group-tags')) settings.kanbanGroupByTags = document.getElementById('set-kanban-group-tags').checked;
   if (document.getElementById('set-kanban-show-completed')) settings.kanbanShowCompleted = document.getElementById('set-kanban-show-completed').checked;

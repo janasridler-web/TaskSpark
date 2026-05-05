@@ -129,6 +129,7 @@ const DEFAULT_SETTINGS = {
   celebrationEnabled:   true,
   stateColorsEnabled:   true,
   cardDepthEnabled:     true,
+  streakGridEnabled:    true,
   completionDialogHigh: true,
   completionDialogMed:  true,
   completionDialogLow:  false,
@@ -1215,17 +1216,40 @@ function updateStreak() {
 
   // Line 2 — current streak
   if (streak > 0) {
-    streakIcon.innerHTML = icon('star');
+    streakIcon.innerHTML = icon('flame');
     text.textContent = `Current: ${streak} day${streak !== 1 ? 's' : ''}`;
-    text.style.color = 'var(--amber)'; streakIcon.style.color = '';
+    text.style.color = 'var(--amber)'; streakIcon.style.color = 'var(--amber)';
   } else {
     streakIcon.textContent = '○';
     text.textContent = 'No streak yet';
     text.style.color = 'var(--text2)';
+    streakIcon.style.color = '';
   }
+  renderStreakGrid();
 
   // Line 3 — best streak
   best.textContent = longest > 0 ? `Best: ${longest} day${longest !== 1 ? 's' : ''}` : '';
+}
+
+function renderStreakGrid() {
+  const grid = document.getElementById('streak-grid');
+  if (!grid) return;
+  const completionDates = new Set(
+    tasks.filter(t => t.completed && t.completedAt)
+         .map(t => dateToLocalStr(new Date(t.completedAt)))
+  );
+  const today = new Date();
+  const cells = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = dateToLocalStr(d);
+    const done = completionDates.has(dateStr);
+    const isToday = i === 0;
+    const cls = ['streak-cell', done ? 'done' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
+    cells.push(`<div class="${cls}" title="${dateStr}"></div>`);
+  }
+  grid.innerHTML = cells.join('');
 }
 
 // Use sessionStorage so the prompt re-shows on next launch if the user
@@ -4566,6 +4590,7 @@ function closeAllModals() {
 function applyVisualSettings() {
   document.body.classList.toggle('state-colors-enabled', settings.stateColorsEnabled !== false);
   document.body.classList.toggle('card-depth-enabled',   settings.cardDepthEnabled   !== false);
+  document.body.classList.toggle('streak-grid-enabled',  settings.streakGridEnabled  !== false);
 }
 
 function applySettings() {
@@ -4718,6 +4743,7 @@ async function openSettings() {
   if (document.getElementById('set-celebration-enabled'))    document.getElementById('set-celebration-enabled').checked    = s.celebrationEnabled !== false;
   if (document.getElementById('set-state-colors-enabled'))   document.getElementById('set-state-colors-enabled').checked   = s.stateColorsEnabled !== false;
   if (document.getElementById('set-card-depth-enabled'))     document.getElementById('set-card-depth-enabled').checked     = s.cardDepthEnabled !== false;
+  if (document.getElementById('set-streak-grid-enabled'))    document.getElementById('set-streak-grid-enabled').checked    = s.streakGridEnabled !== false;
   if (document.getElementById('set-completion-dialog-high')) document.getElementById('set-completion-dialog-high').checked = s.completionDialogHigh !== false;
   if (document.getElementById('set-completion-dialog-med'))  document.getElementById('set-completion-dialog-med').checked  = s.completionDialogMed  !== false;
   if (document.getElementById('set-completion-dialog-low'))  document.getElementById('set-completion-dialog-low').checked  = s.completionDialogLow  === true;
@@ -5157,6 +5183,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-celebration-enabled'))    settings.celebrationEnabled    = document.getElementById('set-celebration-enabled').checked;
   if (document.getElementById('set-state-colors-enabled'))   settings.stateColorsEnabled   = document.getElementById('set-state-colors-enabled').checked;
   if (document.getElementById('set-card-depth-enabled'))     settings.cardDepthEnabled     = document.getElementById('set-card-depth-enabled').checked;
+  if (document.getElementById('set-streak-grid-enabled'))    settings.streakGridEnabled    = document.getElementById('set-streak-grid-enabled').checked;
   if (document.getElementById('set-completion-dialog-high')) settings.completionDialogHigh  = document.getElementById('set-completion-dialog-high').checked;
   if (document.getElementById('set-completion-dialog-med'))  settings.completionDialogMed   = document.getElementById('set-completion-dialog-med').checked;
   if (document.getElementById('set-completion-dialog-low'))  settings.completionDialogLow   = document.getElementById('set-completion-dialog-low').checked;
