@@ -224,6 +224,12 @@ showing which of the last seven days had a task completed. The
 streak indicator also picks up a flame icon (instead of a star) when
 a streak is active. Toggleable in Settings → Appearance.
 
+### Today hero panel
+**Both · V4.0.0** — In the All Tasks view, tasks due today are
+grouped under a "Today · N" section header at the top, with the rest
+of the list under "Later · N" below. Skipped automatically when
+either group is empty. Toggleable in Settings → Appearance.
+
 ### Window size and position memory
 **Desktop · V3.5** — TaskSpark reopens at the size and position you left it.
 

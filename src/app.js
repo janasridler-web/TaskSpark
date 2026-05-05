@@ -130,6 +130,7 @@ const DEFAULT_SETTINGS = {
   stateColorsEnabled:   true,
   cardDepthEnabled:     true,
   streakGridEnabled:    true,
+  todayHeroEnabled:     true,
   completionDialogHigh: true,
   completionDialogMed:  true,
   completionDialogLow:  false,
@@ -978,7 +979,26 @@ function renderTasks() {
     return;
   }
 
-  const newHTML = filtered.map(task => taskCardHTML(task)).join('');
+  // Today hero — only on All Tasks, only when toggle is on, only when both
+  // groups have entries (otherwise sections look empty/awkward).
+  const useHero = settings.todayHeroEnabled !== false && currentView === 'all';
+  let newHTML;
+  if (useHero) {
+    const t = todayStr();
+    const todayTasks = filtered.filter(task => !task.completed && task.due === t);
+    const otherTasks = filtered.filter(task => !todayTasks.includes(task));
+    if (todayTasks.length && otherTasks.length) {
+      newHTML =
+        `<div class="task-section-label">Today · ${todayTasks.length}</div>` +
+        todayTasks.map(taskCardHTML).join('') +
+        `<div class="task-section-label task-section-later">Later · ${otherTasks.length}</div>` +
+        otherTasks.map(taskCardHTML).join('');
+    } else {
+      newHTML = filtered.map(taskCardHTML).join('');
+    }
+  } else {
+    newHTML = filtered.map(taskCardHTML).join('');
+  }
   if (newHTML !== _lastTasksHTML) { list.innerHTML = newHTML; _lastTasksHTML = newHTML; }
   updateStats();
 }
@@ -4744,6 +4764,7 @@ async function openSettings() {
   if (document.getElementById('set-state-colors-enabled'))   document.getElementById('set-state-colors-enabled').checked   = s.stateColorsEnabled !== false;
   if (document.getElementById('set-card-depth-enabled'))     document.getElementById('set-card-depth-enabled').checked     = s.cardDepthEnabled !== false;
   if (document.getElementById('set-streak-grid-enabled'))    document.getElementById('set-streak-grid-enabled').checked    = s.streakGridEnabled !== false;
+  if (document.getElementById('set-today-hero-enabled'))     document.getElementById('set-today-hero-enabled').checked     = s.todayHeroEnabled !== false;
   if (document.getElementById('set-completion-dialog-high')) document.getElementById('set-completion-dialog-high').checked = s.completionDialogHigh !== false;
   if (document.getElementById('set-completion-dialog-med'))  document.getElementById('set-completion-dialog-med').checked  = s.completionDialogMed  !== false;
   if (document.getElementById('set-completion-dialog-low'))  document.getElementById('set-completion-dialog-low').checked  = s.completionDialogLow  === true;
@@ -5184,6 +5205,7 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-state-colors-enabled'))   settings.stateColorsEnabled   = document.getElementById('set-state-colors-enabled').checked;
   if (document.getElementById('set-card-depth-enabled'))     settings.cardDepthEnabled     = document.getElementById('set-card-depth-enabled').checked;
   if (document.getElementById('set-streak-grid-enabled'))    settings.streakGridEnabled    = document.getElementById('set-streak-grid-enabled').checked;
+  if (document.getElementById('set-today-hero-enabled'))     settings.todayHeroEnabled     = document.getElementById('set-today-hero-enabled').checked;
   if (document.getElementById('set-completion-dialog-high')) settings.completionDialogHigh  = document.getElementById('set-completion-dialog-high').checked;
   if (document.getElementById('set-completion-dialog-med'))  settings.completionDialogMed   = document.getElementById('set-completion-dialog-med').checked;
   if (document.getElementById('set-completion-dialog-low'))  settings.completionDialogLow   = document.getElementById('set-completion-dialog-low').checked;
