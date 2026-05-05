@@ -6522,6 +6522,7 @@ function showImportPreview(imported) {
         ${t.desc ? `<div style="font-size:12px;color:var(--text3);margin-bottom:5px;line-height:1.5">${esc(t.desc)}</div>` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <span style="font-size:11px;font-weight:600;color:${pColor[t.priority]||'var(--text3)'}">${t.priority}</span>
+          ${t.due ? `<span style="font-size:11px;color:var(--text3)">◷ ${fmtDate(t.due)}</span>` : ''}
           ${t.estimate ? `<span style="font-size:11px;color:var(--text3)">~${t.estimate}m</span>` : ''}
           ${(t.tags||[]).map(tag => `<span style="font-size:11px;background:var(--accent-l);color:var(--accent);padding:1px 6px;border-radius:4px">${esc(tag)}</span>`).join('')}
         </div>
