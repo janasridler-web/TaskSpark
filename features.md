@@ -203,6 +203,21 @@ Slate, Moss. Click a swatch to apply instantly.
 **Both · V4.0.0** — Pick a colour for each individual tag in
 Settings → Appearance.
 
+### State-coloured task cards
+**Both · V4.0.0** — Overdue tasks tint red, today's tasks tint amber,
+so the list is easier to scan at a glance. Toggleable in
+Settings → Appearance.
+
+### Soft card depth
+**Both · V4.0.0** — A subtle shadow under task cards plus a slight
+lift on hover. Toggleable in Settings → Appearance.
+
+### Sparkle completion celebration
+**Desktop · V4.0.0** — Existing card-pop / checkbox-pop animation
+gains two orange sparkles that fly out of the checkbox when a task
+is ticked, echoing the logo mark. Driven by the existing celebration
+animation toggle.
+
 ### Window size and position memory
 **Desktop · V3.5** — TaskSpark reopens at the size and position you left it.
 

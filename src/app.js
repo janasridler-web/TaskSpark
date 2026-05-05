@@ -127,6 +127,8 @@ const DEFAULT_SETTINGS = {
   whatNowEnabled:    true,
   completionDialog:     true,
   celebrationEnabled:   true,
+  stateColorsEnabled:   true,
+  cardDepthEnabled:     true,
   completionDialogHigh: true,
   completionDialogMed:  true,
   completionDialogLow:  false,
@@ -1047,6 +1049,8 @@ function taskCardHTML(task) {
     'task-card',
     `priority-${task.priority}`,
     task.completed ? 'completed' : '',
+    !task.completed && !task.archived && ds === 'overdue' ? 'task-overdue' : '',
+    !task.completed && ds === 'today' ? 'task-due-today' : '',
   ].filter(Boolean).join(' ');
 
   const ro = isReadOnly();
@@ -4559,7 +4563,13 @@ function closeAllModals() {
 
 
 // -- Settings --
+function applyVisualSettings() {
+  document.body.classList.toggle('state-colors-enabled', settings.stateColorsEnabled !== false);
+  document.body.classList.toggle('card-depth-enabled',   settings.cardDepthEnabled   !== false);
+}
+
 function applySettings() {
+  applyVisualSettings();
   const s = settings;
   // Tags sidebar + form
   const tagsHdr = document.getElementById('tags-hdr');
@@ -4706,6 +4716,8 @@ async function openSettings() {
   if (document.getElementById('set-overdue-alert-mode'))     document.getElementById('set-overdue-alert-mode').value        = s.overdueAlertMode || 'all';
   toggleOverdueAlertSub();
   if (document.getElementById('set-celebration-enabled'))    document.getElementById('set-celebration-enabled').checked    = s.celebrationEnabled !== false;
+  if (document.getElementById('set-state-colors-enabled'))   document.getElementById('set-state-colors-enabled').checked   = s.stateColorsEnabled !== false;
+  if (document.getElementById('set-card-depth-enabled'))     document.getElementById('set-card-depth-enabled').checked     = s.cardDepthEnabled !== false;
   if (document.getElementById('set-completion-dialog-high')) document.getElementById('set-completion-dialog-high').checked = s.completionDialogHigh !== false;
   if (document.getElementById('set-completion-dialog-med'))  document.getElementById('set-completion-dialog-med').checked  = s.completionDialogMed  !== false;
   if (document.getElementById('set-completion-dialog-low'))  document.getElementById('set-completion-dialog-low').checked  = s.completionDialogLow  === true;
@@ -5143,6 +5155,8 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-overdue-alert-enabled')) settings.overdueAlertEnabled    = document.getElementById('set-overdue-alert-enabled').checked;
   if (document.getElementById('set-overdue-alert-mode'))    settings.overdueAlertMode       = document.getElementById('set-overdue-alert-mode').value;
   if (document.getElementById('set-celebration-enabled'))    settings.celebrationEnabled    = document.getElementById('set-celebration-enabled').checked;
+  if (document.getElementById('set-state-colors-enabled'))   settings.stateColorsEnabled   = document.getElementById('set-state-colors-enabled').checked;
+  if (document.getElementById('set-card-depth-enabled'))     settings.cardDepthEnabled     = document.getElementById('set-card-depth-enabled').checked;
   if (document.getElementById('set-completion-dialog-high')) settings.completionDialogHigh  = document.getElementById('set-completion-dialog-high').checked;
   if (document.getElementById('set-completion-dialog-med'))  settings.completionDialogMed   = document.getElementById('set-completion-dialog-med').checked;
   if (document.getElementById('set-completion-dialog-low'))  settings.completionDialogLow   = document.getElementById('set-completion-dialog-low').checked;

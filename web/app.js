@@ -1,6 +1,6 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.0.8';
+const WEB_VERSION = '4.0.9';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
@@ -1002,6 +1002,8 @@ const DEFAULT_SETTINGS = {
   tagsEnabled:       true,
   streakEnabled:     true,
   estimatesEnabled:  true,
+  stateColorsEnabled: true,
+  cardDepthEnabled:  true,
   dueEnabled:        true,
   dueTimeEnabled:    true,
   quickAddEnabled:   true,
@@ -1853,6 +1855,8 @@ function taskCardHTML(task) {
     'task-card',
     `priority-${task.priority}`,
     task.completed ? 'completed' : '',
+    !task.completed && !task.archived && ds === 'overdue' ? 'task-overdue' : '',
+    !task.completed && ds === 'today' ? 'task-due-today' : '',
   ].filter(Boolean).join(' ');
 
   const ro = isReadOnly();
@@ -4736,7 +4740,13 @@ function toggleTagColorSection() {
   renderAll();
 }
 
+function applyVisualSettings() {
+  document.body.classList.toggle('state-colors-enabled', settings.stateColorsEnabled !== false);
+  document.body.classList.toggle('card-depth-enabled',   settings.cardDepthEnabled   !== false);
+}
+
 function applySettings() {
+  applyVisualSettings();
   const s = settings;
   // Tags sidebar + form
   const tagsHdr = document.getElementById('tags-hdr');
@@ -4949,6 +4959,8 @@ async function openSettings() {
   if (document.getElementById('set-status-enabled'))    document.getElementById('set-status-enabled').checked    = s.statusEnabled !== false;
   if (document.getElementById('set-subtasks-enabled'))  document.getElementById('set-subtasks-enabled').checked  = s.subtasksEnabled !== false;
   if (document.getElementById('set-recurrence-enabled')) document.getElementById('set-recurrence-enabled').checked = s.recurrenceEnabled !== false;
+  if (document.getElementById('set-state-colors-enabled')) document.getElementById('set-state-colors-enabled').checked = s.stateColorsEnabled !== false;
+  if (document.getElementById('set-card-depth-enabled'))   document.getElementById('set-card-depth-enabled').checked   = s.cardDepthEnabled !== false;
   if (document.getElementById('set-kanban-enabled'))    document.getElementById('set-kanban-enabled').checked    = s.kanbanEnabled !== false;
   if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
   if (document.getElementById('set-kanban-show-completed')) document.getElementById('set-kanban-show-completed').checked = s.kanbanShowCompleted === true;
@@ -5297,6 +5309,8 @@ function saveSettingsFromModal() {
   if (document.getElementById('set-status-enabled'))    settings.statusEnabled    = document.getElementById('set-status-enabled').checked;
   if (document.getElementById('set-subtasks-enabled'))  settings.subtasksEnabled  = document.getElementById('set-subtasks-enabled').checked;
   if (document.getElementById('set-recurrence-enabled')) settings.recurrenceEnabled = document.getElementById('set-recurrence-enabled').checked;
+  if (document.getElementById('set-state-colors-enabled')) settings.stateColorsEnabled = document.getElementById('set-state-colors-enabled').checked;
+  if (document.getElementById('set-card-depth-enabled'))   settings.cardDepthEnabled   = document.getElementById('set-card-depth-enabled').checked;
   if (document.getElementById('set-kanban-enabled'))    settings.kanbanEnabled    = document.getElementById('set-kanban-enabled').checked;
   if (document.getElementById('set-kanban-group-tags')) settings.kanbanGroupByTags = document.getElementById('set-kanban-group-tags').checked;
   if (document.getElementById('set-kanban-show-completed')) settings.kanbanShowCompleted = document.getElementById('set-kanban-show-completed').checked;

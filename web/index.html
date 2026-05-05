@@ -240,6 +240,12 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-card.priority-high{border-left:3.5px solid var(--red)}
 .task-card.priority-medium{border-left:3.5px solid var(--amber)}
 .task-card.priority-low{border-left:3.5px solid var(--blue)}
+/* State-driven card tints — toggleable from Settings → Appearance */
+body.state-colors-enabled .task-card.task-overdue{background:var(--red-l)}
+body.state-colors-enabled .task-card.task-due-today{background:var(--amber-l)}
+/* Soft card depth + hover lift — toggleable */
+body.card-depth-enabled .task-card{box-shadow:var(--shadow);transition:box-shadow .2s ease,transform .2s ease,border-color .15s ease}
+body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:var(--shadow-lg)}
 
 .task-check-wrap{display:flex;align-items:center;padding:16px 4px 16px 14px;flex-shrink:0}
 .task-checkbox{width:20px;height:20px;border:2px solid var(--border2);border-radius:50%;
@@ -2677,6 +2683,14 @@ body.mobile-essentials #task-list-container{padding-top:0}
             <div class="setting-row">
               <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a changelog button in the sidebar and mobile menu</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Colour cards by state</div><div class="setting-desc">Tint overdue tasks red and today's tasks amber so the list is easier to scan</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-state-colors-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Soft card depth</div><div class="setting-desc">Add a subtle shadow under task cards and a slight lift on hover</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-card-depth-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
           <div class="settings-section" id="tag-colours-settings-section">

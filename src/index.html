@@ -228,7 +228,28 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 @keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
 @keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
 .task-card.celebrating{animation:card-pop .45s ease-out}
-.task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out}
+.task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out;position:relative}
+/* Sparkle pop — two orange dots fly out of the checkbox, echoing the logo */
+.task-card.celebrating .task-checkbox::before,
+.task-card.celebrating .task-checkbox::after{
+  content:'';position:absolute;top:50%;left:50%;width:5px;height:5px;
+  background:#f8a826;border-radius:50%;pointer-events:none}
+.task-card.celebrating .task-checkbox::before{animation:sparkle-fly-tr .55s ease-out forwards}
+.task-card.celebrating .task-checkbox::after{animation:sparkle-fly-bl .55s ease-out forwards}
+@keyframes sparkle-fly-tr{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1.2);opacity:1}
+  100%{transform:translate(160%,-280%) scale(.4);opacity:0}}
+@keyframes sparkle-fly-bl{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1);opacity:1}
+  100%{transform:translate(-260%,160%) scale(.4);opacity:0}}
+/* State-driven card tints — toggleable from Settings → Appearance */
+body.state-colors-enabled .task-card.task-overdue{background:var(--red-l)}
+body.state-colors-enabled .task-card.task-due-today{background:var(--amber-l)}
+/* Soft card depth + hover lift — toggleable */
+body.card-depth-enabled .task-card{box-shadow:var(--shadow);transition:box-shadow .2s ease,transform .2s ease,border-color .15s ease}
+body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:var(--shadow-lg)}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important;animation-iteration-count:1 !important;scroll-behavior:auto !important}
 }
@@ -2214,6 +2235,14 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a What's New button in the sidebar</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Colour cards by state</div><div class="setting-desc">Tint overdue tasks red and today's tasks amber so the list is easier to scan</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-state-colors-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Soft card depth</div><div class="setting-desc">Add a subtle shadow under task cards and a slight lift on hover</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-card-depth-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
           <div class="settings-section">
