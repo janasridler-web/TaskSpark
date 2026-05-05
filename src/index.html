@@ -95,7 +95,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 /* ── App shell ─────────────────────────────────────────────────────────────── */
 #app{display:flex;height:100vh;max-height:100vh;background:var(--bg);overflow:hidden}
 #titlebar{position:fixed;top:0;left:0;right:0;height:36px;display:flex;align-items:center;
-  justify-content:flex-end;padding:0 8px;z-index:2000;-webkit-app-region:drag;gap:4px;cursor:move}
+  justify-content:flex-end;padding:0 8px;z-index:2000;-webkit-app-region:drag;gap:4px;cursor:move;
+  background:var(--bg);border-bottom:1px solid var(--border)}
 .tb-btn{-webkit-app-region:no-drag;width:28px;height:28px;border-radius:6px;border:none;
   background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
   color:var(--text3);font-size:14px;transition:background .15s,color .15s}
@@ -104,7 +105,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
 #sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--surface);
-  padding-top:36px;
   border-right:1px solid var(--border);display:flex;flex-direction:column;
   padding-top:36px;height:100vh;overflow:hidden;flex-shrink:0}
 #sidebar-scroll{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
