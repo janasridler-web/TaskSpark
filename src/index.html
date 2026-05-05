@@ -11,6 +11,18 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:15px}
 
+/* ── Lucide icons (ISC license) ────────────────────────────────────────────── */
+.lc-icon{width:1em;height:1em;vertical-align:-0.125em;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── TaskSpark "Sparkle of Completion" logo ────────────────────────────────── */
+.ts-logo-mark{display:inline-block;flex-shrink:0;line-height:1}
+.ts-disc{fill:var(--accent)}
+.ts-check{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+.ts-spark{fill:#f8a826}
+.ts-lockup{display:inline-flex;align-items:center;gap:10px;font-family:'Outfit',sans-serif}
+.ts-wordmark{font-weight:700;letter-spacing:-0.02em;line-height:1;color:var(--text);white-space:nowrap}
+.ts-wordmark .ts-wm-accent{color:var(--accent)}
+
 /* ── Theme variables ───────────────────────────────────────────────────────── */
 :root{
   --bg:#f0ede8;
@@ -83,11 +95,12 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 /* ── App shell ─────────────────────────────────────────────────────────────── */
 #app{display:flex;height:100vh;max-height:100vh;background:var(--bg);overflow:hidden}
 #titlebar{position:fixed;top:0;left:0;right:0;height:36px;display:flex;align-items:center;
-  justify-content:flex-end;padding:0 8px;z-index:2000;-webkit-app-region:drag;gap:4px;cursor:move}
+  justify-content:flex-end;padding:0 8px;z-index:2000;-webkit-app-region:drag;gap:4px;cursor:move;
+  background:var(--accent)}
 .tb-btn{-webkit-app-region:no-drag;width:28px;height:28px;border-radius:6px;border:none;
   background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  color:var(--text3);font-size:14px;transition:background .15s,color .15s}
-.tb-btn:hover{background:var(--border);color:var(--text)}
+  color:var(--accent-text);font-size:14px;transition:background .15s,color .15s}
+.tb-btn:hover{background:var(--accent-h);color:var(--accent-text)}
 .tb-btn.close:hover{background:var(--red);color:#fff}
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
@@ -99,7 +112,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 #sidebar-scroll::-webkit-scrollbar-track{background:transparent}
 #sidebar-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
-.sidebar-logo{padding:20px 18px 12px;display:flex;flex-direction:column;align-items:center}
+.sidebar-logo{padding:10px 18px 12px;display:flex;flex-direction:column;align-items:center}
 .sidebar-logo img{width:150px;height:auto;object-fit:contain}
 .sidebar-divider{height:1px;background:var(--border);margin:8px 16px}
 
@@ -140,6 +153,17 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .streak-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text)}
 .streak-row .streak-icon{font-size:15px;color:var(--accent)}
 .streak-sub{font-size:12px;color:var(--text3);margin-top:3px;font-weight:400}
+/* Visual streak grid — toggleable. 7 dots showing recent activity. */
+.streak-grid{display:none;gap:5px;margin-top:8px;align-items:center}
+body.streak-grid-enabled .streak-grid{display:flex}
+.streak-cell{width:14px;height:14px;border-radius:50%;background:var(--border);flex-shrink:0;transition:background .2s}
+.streak-cell.done{background:var(--accent)}
+.streak-cell.today{box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--accent)}
+/* Today hero — section labels above the task list */
+.task-section-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent);padding:4px 4px 10px;display:flex;align-items:center;gap:6px}
+.task-section-label.task-section-later{color:var(--text3);margin-top:18px;
+  border-top:1px solid var(--border);padding-top:18px}
 
 /* Theme toggle */
 .theme-toggle{display:flex;align-items:center;gap:8px;padding:9px 14px;margin:4px 8px;
@@ -154,7 +178,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 /* Toolbar */
 #toolbar{background:var(--surface);border-bottom:1px solid var(--border);
   padding:12px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0}
-#view-title{font-size:20px;font-weight:700;color:var(--text);margin-right:4px;white-space:nowrap}
+#view-title{font-size:20px;font-weight:700;color:var(--text);margin-right:4px;white-space:nowrap;display:none}
 #search-input{flex:1;min-width:160px;max-width:280px;padding:8px 14px;
   border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;
   font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);outline:none;
@@ -176,11 +200,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   border-radius:var(--radius);font-size:14px;font-family:'Outfit',sans-serif;font-weight:700;
   cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .15s;white-space:nowrap}
 .btn-new-task:hover{background:var(--accent-h)}
-
-/* Sync indicator */
-#sync-bar{height:28px;background:var(--surface);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;justify-content:flex-end;padding:0 20px;flex-shrink:0}
-#sync-lbl{font-size:12px;font-family:var(--font-mono);color:var(--text3)}
 
 /* Task list */
 #task-list-container{flex:1;overflow-y:auto;padding:20px 24px;scroll-behavior:smooth}
@@ -211,7 +230,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .task-card.priority-low{border-left:3.5px solid var(--blue)}
 
 .task-check-wrap{display:flex;align-items:center;padding:16px 4px 16px 14px;flex-shrink:0}
-.task-checkbox{width:20px;height:20px;border:2px solid var(--border2);border-radius:6px;
+.task-checkbox{width:20px;height:20px;border:2px solid var(--border2);border-radius:50%;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
   transition:all .15s;flex-shrink:0;background:var(--surface);font-size:12px}
 .task-checkbox:hover{border-color:var(--accent);background:var(--accent-l)}
@@ -220,7 +239,28 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 @keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
 @keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
 .task-card.celebrating{animation:card-pop .45s ease-out}
-.task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out}
+.task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out;position:relative}
+/* Sparkle pop — two orange dots fly out of the checkbox, echoing the logo */
+.task-card.celebrating .task-checkbox::before,
+.task-card.celebrating .task-checkbox::after{
+  content:'';position:absolute;top:50%;left:50%;width:5px;height:5px;
+  background:#f8a826;border-radius:50%;pointer-events:none}
+.task-card.celebrating .task-checkbox::before{animation:sparkle-fly-tr .55s ease-out forwards}
+.task-card.celebrating .task-checkbox::after{animation:sparkle-fly-bl .55s ease-out forwards}
+@keyframes sparkle-fly-tr{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1.2);opacity:1}
+  100%{transform:translate(160%,-280%) scale(.4);opacity:0}}
+@keyframes sparkle-fly-bl{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1);opacity:1}
+  100%{transform:translate(-260%,160%) scale(.4);opacity:0}}
+/* State-driven card tints — toggleable from Settings → Appearance */
+body.state-colors-enabled .task-card.task-overdue{background:var(--red-l)}
+body.state-colors-enabled .task-card.task-due-today{background:var(--amber-l)}
+/* Soft card depth + hover lift — toggleable */
+body.card-depth-enabled .task-card{box-shadow:var(--shadow);transition:box-shadow .2s ease,transform .2s ease,border-color .15s ease}
+body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:var(--shadow-lg)}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important;animation-iteration-count:1 !important;scroll-behavior:auto !important}
 }
@@ -278,10 +318,6 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .stat{font-size:12px;font-family:var(--font-mono);color:var(--text3);
   display:flex;align-items:center;gap:5px}
 .stat-val{color:var(--text);font-weight:500}
-#progress-wrap{margin-left:auto;display:flex;align-items:center;gap:10px}
-#progress-bar-outer{width:130px;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
-#progress-bar-inner{height:100%;background:var(--accent);border-radius:3px;transition:width .4s}
-#progress-pct{font-size:12px;font-family:var(--font-mono);color:var(--text3)}
 
 /* ── Modals ────────────────────────────────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);
@@ -971,7 +1007,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 @media print {
   *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
   body,html{background:white !important;height:auto !important;overflow:visible !important}
-  #sidebar,#sync-bar,#toolbar,#stats-bar,.stats-export-btn,.stats-range-picker{display:none !important}
+  #sidebar,#toolbar,#stats-bar,.stats-export-btn,.stats-range-picker{display:none !important}
   #main{padding:0 !important;overflow:visible !important;display:block !important}
   #stats-container,#stats-container.active{display:block !important;overflow:visible !important;height:auto !important}
   .stats-page{padding:12px 20px !important}
@@ -1035,7 +1071,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .subtask-item{display:flex;align-items:center;gap:8px;padding:4px 0;
   border-bottom:1px solid var(--border)}
 .subtask-item:last-of-type{border-bottom:none}
-.subtask-check{width:16px;height:16px;border:1.5px solid var(--border2);border-radius:3px;
+.subtask-check{width:16px;height:16px;border:1.5px solid var(--border2);border-radius:50%;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
   font-size:10px;flex-shrink:0;color:var(--accent);transition:all .15s}
 .subtask-check.checked{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -1274,7 +1310,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 .ws-menu-divider{height:1px;background:var(--border);margin:4px 0}
 /* Workspace title in toolbar */
 #workspace-title{font-size:13px;font-weight:700;letter-spacing:.3px;margin-right:8px;
-  padding:3px 8px;border-radius:var(--radius);background:var(--surface2)}
+  padding:3px 8px;border-radius:var(--radius);background:var(--surface2);display:none !important}
 /* Workspace modals */
 .ws-colour-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
 .ws-colour-btn{width:26px;height:26px;border-radius:50%;border:2px solid transparent;
@@ -1312,9 +1348,57 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 </style>
 </head>
 <body>
+<!-- ── Lucide icon definitions (ISC license) ─────────────────────────────── -->
+<svg id="icon-defs" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+<defs>
+<symbol id="icon-menu" viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></symbol>
+<symbol id="icon-more-horizontal" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+<symbol id="icon-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="icon-minus" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="icon-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+<symbol id="icon-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+<symbol id="icon-chevron-down" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+<symbol id="icon-chevron-right" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></symbol>
+<symbol id="icon-arrow-right" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+<symbol id="icon-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H10"/></symbol>
+<symbol id="icon-external-link" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+<symbol id="icon-log-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+<symbol id="icon-refresh-cw" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></symbol>
+<symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+<symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+<symbol id="icon-alert-triangle" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+<symbol id="icon-archive" viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></symbol>
+<symbol id="icon-bar-chart-3" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+<symbol id="icon-lightbulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14a4 4 0 0 0 1.41-3 4.5 4.5 0 1 0-9 0 4 4 0 0 0 1.41 3"/></symbol>
+<symbol id="icon-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+<symbol id="icon-dollar-sign" viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></symbol>
+<symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+<symbol id="icon-layout-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+<symbol id="icon-list-checks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+<symbol id="icon-heart" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/></symbol>
+<symbol id="icon-cloud" viewBox="0 0 24 24"><path d="M17.5 19a4.5 4.5 0 1 0 0-9h-1.8A7 7 0 1 0 4 16.9"/></symbol>
+<symbol id="icon-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/></symbol>
+<symbol id="icon-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+<symbol id="icon-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
+<symbol id="icon-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></symbol>
+<symbol id="icon-pencil" viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></symbol>
+<symbol id="icon-diamond" viewBox="0 0 24 24"><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0z"/></symbol>
+<symbol id="icon-maximize-2" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></symbol>
+<symbol id="icon-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19.2 2.96c1 1.51.83 7.96-1.7 11.05C13.5 17.79 8.5 17 7 17"/><path d="M2 22c1.5-1.5 3-2 5-2 4 0 5 2 5 2"/></symbol>
+<symbol id="icon-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+<symbol id="icon-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="icon-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0Z"/></symbol>
+<symbol id="icon-hand-heart" viewBox="0 0 24 24"><path d="M11 14h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 16"/><path d="m7 20 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.83-2.83l-3.8 3.8"/><path d="m2 15 6 6"/><path d="M19.5 8.5c.7-.7 1.5-1.6 1.5-2.7A2.73 2.73 0 0 0 16 4a2.78 2.78 0 0 0-5 1.8c0 1.2.8 2 1.5 2.8L16 12Z"/></symbol>
+<symbol id="icon-party-popper" viewBox="0 0 24 24"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-1.66-.6a2 2 0 0 0-2.52 1.27 1.61 1.61 0 0 1-1.93 1.04L13 14.3"/></symbol>
+<symbol id="icon-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></symbol>
+<symbol id="icon-shuffle" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></symbol>
+<symbol id="icon-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+<symbol id="ts-logo-mark" viewBox="0 0 120 120"><circle class="ts-disc" cx="54" cy="64" r="30"/><path class="ts-check" d="M 40 64 L 51 75 L 70 54"/><path class="ts-spark" d="M 92 22 L 95.5 33.5 L 107 37 L 95.5 40.5 L 92 52 L 88.5 40.5 L 77 37 L 88.5 33.5 Z"/><path class="ts-spark" opacity="0.85" d="M 22 90 L 24 96.5 L 30.5 98.5 L 24 100.5 L 22 107 L 20 100.5 L 13.5 98.5 L 20 96.5 Z"/></symbol>
+</defs>
+</svg>
 <!-- Update banner -->
 <div id="update-banner" style="display:none;position:fixed;top:36px;left:0;right:0;background:var(--accent);color:#fff;font-size:13px;font-weight:600;padding:8px 20px;z-index:999;align-items:center;justify-content:space-between;gap:12px">
-  <span>✨ TaskSpark v<span id="update-version"></span> is ready to install</span>
+  <span><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> TaskSpark v<span id="update-version"></span> is ready to install</span>
   <div style="display:flex;gap:8px">
     <button onclick="api.installUpdate()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Restart & Update</button>
     <button onclick="document.getElementById('update-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px">Later</button>
@@ -1323,24 +1407,27 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
 <!-- Title bar -->
 <div id="titlebar">
-  <button class="tb-btn" onclick="api.minimize()" title="Minimise">─</button>
-  <button class="tb-btn" onclick="api.maximize()" title="Maximise">□</button>
-  <button class="tb-btn close" onclick="api.close()" title="Close">✕</button>
+  <button class="tb-btn" onclick="api.minimize()" title="Minimise"><svg class="lc-icon" aria-hidden="true"><use href="#icon-minus"/></svg></button>
+  <button class="tb-btn" onclick="api.maximize()" title="Maximise"><svg class="lc-icon" aria-hidden="true"><use href="#icon-maximize-2"/></svg></button>
+  <button class="tb-btn close" onclick="api.close()" title="Close"><svg class="lc-icon" aria-hidden="true"><use href="#icon-x"/></svg></button>
 </div>
 
 <!-- Auth screen -->
 
   <!-- ── Loading Screen ──────────────────────────────────────────── -->
   <div id="loading-screen">
-    <img src="../assets/taskspark_sidebar.png" alt="TaskSpark" style="width:120px;opacity:.9" onerror="this.style.display='none'">
+    <svg class="ts-logo-mark" width="100" height="100" viewBox="0 0 120 120" aria-label="TaskSpark" style="opacity:.9"><use href="#ts-logo-mark"/></svg>
     <div class="loading-spinner"></div>
     <div class="loading-wordmark">Focus · Flow · Finish</div>
   </div>
 
 <div id="auth-screen">
-  <img class="auth-logo" src="../assets/taskspark_sidebar.png" alt="TaskSpark" onerror="this.style.display='none'">
+  <div class="ts-lockup" style="margin-bottom:24px;gap:14px">
+    <svg class="ts-logo-mark" width="64" height="64" viewBox="0 0 120 120" aria-hidden="true"><use href="#ts-logo-mark"/></svg>
+    <span class="ts-wordmark" style="font-size:36px">Task<span class="ts-wm-accent">Spark</span></span>
+  </div>
   <div class="auth-title">Welcome to TaskSpark</div>
-  <div class="auth-sub">Sign in with your Google account to get started. TaskSpark will automatically create a spreadsheet in your Google Drive to store your tasks.</div>
+  <div class="auth-sub">A task manager built for ADHD and AuDHD brains. Sign in with Google — your tasks save to your own Google Drive, so the data stays yours.</div>
   <div class="auth-card">
     <div id="auth-waiting" class="auth-waiting" style="display:none">
       <span class="spinner"></span> <span id="auth-status">Waiting for Google sign-in…</span>
@@ -1367,14 +1454,14 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- ── First-run welcome modal (V3.5.1) ───────────────────────────────────── -->
 <div id="welcome-modal-overlay">
   <div class="welcome-modal">
-    <div class="welcome-modal-title">Welcome to TaskSpark!</div>
-    <div class="welcome-modal-sub">Let's set things up the way you want to get started.</div>
+    <div class="welcome-modal-title">Welcome to TaskSpark</div>
+    <div class="welcome-modal-sub">A couple of quick choices and you're set up. You can change anything later in Settings.</div>
     <button class="welcome-choice-btn" onclick="welcomeGetStarted()">
-      <span class="welcome-icon">◆</span>
+      <span class="welcome-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-diamond"/></svg></span>
       <span>Get Started</span>
     </button>
     <button class="welcome-restore-link" onclick="welcomeRestoreExisting()">
-      <span class="welcome-icon">↩</span>
+      <span class="welcome-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-undo"/></svg></span>
       <span>I already use TaskSpark — find my existing data</span>
     </button>
   </div>
@@ -1386,7 +1473,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   <nav id="sidebar">
     <div id="sidebar-scroll">
       <div class="sidebar-logo">
-        <img src="../assets/taskspark_sidebar.png" alt="TaskSpark" onerror="this.style.display='none'">
+        <svg class="ts-logo-mark" width="64" height="64" viewBox="0 0 120 120" aria-hidden="true"><use href="#ts-logo-mark"/></svg>
+        <span class="ts-wordmark" style="font-size:22px;margin-top:6px">Task<span class="ts-wm-accent">Spark</span></span>
         <div style="font-size:11px;font-weight:600;color:var(--text3);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-top:6px">Focus · Flow · Finish</div>
       </div>
 
@@ -1406,34 +1494,35 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
           <span class="streak-icon" id="streak-icon">○</span>
           <span id="streak-text">No streak yet</span>
         </div>
+        <div class="streak-grid" id="streak-grid" aria-hidden="true"></div>
         <div class="streak-sub" id="streak-best"></div>
       </div>
 
       <div class="sidebar-divider"></div>
       <div class="sidebar-section-label">Tasks</div>
-      <div class="sidebar-item active" data-view="all" onclick="setView('all',this)"><span class="si-icon">☰</span>All Tasks<span class="si-count" id="cnt-all">0</span></div>
-      <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon">◷</span>Due Today<span class="si-count" id="cnt-today">0</span></div>
-      <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon">!</span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
-      <div class="sidebar-item" data-view="deferred" id="sidebar-deferred" onclick="setView('deferred',this)" style="display:none"><span class="si-icon">◷</span>Deferred<span class="si-count" id="cnt-deferred">0</span></div>
-      <div class="sidebar-item" data-view="completed" onclick="setView('completed',this)"><span class="si-icon">✓</span>Completed<span class="si-count" id="cnt-completed">0</span></div>
-      <div class="sidebar-item" data-view="archived" onclick="setView('archived',this)"><span class="si-icon" style="color:var(--text3)">◫</span>Archived<span class="si-count" id="cnt-archived">0</span></div>
+      <div class="sidebar-item active" data-view="all" onclick="setView('all',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-menu"/></svg></span>All Tasks<span class="si-count" id="cnt-all">0</span></div>
+      <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-clock"/></svg></span>Due Today<span class="si-count" id="cnt-today">0</span></div>
+      <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-alert-triangle"/></svg></span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
+      <div class="sidebar-item" data-view="deferred" id="sidebar-deferred" onclick="setView('deferred',this)" style="display:none"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-clock"/></svg></span>Deferred<span class="si-count" id="cnt-deferred">0</span></div>
+      <div class="sidebar-item" data-view="completed" onclick="setView('completed',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-check"/></svg></span>Completed<span class="si-count" id="cnt-completed">0</span></div>
+      <div class="sidebar-item" data-view="archived" onclick="setView('archived',this)"><span class="si-icon" style="color:var(--text3)"><svg class="lc-icon" aria-hidden="true"><use href="#icon-archive"/></svg></span>Archived<span class="si-count" id="cnt-archived">0</span></div>
 
       <div id="sidebar-tools-section">
       <div class="sidebar-divider"></div>
       <div class="sidebar-section-label" id="sidebar-tools-section-label">Tools</div>
-      <div class="sidebar-item" data-view="stats" id="sidebar-stats" onclick="setView('stats',this)"><span class="si-icon">▲</span>Stats</div>
-      <div class="sidebar-item" data-view="ideas" onclick="setView('ideas',this)"><span class="si-icon">❋</span>Ideas<span class="si-count" id="cnt-ideas">0</span></div>
-      <div class="sidebar-item" onclick="showHabitsView()" id="sidebar-habits-main"><span class="si-icon">⊕</span>Habit Tracker</div>
-      <div class="sidebar-item" data-view="wins" onclick="setView('wins',this)"><span class="si-icon">✪</span>Wins Board<span class="si-count" id="cnt-wins">0</span></div>
-      <div class="sidebar-item" data-view="budget-view" id="sidebar-budget-view" onclick="setView('budget-view',this)"><span class="si-icon">$</span>Budget View</div>
-      <div class="sidebar-item" data-view="calendar-view" id="sidebar-calendar-view" onclick="setView('calendar-view',this)"><span class="si-icon">▦</span>Calendar</div>
-      <div class="sidebar-item" data-view="kanban" onclick="setView('kanban',this)"><span class="si-icon">⊞</span>Kanban</div>
-      <div class="sidebar-item" data-view="lists" id="sidebar-lists" onclick="setView('lists',this)"><span class="si-icon">☑</span>Lists<span class="si-count" id="cnt-lists">0</span></div>
+      <div class="sidebar-item" data-view="stats" id="sidebar-stats" onclick="setView('stats',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-bar-chart-3"/></svg></span>Stats</div>
+      <div class="sidebar-item" data-view="ideas" onclick="setView('ideas',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-lightbulb"/></svg></span>Ideas<span class="si-count" id="cnt-ideas">0</span></div>
+      <div class="sidebar-item" onclick="showHabitsView()" id="sidebar-habits-main"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-plus"/></svg></span>Habit Tracker</div>
+      <div class="sidebar-item" data-view="wins" onclick="setView('wins',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-star"/></svg></span>Wins Board<span class="si-count" id="cnt-wins">0</span></div>
+      <div class="sidebar-item" data-view="budget-view" id="sidebar-budget-view" onclick="setView('budget-view',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-dollar-sign"/></svg></span>Budget View</div>
+      <div class="sidebar-item" data-view="calendar-view" id="sidebar-calendar-view" onclick="setView('calendar-view',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-calendar"/></svg></span>Calendar</div>
+      <div class="sidebar-item" data-view="kanban" onclick="setView('kanban',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-layout-grid"/></svg></span>Kanban</div>
+      <div class="sidebar-item" data-view="lists" id="sidebar-lists" onclick="setView('lists',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-list-checks"/></svg></span>Lists<span class="si-count" id="cnt-lists">0</span></div>
       </div>
 
       <div class="sidebar-divider"></div>
       <div class="sidebar-section-label collapsible" id="priority-hdr" onclick="toggleSection('priority')">
-        Priority <span class="collapse-arrow">▾</span>
+        Priority <span class="collapse-arrow"><svg class="lc-icon" aria-hidden="true"><use href="#icon-chevron-down"/></svg></span>
       </div>
       <div class="collapsible-content" id="priority-section">
         <div class="sidebar-item" data-view="priority-high" onclick="setView('priority-high',this)"><span class="si-icon" style="color:var(--red)">●</span>High<span class="si-count" id="cnt-high">0</span></div>
@@ -1444,7 +1533,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <div id="status-sidebar-group">
       <div class="sidebar-divider"></div>
       <div class="sidebar-section-label collapsible" id="status-hdr" onclick="toggleSection('status')">
-        Status <span class="collapse-arrow">▾</span>
+        Status <span class="collapse-arrow"><svg class="lc-icon" aria-hidden="true"><use href="#icon-chevron-down"/></svg></span>
       </div>
       <div class="collapsible-content" id="status-section">
         <div class="sidebar-item" data-view="status-not-started" onclick="setView('status-not-started',this)"><span class="si-icon" style="color:var(--text3)">◌</span>Not Started<span class="si-count" id="cnt-status-not-started">0</span></div>
@@ -1456,7 +1545,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 
       <div class="sidebar-divider"></div>
       <div class="sidebar-section-label collapsible" id="tags-hdr" onclick="toggleSection('tags')">
-        Tags <span class="collapse-arrow">▾</span>
+        Tags <span class="collapse-arrow"><svg class="lc-icon" aria-hidden="true"><use href="#icon-chevron-down"/></svg></span>
       </div>
       <div class="collapsible-content" id="tags-section">
         <div id="tag-list"></div>
@@ -1465,18 +1554,17 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     </div><!-- end #sidebar-scroll -->
 
     <div class="sidebar-bottom">
-      <button class="sidebar-action-btn" id="connect-google-btn" onclick="connectGoogle()" style="display:none;color:var(--accent);font-weight:600">☁ &nbsp;Connect Google</button>
-      <button class="sidebar-action-btn" id="mood-sidebar-btn" onclick="openMoodModal()">♥ &nbsp;How are you feeling?</button>
-      <button class="sidebar-action-btn" onclick="refreshFromSheets()">↺ &nbsp;Refresh</button>
-      <button class="sidebar-action-btn" id="changelog-sidebar-btn" onclick="openChangelog()" style="display:none">★ &nbsp;What's New</button>
-      <button class="sidebar-action-btn" onclick="openSettings()">⚙ &nbsp;Settings</button>
+      <button class="sidebar-action-btn" id="connect-google-btn" onclick="connectGoogle()" style="display:none;color:var(--accent);font-weight:600"><svg class="lc-icon" aria-hidden="true"><use href="#icon-cloud"/></svg> &nbsp;Connect Google</button>
+      <button class="sidebar-action-btn" id="mood-sidebar-btn" onclick="openMoodModal()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-heart"/></svg> &nbsp;How are you feeling?</button>
+      <button class="sidebar-action-btn" onclick="refreshFromSheets()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-refresh-cw"/></svg> &nbsp;Refresh</button>
+      <button class="sidebar-action-btn" id="changelog-sidebar-btn" onclick="openChangelog()" style="display:none"><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> &nbsp;What's New</button>
+      <button class="sidebar-action-btn" onclick="openSettings()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-settings"/></svg> &nbsp;Settings</button>
       <div style="font-size:11px;color:var(--text3);padding:4px 14px 4px" id="app-version"></div>
     </div>
   </nav>
 
   <!-- Main -->
   <div id="main">
-    <div id="sync-bar"><span id="sync-lbl">● Synced</span><button id="open-sheet-btn" onclick="openCurrentSheet()" style="display:none;margin-left:10px;font-size:11px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);background:none;color:var(--text2);cursor:pointer;font-family:inherit">⊞ Open Sheet</button></div>
 
 
     <div id="toolbar">
@@ -1493,7 +1581,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
         <option value="status-desc">Status (Completed → Not Started)</option>
       </select>
       <div class="toolbar-spacer"></div>
-      <button class="btn-what-now" onclick="whatNow()">✨ What now?</button>
+      <button class="btn-what-now" onclick="whatNow()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> What now?</button>
       <button id="new-task-btn" class="btn-new-task" onclick="openTaskModal()">+ New Task</button>
     </div>
 
@@ -1517,10 +1605,8 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <div class="stat">Total <span class="stat-val" id="stat-total">0</span></div>
       <div class="stat">Active <span class="stat-val" id="stat-active">0</span></div>
       <div class="stat">Completed <span class="stat-val" id="stat-done">0</span></div>
-      <div id="progress-wrap">
-        <div id="progress-bar-outer"><div id="progress-bar-inner" style="width:0%"></div></div>
-        <span id="progress-pct">0%</span>
-      </div>
+      <span class="stat" id="sync-lbl" style="margin-left:auto">● Synced</span>
+      <button id="open-sheet-btn" onclick="openCurrentSheet()" style="display:none;font-size:11px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);background:none;color:var(--text2);cursor:pointer;font-family:inherit"><svg class="lc-icon" aria-hidden="true"><use href="#icon-external-link"/></svg> Open Sheet</button>
     </div>
   </div>
 </div>
@@ -1531,7 +1617,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <span class="timer-task-name" id="timer-task-name">Task name</span>
   </div>
   <div class="timer-time" id="timer-time">00:00</div>
-  <button class="timer-stop-btn" onclick="stopTimer()">■ &nbsp;Stop Timer</button>
+  <button class="timer-stop-btn" onclick="stopTimer()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-square"/></svg> &nbsp;Stop Timer</button>
 </div>
 
 <!-- Focus overlay (in-app focus mode) -->
@@ -1547,19 +1633,19 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div class="focus-time" id="focus-time">00:00</div>
     <div class="focus-paused-label" id="focus-paused-label"></div>
     <div class="focus-controls">
-      <button class="focus-btn focus-pause" id="focus-pause-btn" onclick="toggleFocusPause()">‖ Pause</button>
-      <button class="focus-btn focus-stop" onclick="stopTimer()">■ Stop</button>
+      <button class="focus-btn focus-pause" id="focus-pause-btn" onclick="toggleFocusPause()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-pause"/></svg> Pause</button>
+      <button class="focus-btn focus-stop" onclick="stopTimer()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-square"/></svg> Stop</button>
     </div>
   </div>
 </div>
 
 <!-- Break prompt -->
 <div id="break-prompt">
-  <div class="bp-title">⏰ Time for a break!</div>
+  <div class="bp-title"><svg class="lc-icon" aria-hidden="true"><use href="#icon-clock"/></svg> Time for a break!</div>
   <div class="bp-sub">You've been working for 30 minutes.</div>
   <div class="bp-btns">
     <button class="bp-btn-break" onclick="takeBreak()">☕ Take a Break</button>
-    <button class="bp-btn-focus" onclick="snoozeBreak()">💪 I'm Focused</button>
+    <button class="bp-btn-focus" onclick="snoozeBreak()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-zap"/></svg> I'm Focused</button>
   </div>
 </div>
 
@@ -1576,7 +1662,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- Quick add -->
 <div id="quick-add-overlay" onclick="closeQuickAdd(event)">
   <div id="quick-add-box">
-    <div class="qa-hint">⚡ Quick Add — Enter to save, Esc to cancel</div>
+    <div class="qa-hint"><svg class="lc-icon" aria-hidden="true"><use href="#icon-zap"/></svg> Quick Add — Enter to save, Esc to cancel</div>
     <input id="quick-add-input" placeholder="Task title…" onkeydown="quickAddKey(event)">
   </div>
 </div>
@@ -1818,14 +1904,14 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- What Now modal -->
 <div class="modal-overlay" id="whatnow-modal-overlay" onclick="closeModalOutside(event,'whatnow-modal-overlay')">
   <div class="modal modal-sm">
-    <div class="modal-title">✨ Focus on this next</div>
+    <div class="modal-title"><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> Focus on this next</div>
     <div class="what-now-task-card">
       <div class="what-now-task-title" id="wn-title"></div>
       <div class="task-meta" id="wn-meta"></div>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal('whatnow-modal-overlay')">Got it</button>
-      <button class="btn-primary" id="wn-start-btn">▶ Start Timer</button>
+      <button class="btn-primary" id="wn-start-btn"><svg class="lc-icon" aria-hidden="true"><use href="#icon-play"/></svg> Start Timer</button>
     </div>
   </div>
 </div>
@@ -1834,7 +1920,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <div class="modal-overlay" id="settings-modal-overlay" onclick="closeModalOutside(event,'settings-modal-overlay')">
   <div class="modal" style="max-width:680px;width:95vw;padding:0;overflow:hidden">
     <div style="padding:20px 24px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <div class="modal-title" style="margin:0">⚙ Settings</div>
+      <div class="modal-title" style="margin:0"><svg class="lc-icon" aria-hidden="true"><use href="#icon-settings"/></svg> Settings</div>
     </div>
     <div class="settings-modal-inner">
       <!-- Left nav -->
@@ -1976,7 +2062,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
               <div class="sound-file-row">
                 <span class="sound-file-name" id="sound-file-path">Default (chime)</span>
                 <button class="btn-sound preview" onclick="previewSound()">▶ Preview</button>
-                <button class="btn-sound" onclick="pickSoundFile()">📂 Custom</button>
+                <button class="btn-sound" onclick="pickSoundFile()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-folder"/></svg> Custom</button>
                 <button class="btn-sound" onclick="clearSoundFile()">✕ Reset</button>
               </div>
             </div>
@@ -2011,7 +2097,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
                 <div><div class="setting-label">Holiday / Vacation mode</div><div class="setting-desc">Pause your streak while you're away — pick a return date and your streak won't break</div></div>
                 <div id="vacation-active" style="display:none;width:100%">
                   <div class="vacation-active">
-                    <div><strong>⏸ Streak paused</strong>Returning on <span id="vacation-return-date"></span></div>
+                    <div><strong><svg class="lc-icon" aria-hidden="true"><use href="#icon-pause"/></svg> Streak paused</strong>Returning on <span id="vacation-return-date"></span></div>
                     <button class="btn-sound" onclick="cancelVacationMode()">Cancel</button>
                   </div>
                 </div>
@@ -2162,6 +2248,22 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
             <div class="setting-row">
               <div><div class="setting-label">Changelog in sidebar</div><div class="setting-desc">Show a What's New button in the sidebar</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-changelog-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Colour cards by state</div><div class="setting-desc">Tint overdue tasks red and today's tasks amber so the list is easier to scan</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-state-colors-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Soft card depth</div><div class="setting-desc">Add a subtle shadow under task cards and a slight lift on hover</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-card-depth-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Visual streak widget</div><div class="setting-desc">Show a 7-day mini grid below the streak so you can see recent activity at a glance</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-streak-grid-enabled"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Today hero panel</div><div class="setting-desc">In the All Tasks view, group today's tasks under a "Today" header above the rest</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-today-hero-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
           <div class="settings-section">
@@ -2335,7 +2437,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       <div id="sod-modal-content"></div>
     </div>
     <div class="modal-footer" style="justify-content:center;border-top:none;padding-top:0;margin-top:0">
-      <button class="btn-primary" onclick="closeModal('sod-modal-overlay')">Let's go ★</button>
+      <button class="btn-primary" onclick="closeModal('sod-modal-overlay')">Let's go <svg class="lc-icon" aria-hidden="true"><use href="#icon-arrow-right"/></svg></button>
     </div>
   </div>
 </div>
@@ -2449,7 +2551,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- Idea modal -->
 <div class="modal-overlay" id="idea-modal-overlay" onclick="closeModalOutside(event,'idea-modal-overlay')">
   <div class="modal modal-sm">
-    <div class="modal-title" id="idea-modal-title">💡 New Idea</div>
+    <div class="modal-title" id="idea-modal-title"><svg class="lc-icon" aria-hidden="true"><use href="#icon-lightbulb"/></svg> New Idea</div>
     <div class="form-group">
       <label class="form-label">Title</label>
       <input type="text" class="form-input" id="idea-title" placeholder="What's the idea?">
@@ -2472,7 +2574,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- Win modal -->
 <div class="modal-overlay" id="win-modal-overlay" onclick="closeModalOutside(event,'win-modal-overlay')">
   <div class="modal modal-sm">
-    <div class="modal-title" id="win-modal-title">⭐ Add a Win</div>
+    <div class="modal-title" id="win-modal-title"><svg class="lc-icon" aria-hidden="true"><use href="#icon-star"/></svg> Add a Win</div>
     <div class="form-group">
       <label class="form-label">The win or feedback *</label>
       <textarea class="form-input" id="win-quote" rows="3" placeholder="e.g. &quot;Your presentation was brilliant&quot; or &quot;Shipped the new feature!&quot;" style="resize:vertical"></textarea>
@@ -2508,11 +2610,11 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
     <div class="form-group">
       <label class="form-label">How does it make you feel?</label>
       <div class="win-mood-row">
-        <button type="button" class="win-mood-btn" data-mood="proud"    onclick="selectWinMood(this)">💪 Proud</button>
-        <button type="button" class="win-mood-btn" data-mood="grateful" onclick="selectWinMood(this)">🙏 Grateful</button>
-        <button type="button" class="win-mood-btn" data-mood="excited"  onclick="selectWinMood(this)">🎉 Excited</button>
-        <button type="button" class="win-mood-btn" data-mood="relieved" onclick="selectWinMood(this)">😌 Relieved</button>
-        <button type="button" class="win-mood-btn" data-mood="inspired" onclick="selectWinMood(this)">✨ Inspired</button>
+        <button type="button" class="win-mood-btn" data-mood="proud"    onclick="selectWinMood(this)"><svg class="lc-icon" aria-hidden="true"><use href="#icon-trophy"/></svg> Proud</button>
+        <button type="button" class="win-mood-btn" data-mood="grateful" onclick="selectWinMood(this)"><svg class="lc-icon" aria-hidden="true"><use href="#icon-hand-heart"/></svg> Grateful</button>
+        <button type="button" class="win-mood-btn" data-mood="excited"  onclick="selectWinMood(this)"><svg class="lc-icon" aria-hidden="true"><use href="#icon-party-popper"/></svg> Excited</button>
+        <button type="button" class="win-mood-btn" data-mood="relieved" onclick="selectWinMood(this)"><svg class="lc-icon" aria-hidden="true"><use href="#icon-smile"/></svg> Relieved</button>
+        <button type="button" class="win-mood-btn" data-mood="inspired" onclick="selectWinMood(this)"><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> Inspired</button>
       </div>
     </div>
     <div class="modal-footer">
@@ -2525,7 +2627,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- List modal -->
 <div class="modal-overlay" id="list-modal-overlay" onclick="closeModalOutside(event,'list-modal-overlay')">
   <div class="modal modal-sm">
-    <div class="modal-title" id="list-modal-title">📋 New List</div>
+    <div class="modal-title" id="list-modal-title"><svg class="lc-icon" aria-hidden="true"><use href="#icon-list-checks"/></svg> New List</div>
     <div class="form-group">
       <label class="form-label">Name</label>
       <input type="text" class="form-input" id="list-name-input" placeholder="e.g. Shopping, Books to read…" onkeydown="if(event.key==='Enter')saveList()">
@@ -2555,12 +2657,12 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- Random Win overlay -->
 <div id="random-win-overlay" onclick="if(event.target===this)this.classList.remove('open')">
   <div id="random-win-box">
-    <div id="rw-emoji">⭐</div>
+    <div id="rw-emoji"><svg class="lc-icon" aria-hidden="true"><use href="#icon-star"/></svg></div>
     <div id="rw-quote"></div>
     <div id="rw-source"></div>
     <div id="rw-badges"></div>
     <button class="btn-primary" style="width:100%;justify-content:center;padding:11px" onclick="document.getElementById('random-win-overlay').classList.remove('open')">Close</button>
-    <button class="btn-secondary" style="width:100%;justify-content:center;padding:9px;margin-top:8px" onclick="showRandomWin()">🎲 Another one</button>
+    <button class="btn-secondary" style="width:100%;justify-content:center;padding:9px;margin-top:8px" onclick="showRandomWin()"><svg class="lc-icon" aria-hidden="true"><use href="#icon-shuffle"/></svg> Another one</button>
   </div>
 </div>
 
@@ -2586,7 +2688,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
   <div class="modal modal-sm">
     <div class="modal-title">↓ Export Task List</div>
     <div class="export-option selected" id="export-opt-all" onclick="selectExportOption('all')">
-      <div class="export-option-icon">📋</div>
+      <div class="export-option-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-list-checks"/></svg></div>
       <div>
         <div class="export-option-title">All Tasks</div>
         <div class="export-option-desc">Export every task including active, completed, and overdue</div>
@@ -2650,7 +2752,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <!-- What's new modal -->
 <div id="whatsnew-modal-overlay">
   <div id="whatsnew-modal">
-    <div id="whatsnew-title">✨ What's new in TaskSpark</div>
+    <div id="whatsnew-title"><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> What's new in TaskSpark</div>
     <div id="whatsnew-version"></div>
     <div id="whatsnew-body"><div class="whatsnew-loading">Loading changelog...</div></div>
     <div style="display:flex;justify-content:flex-end">
@@ -2692,9 +2794,9 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 <div class="modal-overlay" id="onboarding-modal">
   <div class="modal" style="max-width:460px">
     <div style="text-align:center;padding:4px 0 22px">
-      <div style="font-size:32px;margin-bottom:12px">⚡</div>
+      <div style="margin-bottom:12px;color:var(--accent);font-size:32px;line-height:1"><svg class="lc-icon" aria-hidden="true"><use href="#icon-zap"/></svg></div>
       <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px">Welcome to TaskSpark</div>
-      <div style="font-size:14px;color:var(--text2);line-height:1.6">Designed to reduce decision fatigue and help you start, focus, and finish.</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.6">Built to take the friction out of starting. Pick how much you want to begin with — you can change it any time.</div>
     </div>
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:10px">How much do you want to start with?</div>
     <div style="display:flex;flex-direction:column;gap:8px">
@@ -2856,7 +2958,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
       </p>
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
         <button class="btn-secondary" style="text-align:left;padding:12px 14px" onclick="window._wsConflictResolve('drive')">
-          <div style="font-weight:700;font-size:13px;margin-bottom:3px">☁ Use Google Drive version</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:3px"><svg class="lc-icon" aria-hidden="true"><use href="#icon-cloud"/></svg> Use Google Drive version</div>
           <div id="ws-conflict-drive" style="font-size:12px;color:var(--text3)"></div>
         </button>
         <button class="btn-secondary" style="text-align:left;padding:12px 14px" onclick="window._wsConflictResolve('local')">

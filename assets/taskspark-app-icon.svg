@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" rx="58" ry="58" fill="#2d6a4f"/>
+  <circle cx="118" cy="134" r="78" fill="#ffffff"/>
+  <path d="M 82 138 L 110 166 L 156 110" fill="none" stroke="#2d6a4f" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- primary sparkle: chunky 4-point star, top-right -->
+  <path d="M 202 44 L 214 67 L 237 79 L 214 91 L 202 114 L 190 91 L 167 79 L 190 67 Z" fill="#f8a826"/>
+  <!-- secondary sparkle: chunky 4-point star, bottom-left -->
+  <path d="M 54 196 L 61 210 L 75 217 L 61 224 L 54 238 L 47 224 L 33 217 L 47 210 Z" fill="#f8a826" opacity="0.9"/>
+</svg>

@@ -203,6 +203,33 @@ Slate, Moss. Click a swatch to apply instantly.
 **Both · V4.0.0** — Pick a colour for each individual tag in
 Settings → Appearance.
 
+### State-coloured task cards
+**Both · V4.0.0** — Overdue tasks tint red, today's tasks tint amber,
+so the list is easier to scan at a glance. Toggleable in
+Settings → Appearance.
+
+### Soft card depth
+**Both · V4.0.0** — A subtle shadow under task cards plus a slight
+lift on hover. Toggleable in Settings → Appearance.
+
+### Sparkle completion celebration
+**Desktop · V4.0.0** — Existing card-pop / checkbox-pop animation
+gains two orange sparkles that fly out of the checkbox when a task
+is ticked, echoing the logo mark. Driven by the existing celebration
+animation toggle.
+
+### Visual streak widget
+**Both · V4.0.0** — A 7-day mini grid sits below the streak number
+showing which of the last seven days had a task completed. The
+streak indicator also picks up a flame icon (instead of a star) when
+a streak is active. Toggleable in Settings → Appearance.
+
+### Today hero panel
+**Both · V4.0.0** — In the All Tasks view, tasks due today are
+grouped under a "Today · N" section header at the top, with the rest
+of the list under "Later · N" below. Skipped automatically when
+either group is empty. Toggleable in Settings → Appearance.
+
 ### Window size and position memory
 **Desktop · V3.5** — TaskSpark reopens at the size and position you left it.
 
