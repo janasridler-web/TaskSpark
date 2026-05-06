@@ -1611,10 +1611,15 @@ async function saveTasks() {
   if (offlineMode) { setSyncStatus('offline'); return; }
   const activeWs = getActiveWorkspace();
   if (activeWs && activeWs.readOnly) { setSyncStatus('ok'); return; }
+  // Capture target sheet + payload BEFORE the async ensureToken so that a
+  // workspace switch mid-flight can't redirect this save to a different
+  // workspace's spreadsheet.
+  const targetSpreadsheetId = spreadsheetId;
+  const payload = tasks.slice();
   setSyncStatus('syncing');
   try {
     await ensureToken();
-    await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    await api.sheetsSave({ accessToken, spreadsheetId: targetSpreadsheetId, tasks: payload });
     setSyncStatus('ok');
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
@@ -7931,6 +7936,14 @@ async function switchWorkspace(id) {
   if (!target) return;
   setWorkspaceSwitching(target.name);
 
+  // Snapshot the previous workspace state so we can roll back if loading
+  // the new one fails — otherwise we'd leave the user staring at an empty
+  // workspace where their next edit would silently wipe the real data on
+  // Drive.
+  const previousActiveId      = activeWorkspaceId;
+  const previousSpreadsheetId = spreadsheetId;
+  const previousSettings      = settings;
+
   try {
     // Snapshot current data into cache before leaving
     _wsCache[activeWorkspaceId] = {
@@ -7953,12 +7966,15 @@ async function switchWorkspace(id) {
     updateWorkspaceTitle();
     renderWorkspaceDropdown();
 
-    // If we have pre-fetched data, show instantly then sync in background
+    // If we have pre-fetched data, show instantly then sync in background.
+    // Background sync intentionally does NOT clobber tasks on failure —
+    // the user keeps the cached data they're already looking at.
     if (_wsCache[id]) {
       tasks   = _wsCache[id].tasks   || [];
       habits  = _wsCache[id].habits  || [];
       ideas   = _wsCache[id].ideas   || [];
       wins    = _wsCache[id].wins    || [];
+      await api.saveCache(tasks);
       renderAll();
       updateHabitsSidebar();
       const cntIdeas = document.getElementById('cnt-ideas');
@@ -7967,19 +7983,52 @@ async function switchWorkspace(id) {
       if (cntWins) cntWins.textContent = wins.length;
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
-      // Background sync to pick up any remote changes
       setTimeout(async () => {
-        await api.saveCache([]);
-        await connectToSheets();
-        await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-        _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+        try {
+          setSyncStatus('syncing');
+          await ensureToken();
+          const loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
+          if (loaded && loaded.length) {
+            tasks = loaded;
+            await api.saveCache(tasks);
+            renderAll();
+          }
+          await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
+          _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+          setSyncStatus('ok');
+        } catch (syncErr) {
+          // Keep showing cached data; just flag the sync error.
+          setSyncStatus('error', syncErr.message.slice(0, 50));
+        }
       }, 500);
     } else {
-      // No cache yet — load fresh
-      tasks = []; habits = []; ideas = []; wins = [];
-      await api.saveCache([]);
+      // No cache yet — try Drive first, only commit the switch on success.
+      let loaded;
+      try {
+        setSyncStatus('syncing');
+        await ensureToken();
+        await api.sheetsEnsure({ accessToken, spreadsheetId });
+        loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
+      } catch (loadErr) {
+        // Roll back to the previous workspace so the user doesn't see an
+        // empty list and accidentally save it back to the new sheet.
+        activeWorkspaceId = previousActiveId;
+        spreadsheetId     = previousSpreadsheetId;
+        settings          = previousSettings;
+        applySettings();
+        await saveWorkspaces();
+        updateWorkspaceTitle();
+        renderWorkspaceDropdown();
+        clearWorkspaceSwitching();
+        setSyncStatus('error', 'Could not load workspace');
+        showToast(`Couldn't load ${target.name} — try again`);
+        return;
+      }
+      tasks = loaded || [];
+      habits = []; ideas = []; wins = [];
+      await api.saveCache(tasks);
       renderAll();
-      await connectToSheets();
+      setSyncStatus('ok');
       await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
       _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
       clearWorkspaceSwitching();

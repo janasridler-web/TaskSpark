@@ -822,10 +822,15 @@ async function saveTasks() {
   if (offlineMode) { setSyncStatus('offline'); return; }
   const activeWs = getActiveWorkspace();
   if (activeWs && activeWs.readOnly) { setSyncStatus('ok'); return; }
+  // Capture target sheet + payload BEFORE the async ensureToken so that a
+  // workspace switch mid-flight can't redirect this save to a different
+  // workspace's spreadsheet.
+  const targetSpreadsheetId = spreadsheetId;
+  const payload = tasks.slice();
   setSyncStatus('syncing');
   try {
     await ensureToken();
-    await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    await api.sheetsSave({ accessToken, spreadsheetId: targetSpreadsheetId, tasks: payload });
     setSyncStatus('ok');
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
