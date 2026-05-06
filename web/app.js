@@ -5252,16 +5252,27 @@ function _createRecurrenceOccurrence(task) {
 function calcNextDueDate(task) {
   const r = task.recurrence;
   if (!r || r.type === 'none') return task.due || '';
-  const base = task.due ? new Date(task.due + 'T00:00:00') : new Date();
-  if (r.type === 'daily')        { base.setDate(base.getDate() + 1); }
-  else if (r.type === 'weekly')  { base.setDate(base.getDate() + 7); }
-  else if (r.type === 'monthly') { base.setMonth(base.getMonth() + 1); }
-  else if (r.type === 'custom')  { base.setDate(base.getDate() + (parseInt(r.interval)||1)); }
-  else if (r.type === 'days') {
+  // Roll forward from whichever is later — the original due date or today.
+  // Otherwise a recurring task completed late spawns a next occurrence
+  // that is itself already overdue, which is punishing for the user.
+  const today = new Date(todayStr() + 'T00:00:00');
+  const base = task.due ? new Date(task.due + 'T00:00:00') : new Date(today);
+  if (r.type === 'daily') {
+    do { base.setDate(base.getDate() + 1); } while (base <= today);
+  } else if (r.type === 'weekly') {
+    do { base.setDate(base.getDate() + 7); } while (base <= today);
+  } else if (r.type === 'monthly') {
+    do { base.setMonth(base.getMonth() + 1); } while (base <= today);
+  } else if (r.type === 'custom') {
+    const step = parseInt(r.interval) || 1;
+    do { base.setDate(base.getDate() + step); } while (base <= today);
+  } else if (r.type === 'days') {
     const days = r.days || [];
     if (!days.length) return task.due || '';
-    let next = new Date(base); next.setDate(next.getDate() + 1);
-    for (let i = 0; i < 7; i++) {
+    const start = base > today ? base : today;
+    const next = new Date(start);
+    next.setDate(next.getDate() + 1);
+    for (let i = 0; i < 14; i++) {
       if (days.includes(next.getDay())) break;
       next.setDate(next.getDate() + 1);
     }
