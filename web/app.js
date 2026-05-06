@@ -7585,7 +7585,7 @@ async function checkWhatsNew(currentVersion) {
     const cfg = await api.loadConfig();
     const lastSeen = cfg && cfg.lastSeenVersion;
     if (lastSeen === currentVersion) return; // already seen this version — don't show modal
-    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
+    const res = await fetch('https://api.github.com/repos/janasridler-web/taskspark-releases/releases/latest');
     const release = await res.json();
     if (!release || !release.tag_name) return;
     cachedRelease = release;
@@ -7753,7 +7753,7 @@ async function loadChangelogContent() {
   try {
     if (cachedRelease) { el.textContent = cachedRelease.body || 'No changelog available.'; return; }
     el.textContent = 'Loading…';
-    const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
+    const res = await fetch('https://api.github.com/repos/janasridler-web/taskspark-releases/releases/latest');
     const release = await res.json();
     cachedRelease = release;
     el.textContent = release.body || 'No changelog available.';
