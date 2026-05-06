@@ -1,6 +1,6 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.1.0';
+const WEB_VERSION = '4.1.1';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
@@ -3196,7 +3196,7 @@ function showCalTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectCalTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectCalTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)">
       <span style="width:8px;height:8px;border-radius:50%;background:${getCalEventTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -4233,7 +4233,7 @@ function showTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectTagSuggestion('${esc(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)">
       <span style="width:8px;height:8px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');

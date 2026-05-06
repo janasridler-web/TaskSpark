@@ -2114,7 +2114,7 @@ function showCalTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectCalTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectCalTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)">
       <span style="width:8px;height:8px;border-radius:50%;background:${getCalEventTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -3964,7 +3964,7 @@ function showTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)">
       <span style="width:8px;height:8px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
