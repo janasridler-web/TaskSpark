@@ -6951,14 +6951,17 @@ let cachedRelease = null;
 // Cache the GitHub release for 1 hour in localStorage to avoid hitting the
 // 60-req/h anonymous API limit when both checkWhatsNew and loadChangelogContent
 // run in the same session.
-const _RELEASE_CACHE_KEY = 'taskspark_release_cache';
+// v2 suffix — bumped when the release source repo changed from TaskSpark
+// to taskspark-releases, so existing installs don't keep showing the old
+// cached payload for up to an hour.
+const _RELEASE_CACHE_KEY = 'taskspark_release_cache_v2';
 const _RELEASE_CACHE_TTL = 60 * 60 * 1000;
 async function _fetchLatestRelease() {
   try {
     const cached = JSON.parse(localStorage.getItem(_RELEASE_CACHE_KEY) || 'null');
     if (cached && Date.now() - cached.t < _RELEASE_CACHE_TTL) return cached.r;
   } catch {}
-  const res = await fetch('https://api.github.com/repos/janasridler-web/TaskSpark/releases/latest');
+  const res = await fetch('https://api.github.com/repos/janasridler-web/taskspark-releases/releases/latest');
   const release = await res.json();
   try { localStorage.setItem(_RELEASE_CACHE_KEY, JSON.stringify({ t: Date.now(), r: release })); } catch {}
   return release;
