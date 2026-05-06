@@ -1469,16 +1469,28 @@ async function fetchUserInfo(token) {
 
 async function ensureToken() {
   if (Date.now() < tokenExpiry - 60000) return;
+  let tokens;
   try {
-    const tokens = await api.oauthRefresh({ refreshToken });
-    if (tokens.access_token) {
-      accessToken = tokens.access_token;
-      tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
-      await api.saveConfig({ accessToken, tokenExpiry });
-    }
+    tokens = await api.oauthRefresh({ refreshToken });
   } catch (e) {
+    // Network blip, DNS, etc. Re-throw so callers stop using a stale
+    // access token and saves don't silently 401 against Drive.
     console.warn('Token refresh failed:', e);
+    throw new Error('Token refresh failed: ' + (e && e.message || 'network error'));
   }
+  if (tokens && tokens.access_token) {
+    accessToken = tokens.access_token;
+    tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
+    await api.saveConfig({ accessToken, tokenExpiry });
+    return;
+  }
+  if (tokens && tokens.error === 'invalid_grant') {
+    await api.saveConfig({ accessToken: null, refreshToken: null, tokenExpiry: 0 });
+    accessToken = null; refreshToken = null; tokenExpiry = 0;
+    showToast('Sign-in expired — please sign in again');
+    throw new Error('invalid_grant');
+  }
+  throw new Error((tokens && (tokens.error_description || tokens.error)) || 'No access token returned');
 }
 
 // ── Centralised fetch wrapper for Google + Microsoft API calls ──────────────
