@@ -911,6 +911,9 @@ document.addEventListener('keydown', e => {
     document.getElementById('quick-add-overlay').classList.remove('open');
   }
   if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !_isTypingTarget(document.activeElement)) {
+    // Don't fire when another modal/overlay is already open — otherwise the
+    // new-task modal stacks on top and hides whatever the user was doing.
+    if (document.querySelector('.modal-overlay.open, #quick-add-overlay.open')) return;
     openTaskModal();
   }
 });
