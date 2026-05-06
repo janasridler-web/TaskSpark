@@ -294,7 +294,7 @@ function isDeferred(task) {
   if (task.due <= t) return false;
   const show = new Date(task.due + 'T00:00:00');
   show.setDate(show.getDate() - task.hideUntilDays);
-  return show.toISOString().slice(0, 10) > t;
+  return dateToLocalStr(show) > t;
 }
 
 function esc(s) {
