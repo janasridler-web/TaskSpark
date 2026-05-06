@@ -1,5 +1,39 @@
 # TaskSpark Changelog
 
+## V4.1.0 — May 2026
+
+A polish release with a fresher look and a wide sweep of correctness fixes — most of them quiet bugs that could have lost work without warning.
+
+### Look & feel
+
+- **Today hero panel** — when you have tasks due today, a dedicated panel pulls them to the top so you see them first.
+- **Visual streak widget** — the daily streak now shows as a 7-day grid with a flame, instead of a number.
+- **State-coloured task cards** — overdue tasks tint red, today's tasks tint amber; the list is easier to scan at a glance.
+- **Lucide icon set** — replaces the old mix of Unicode glyphs and emoji throughout the app, for sharper, more consistent visuals.
+- **Sidebar refresh** — new "Sparkle of Completion" logo, redesigned app icons that hold up at small sizes, tidier circle checkboxes, and tighter top spacing.
+- **Title bar in your accent colour** — the desktop title bar picks up your chosen accent.
+- **Lighter chrome** — the top sync bar and progress bar are gone; sync status is folded into the stats area. The redundant view title and workspace pill are hidden when they don't add information.
+- **Warmer onboarding copy** — first-run and empty-state messages have been reworded with an ADHD-aware voice.
+
+### Mobile (web companion)
+
+- **Empty Today screen** now reads "Nothing due today" instead of a generic "All clear!" — clearer that the page loaded.
+- **iPhone Dynamic Island** — content no longer slides up under the status bar / Dynamic Island on the PWA.
+
+### Reliability fixes
+
+- **Tag colours sync between computers** *(desktop)* — colours are now stored on your workspace, not on the local machine. Existing colours are migrated automatically.
+- **CSV importer** — clearer "Anchor Date" guidance, blocks importing T-offset templates without an anchor date set, and shows the resolved due date next to each task in the preview.
+- **Calendar events keep their tags and multi-day end dates** *(web)* — these were silently dropping every reload.
+- **"Hide until N days before due"** *(both apps)* — no longer drifts a day off for users outside the UTC timezone.
+- **Recurring tasks completed late** *(both apps)* — the next occurrence is now scheduled in the future, not already overdue.
+- **"n" keyboard shortcut** *(desktop)* — no longer stacks a new-task modal on top of an already-open modal.
+- **Workspace switch races** *(web + desktop)* — tasks edited just before a workspace switch can no longer be saved into the wrong workspace's spreadsheet.
+- **Failed workspace load** *(web)* — if a workspace fails to load (e.g. flaky network), the app rolls back to the previous workspace instead of leaving you on an empty screen where the next edit could wipe Drive data.
+- **Token-refresh failures are no longer silent** *(both apps)* — if Google's token refresh fails, the sync indicator surfaces the error instead of pretending everything is fine while edits silently fall on the floor.
+
+---
+
 ## Web Companion V4.0.0 — April 2026
 
 The web companion at app.taskspark.tech catches up to desktop V4.0.0 and adds a phone-first essentials experience.

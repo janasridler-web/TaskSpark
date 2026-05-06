@@ -259,9 +259,29 @@ function dueStatus(due) {
   return diff <= 3 ? 'soon' : 'future';
 }
 
+// Tag colours live on the active workspace so they sync between computers
+// via the TaskSpark-Config Drive sheet. On first read after upgrade, any
+// legacy settings.tagColors are migrated up to the workspace and saved.
+function getTagColors() {
+  const ws = getActiveWorkspace();
+  if (!ws) return { enabled: !!settings.tagCustomColorsEnabled, map: settings.tagColors || {} };
+  if (ws.tagColors && Object.keys(ws.tagColors).length) {
+    return { enabled: !!ws.tagColorsEnabled, map: ws.tagColors };
+  }
+  if (settings.tagColors && Object.keys(settings.tagColors).length) {
+    ws.tagColors = { ...settings.tagColors };
+    ws.tagColorsEnabled = !!settings.tagCustomColorsEnabled;
+    saveWorkspaces();
+    return { enabled: !!ws.tagColorsEnabled, map: ws.tagColors };
+  }
+  const enabled = ws.tagColorsEnabled !== undefined ? !!ws.tagColorsEnabled : !!settings.tagCustomColorsEnabled;
+  return { enabled, map: {} };
+}
+
 function getTagColor(tag) {
-  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) {
-    const v = settings.tagColors[tag];
+  const { enabled, map } = getTagColors();
+  if (enabled && map && map[tag]) {
+    const v = map[tag];
     if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
   }
   if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
@@ -274,7 +294,7 @@ function isDeferred(task) {
   if (task.due <= t) return false;
   const show = new Date(task.due + 'T00:00:00');
   show.setDate(show.getDate() - task.hideUntilDays);
-  return show.toISOString().slice(0, 10) > t;
+  return dateToLocalStr(show) > t;
 }
 
 function esc(s) {
@@ -682,29 +702,28 @@ async function fetchUserInfo(token) {
 
 async function ensureToken() {
   if (Date.now() < tokenExpiry - 60000) return;
+  let tokens;
   try {
-    const tokens = await api.oauthRefresh({ refreshToken });
-    if (tokens.access_token) {
-      accessToken = tokens.access_token;
-      tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
-      await api.saveConfig({ accessToken, tokenExpiry });
-      return;
-    }
-    // Refresh-token revoked or expired: surface to user and force re-auth
-    if (tokens.error === 'invalid_grant') {
-      await api.saveConfig({ accessToken: null, refreshToken: null, tokenExpiry: 0 });
-      accessToken = null; refreshToken = null; tokenExpiry = 0;
-      showToast('Sign-in expired — please sign in again');
-      throw new Error('invalid_grant');
-    }
-    throw new Error(tokens.error_description || tokens.error || 'No access token returned');
+    tokens = await api.oauthRefresh({ refreshToken });
   } catch (e) {
+    // Network blip, DNS, etc. Re-throw so callers stop using a stale
+    // access token and saves don't silently 401 against Drive.
     console.warn('Token refresh failed:', e);
-    if (e.message === 'invalid_grant') {
-      // Re-throw so the caller can stop trying to use a dead token
-      throw e;
-    }
+    throw new Error('Token refresh failed: ' + (e && e.message || 'network error'));
   }
+  if (tokens && tokens.access_token) {
+    accessToken = tokens.access_token;
+    tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
+    await api.saveConfig({ accessToken, tokenExpiry });
+    return;
+  }
+  if (tokens && tokens.error === 'invalid_grant') {
+    await api.saveConfig({ accessToken: null, refreshToken: null, tokenExpiry: 0 });
+    accessToken = null; refreshToken = null; tokenExpiry = 0;
+    showToast('Sign-in expired — please sign in again');
+    throw new Error('invalid_grant');
+  }
+  throw new Error((tokens && (tokens.error_description || tokens.error)) || 'No access token returned');
 }
 
 async function signOut() {
@@ -802,10 +821,15 @@ async function saveTasks() {
   if (offlineMode) { setSyncStatus('offline'); return; }
   const activeWs = getActiveWorkspace();
   if (activeWs && activeWs.readOnly) { setSyncStatus('ok'); return; }
+  // Capture target sheet + payload BEFORE the async ensureToken so that a
+  // workspace switch mid-flight can't redirect this save to a different
+  // workspace's spreadsheet.
+  const targetSpreadsheetId = spreadsheetId;
+  const payload = tasks.slice();
   setSyncStatus('syncing');
   try {
     await ensureToken();
-    await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    await api.sheetsSave({ accessToken, spreadsheetId: targetSpreadsheetId, tasks: payload });
     setSyncStatus('ok');
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
@@ -891,6 +915,9 @@ document.addEventListener('keydown', e => {
     document.getElementById('quick-add-overlay').classList.remove('open');
   }
   if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !_isTypingTarget(document.activeElement)) {
+    // Don't fire when another modal/overlay is already open — otherwise the
+    // new-task modal stacks on top and hides whatever the user was doing.
+    if (document.querySelector('.modal-overlay.open, #quick-add-overlay.open')) return;
     openTaskModal();
   }
 });
@@ -4753,9 +4780,10 @@ async function openSettings() {
   document.getElementById('set-whatnow').checked            = s.whatNowEnabled;
   document.getElementById('set-completion').checked         = s.completionDialog;
   toggleCompletionDialogSub();
-  if (document.getElementById('set-tag-custom-colors'))     document.getElementById('set-tag-custom-colors').checked     = s.tagCustomColorsEnabled === true;
-  if (document.getElementById('tag-colors-section'))        document.getElementById('tag-colors-section').style.display  = s.tagCustomColorsEnabled ? '' : 'none';
-  if (s.tagCustomColorsEnabled) renderTagColorSettings();
+  const _tcEnabled = getTagColors().enabled;
+  if (document.getElementById('set-tag-custom-colors'))     document.getElementById('set-tag-custom-colors').checked     = _tcEnabled === true;
+  if (document.getElementById('tag-colors-section'))        document.getElementById('tag-colors-section').style.display  = _tcEnabled ? '' : 'none';
+  if (_tcEnabled) renderTagColorSettings();
   if (document.getElementById('set-defer-enabled'))          document.getElementById('set-defer-enabled').checked          = s.deferEnabled === true;
   if (document.getElementById('set-overdue-alert-enabled'))  document.getElementById('set-overdue-alert-enabled').checked  = s.overdueAlertEnabled === true;
   if (document.getElementById('set-overdue-alert-mode'))     document.getElementById('set-overdue-alert-mode').value        = s.overdueAlertMode || 'all';
@@ -4998,16 +5026,27 @@ function _createRecurrenceOccurrence(task) {
 function calcNextDueDate(task) {
   const r = task.recurrence;
   if (!r || r.type === 'none') return task.due || '';
-  const base = task.due ? new Date(task.due + 'T00:00:00') : new Date();
-  if (r.type === 'daily')        { base.setDate(base.getDate() + 1); }
-  else if (r.type === 'weekly')  { base.setDate(base.getDate() + 7); }
-  else if (r.type === 'monthly') { base.setMonth(base.getMonth() + 1); }
-  else if (r.type === 'custom')  { base.setDate(base.getDate() + (parseInt(r.interval)||1)); }
-  else if (r.type === 'days') {
+  // Roll forward from whichever is later — the original due date or today.
+  // Otherwise a recurring task completed late spawns a next occurrence
+  // that is itself already overdue, which is punishing for the user.
+  const today = new Date(todayStr() + 'T00:00:00');
+  const base = task.due ? new Date(task.due + 'T00:00:00') : new Date(today);
+  if (r.type === 'daily') {
+    do { base.setDate(base.getDate() + 1); } while (base <= today);
+  } else if (r.type === 'weekly') {
+    do { base.setDate(base.getDate() + 7); } while (base <= today);
+  } else if (r.type === 'monthly') {
+    do { base.setMonth(base.getMonth() + 1); } while (base <= today);
+  } else if (r.type === 'custom') {
+    const step = parseInt(r.interval) || 1;
+    do { base.setDate(base.getDate() + step); } while (base <= today);
+  } else if (r.type === 'days') {
     const days = r.days || [];
     if (!days.length) return task.due || '';
-    let next = new Date(base); next.setDate(next.getDate() + 1);
-    for (let i = 0; i < 7; i++) {
+    const start = base > today ? base : today;
+    const next = new Date(start);
+    next.setDate(next.getDate() + 1);
+    for (let i = 0; i < 14; i++) {
       if (days.includes(next.getDay())) break;
       next.setDate(next.getDate() + 1);
     }
@@ -5107,8 +5146,15 @@ function renderTagColorSettings() {
 function setTagColor(index, color) {
   const tag = _tagColorSettingsTags[index];
   if (!tag) return;
-  if (!settings.tagColors) settings.tagColors = {};
-  settings.tagColors[tag] = color;
+  const ws = getActiveWorkspace();
+  if (ws) {
+    if (!ws.tagColors) ws.tagColors = {};
+    ws.tagColors[tag] = color;
+    saveWorkspaces();
+  } else {
+    if (!settings.tagColors) settings.tagColors = {};
+    settings.tagColors[tag] = color;
+  }
   const dot = document.getElementById(`tag-color-dot-${index}`);
   if (dot) dot.style.background = color;
   renderAll();
@@ -5118,6 +5164,14 @@ function toggleTagColorSection() {
   const enabled = document.getElementById('set-tag-custom-colors')?.checked;
   const section = document.getElementById('tag-colors-section');
   if (section) section.style.display = enabled ? '' : 'none';
+  const ws = getActiveWorkspace();
+  if (ws) {
+    ws.tagColorsEnabled = !!enabled;
+    if (!ws.tagColors) ws.tagColors = {};
+    saveWorkspaces();
+  } else {
+    settings.tagCustomColorsEnabled = !!enabled;
+  }
   if (enabled) renderTagColorSettings();
   renderAll();
 }
@@ -6451,6 +6505,13 @@ function handleImportFile(event) {
   reader.onload = (e) => {
     try {
       const anchorDate = (document.getElementById('import-anchor-date') || {}).value || '';
+      // T-offset dates need an anchor to resolve. Without one, every T-N
+      // would silently become a blank due-date — block the import and
+      // tell the user instead of importing dateless tasks.
+      if (!anchorDate && /(^|,)T[+-]?\d+(,|$)/m.test(e.target.result)) {
+        showToast('This template uses T-offset dates. Set the Anchor Date (your launch / reference day) before importing.');
+        return;
+      }
       const imported = parseTemplateCSV(e.target.result, anchorDate);
       if (!imported.length) {
         showToast('No tasks found in file — check it is a valid TaskSpark CSV');
@@ -6479,6 +6540,7 @@ function showImportPreview(imported) {
         ${t.desc ? `<div style="font-size:12px;color:var(--text3);margin-bottom:5px;line-height:1.5">${esc(t.desc)}</div>` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <span style="font-size:11px;font-weight:600;color:${pColor[t.priority]||'var(--text3)'}">${t.priority}</span>
+          ${t.due ? `<span style="font-size:11px;color:var(--text3)">◷ ${fmtDate(t.due)}</span>` : ''}
           ${t.estimate ? `<span style="font-size:11px;color:var(--text3)">~${t.estimate}m</span>` : ''}
           ${(t.tags||[]).map(tag => `<span style="font-size:11px;background:var(--accent-l);color:var(--accent);padding:1px 6px;border-radius:4px">${esc(tag)}</span>`).join('')}
         </div>

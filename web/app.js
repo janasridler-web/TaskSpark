@@ -1,6 +1,6 @@
 // ── Web API layer — replaces Electron's api.* calls ────────────────────────
 // Config & cache stored in localStorage
-const WEB_VERSION = '4.0.11';
+const WEB_VERSION = '4.1.0';
 const CONFIG_KEY  = 'taskspark_config';
 const CACHE_KEY   = 'taskspark_cache';
 
@@ -524,7 +524,7 @@ async function eventsSaveWeb({ accessToken, spreadsheetId, events }) {
 
 async function eventsLoadWeb({ accessToken, spreadsheetId }) {
   try {
-    const res = await sheetsRequest('GET', `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A2:G10000')}`, accessToken);
+    const res = await sheetsRequest('GET', `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Events!A2:I10000')}`, accessToken);
     return (res.values||[]).filter(r => r[0]).map(r => ({
       id: r[0], title: r[1]||'', allDay: r[2]==='1',
       start: r[3]||'', end: r[4]||'', date: r[5]||'', desc: r[6]||'',
@@ -1137,7 +1137,7 @@ function isDeferred(task) {
   if (task.due <= t) return false;
   const show = new Date(task.due + 'T00:00:00');
   show.setDate(show.getDate() - task.hideUntilDays);
-  return show.toISOString().slice(0, 10) > t;
+  return dateToLocalStr(show) > t;
 }
 
 function esc(s) {
@@ -1469,16 +1469,28 @@ async function fetchUserInfo(token) {
 
 async function ensureToken() {
   if (Date.now() < tokenExpiry - 60000) return;
+  let tokens;
   try {
-    const tokens = await api.oauthRefresh({ refreshToken });
-    if (tokens.access_token) {
-      accessToken = tokens.access_token;
-      tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
-      await api.saveConfig({ accessToken, tokenExpiry });
-    }
+    tokens = await api.oauthRefresh({ refreshToken });
   } catch (e) {
+    // Network blip, DNS, etc. Re-throw so callers stop using a stale
+    // access token and saves don't silently 401 against Drive.
     console.warn('Token refresh failed:', e);
+    throw new Error('Token refresh failed: ' + (e && e.message || 'network error'));
   }
+  if (tokens && tokens.access_token) {
+    accessToken = tokens.access_token;
+    tokenExpiry = Date.now() + (tokens.expires_in || 3600) * 1000;
+    await api.saveConfig({ accessToken, tokenExpiry });
+    return;
+  }
+  if (tokens && tokens.error === 'invalid_grant') {
+    await api.saveConfig({ accessToken: null, refreshToken: null, tokenExpiry: 0 });
+    accessToken = null; refreshToken = null; tokenExpiry = 0;
+    showToast('Sign-in expired — please sign in again');
+    throw new Error('invalid_grant');
+  }
+  throw new Error((tokens && (tokens.error_description || tokens.error)) || 'No access token returned');
 }
 
 // ── Centralised fetch wrapper for Google + Microsoft API calls ──────────────
@@ -1611,10 +1623,15 @@ async function saveTasks() {
   if (offlineMode) { setSyncStatus('offline'); return; }
   const activeWs = getActiveWorkspace();
   if (activeWs && activeWs.readOnly) { setSyncStatus('ok'); return; }
+  // Capture target sheet + payload BEFORE the async ensureToken so that a
+  // workspace switch mid-flight can't redirect this save to a different
+  // workspace's spreadsheet.
+  const targetSpreadsheetId = spreadsheetId;
+  const payload = tasks.slice();
   setSyncStatus('syncing');
   try {
     await ensureToken();
-    await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+    await api.sheetsSave({ accessToken, spreadsheetId: targetSpreadsheetId, tasks: payload });
     setSyncStatus('ok');
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
@@ -1779,8 +1796,17 @@ function renderTasks() {
   const filtered = sortTasks(filterTasks());
 
   if (!filtered.length) {
-    const msg = currentView === 'completed' ? 'Nothing checked off yet' : 'All clear!';
-    const sub = currentView === 'completed' ? 'Your wins will show up here as you finish tasks.' : 'Nothing on your plate. Add something when you\'re ready.';
+    let msg, sub;
+    if (currentView === 'completed') {
+      msg = 'Nothing checked off yet';
+      sub = 'Your wins will show up here as you finish tasks.';
+    } else if (currentView === 'today') {
+      msg = 'Nothing due today';
+      sub = 'Enjoy the breathing room — or add something for today.';
+    } else {
+      msg = 'All clear!';
+      sub = 'Nothing on your plate. Add something when you\'re ready.';
+    }
     const html = `<div class="empty-state"><div class="empty-icon">${icon('check')}</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
@@ -5243,16 +5269,27 @@ function _createRecurrenceOccurrence(task) {
 function calcNextDueDate(task) {
   const r = task.recurrence;
   if (!r || r.type === 'none') return task.due || '';
-  const base = task.due ? new Date(task.due + 'T00:00:00') : new Date();
-  if (r.type === 'daily')        { base.setDate(base.getDate() + 1); }
-  else if (r.type === 'weekly')  { base.setDate(base.getDate() + 7); }
-  else if (r.type === 'monthly') { base.setMonth(base.getMonth() + 1); }
-  else if (r.type === 'custom')  { base.setDate(base.getDate() + (parseInt(r.interval)||1)); }
-  else if (r.type === 'days') {
+  // Roll forward from whichever is later — the original due date or today.
+  // Otherwise a recurring task completed late spawns a next occurrence
+  // that is itself already overdue, which is punishing for the user.
+  const today = new Date(todayStr() + 'T00:00:00');
+  const base = task.due ? new Date(task.due + 'T00:00:00') : new Date(today);
+  if (r.type === 'daily') {
+    do { base.setDate(base.getDate() + 1); } while (base <= today);
+  } else if (r.type === 'weekly') {
+    do { base.setDate(base.getDate() + 7); } while (base <= today);
+  } else if (r.type === 'monthly') {
+    do { base.setMonth(base.getMonth() + 1); } while (base <= today);
+  } else if (r.type === 'custom') {
+    const step = parseInt(r.interval) || 1;
+    do { base.setDate(base.getDate() + step); } while (base <= today);
+  } else if (r.type === 'days') {
     const days = r.days || [];
     if (!days.length) return task.due || '';
-    let next = new Date(base); next.setDate(next.getDate() + 1);
-    for (let i = 0; i < 7; i++) {
+    const start = base > today ? base : today;
+    const next = new Date(start);
+    next.setDate(next.getDate() + 1);
+    for (let i = 0; i < 14; i++) {
       if (days.includes(next.getDay())) break;
       next.setDate(next.getDate() + 1);
     }
@@ -7911,6 +7948,14 @@ async function switchWorkspace(id) {
   if (!target) return;
   setWorkspaceSwitching(target.name);
 
+  // Snapshot the previous workspace state so we can roll back if loading
+  // the new one fails — otherwise we'd leave the user staring at an empty
+  // workspace where their next edit would silently wipe the real data on
+  // Drive.
+  const previousActiveId      = activeWorkspaceId;
+  const previousSpreadsheetId = spreadsheetId;
+  const previousSettings      = settings;
+
   try {
     // Snapshot current data into cache before leaving
     _wsCache[activeWorkspaceId] = {
@@ -7933,12 +7978,15 @@ async function switchWorkspace(id) {
     updateWorkspaceTitle();
     renderWorkspaceDropdown();
 
-    // If we have pre-fetched data, show instantly then sync in background
+    // If we have pre-fetched data, show instantly then sync in background.
+    // Background sync intentionally does NOT clobber tasks on failure —
+    // the user keeps the cached data they're already looking at.
     if (_wsCache[id]) {
       tasks   = _wsCache[id].tasks   || [];
       habits  = _wsCache[id].habits  || [];
       ideas   = _wsCache[id].ideas   || [];
       wins    = _wsCache[id].wins    || [];
+      await api.saveCache(tasks);
       renderAll();
       updateHabitsSidebar();
       const cntIdeas = document.getElementById('cnt-ideas');
@@ -7947,19 +7995,52 @@ async function switchWorkspace(id) {
       if (cntWins) cntWins.textContent = wins.length;
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
-      // Background sync to pick up any remote changes
       setTimeout(async () => {
-        await api.saveCache([]);
-        await connectToSheets();
-        await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-        _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+        try {
+          setSyncStatus('syncing');
+          await ensureToken();
+          const loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
+          if (loaded && loaded.length) {
+            tasks = loaded;
+            await api.saveCache(tasks);
+            renderAll();
+          }
+          await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
+          _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+          setSyncStatus('ok');
+        } catch (syncErr) {
+          // Keep showing cached data; just flag the sync error.
+          setSyncStatus('error', syncErr.message.slice(0, 50));
+        }
       }, 500);
     } else {
-      // No cache yet — load fresh
-      tasks = []; habits = []; ideas = []; wins = [];
-      await api.saveCache([]);
+      // No cache yet — try Drive first, only commit the switch on success.
+      let loaded;
+      try {
+        setSyncStatus('syncing');
+        await ensureToken();
+        await api.sheetsEnsure({ accessToken, spreadsheetId });
+        loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
+      } catch (loadErr) {
+        // Roll back to the previous workspace so the user doesn't see an
+        // empty list and accidentally save it back to the new sheet.
+        activeWorkspaceId = previousActiveId;
+        spreadsheetId     = previousSpreadsheetId;
+        settings          = previousSettings;
+        applySettings();
+        await saveWorkspaces();
+        updateWorkspaceTitle();
+        renderWorkspaceDropdown();
+        clearWorkspaceSwitching();
+        setSyncStatus('error', 'Could not load workspace');
+        showToast(`Couldn't load ${target.name} — try again`);
+        return;
+      }
+      tasks = loaded || [];
+      habits = []; ideas = []; wins = [];
+      await api.saveCache(tasks);
       renderAll();
-      await connectToSheets();
+      setSyncStatus('ok');
       await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
       _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
       clearWorkspaceSwitching();

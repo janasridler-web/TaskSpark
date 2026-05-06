@@ -1397,8 +1397,13 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
   #kanban-board{overflow-x:auto;padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}
   .kanban-col{min-width:260px}
   /* Kanban container must be the scroll root on mobile */
-  /* Main content area fills remaining space between toolbar and bottom nav */
-  #main{display:flex;flex-direction:column;height:calc(100dvh - 60px) !important;overflow:hidden}
+  /* Main content area fills remaining space between toolbar and bottom nav.
+     Reserve space at the top for the iPhone status bar / Dynamic Island so
+     content isn't pushed up underneath them. */
+  #main{display:flex;flex-direction:column;
+    height:calc(100dvh - 60px - env(safe-area-inset-top, 0px)) !important;
+    padding-top:env(safe-area-inset-top, 0px);
+    overflow:hidden}
   #kanban-container{
     overflow-x:scroll !important;
     overflow-y:scroll !important;
@@ -1411,7 +1416,7 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
     padding-bottom:calc(60px + env(safe-area-inset-bottom,0px)) !important;
   }
   /* Calendar on mobile */
-  #calendar-view-container{height:calc(100dvh - 60px) !important;overflow-y:auto}
+  #calendar-view-container{height:calc(100dvh - 60px - env(safe-area-inset-top, 0px)) !important;overflow-y:auto}
   .cal-toolbar{padding:8px 10px;flex-wrap:wrap;gap:6px}
   .cal-title{font-size:14px}
   .cal-month-body{grid-auto-rows:minmax(70px,1fr)}
