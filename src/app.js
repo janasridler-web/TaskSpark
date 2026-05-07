@@ -4673,6 +4673,21 @@ function applySettings() {
   const overdueAlertFG = document.getElementById('overdue-alert-form-group');
   if (overdueAlertFG) overdueAlertFG.style.display = (s.overdueAlertEnabled && s.overdueAlertMode === 'per-task') ? '' : 'none';
   toggleDeferSidebarItem();
+  // Defer setting row depends on dueEnabled — hidden when due dates are off
+  const deferSettingRow = document.getElementById('defer-setting-row');
+  if (deferSettingRow) deferSettingRow.style.display = s.dueEnabled !== false ? '' : 'none';
+  // Tag Colours settings section depends on tagsEnabled
+  const tagColoursSection = document.getElementById('tag-colours-settings-section');
+  if (tagColoursSection) tagColoursSection.style.display = s.tagsEnabled ? '' : 'none';
+  // Break sub-settings depend on breakEnabled
+  const breakSub = document.getElementById('break-sub-settings');
+  if (breakSub) breakSub.style.display = s.breakEnabled ? '' : 'none';
+  // Kanban sub-settings depend on kanbanEnabled
+  const kanbanSub = document.getElementById('kanban-sub-settings');
+  if (kanbanSub) kanbanSub.style.display = s.kanbanEnabled !== false ? '' : 'none';
+  // Budget sub-settings depend on budgetEnabled
+  const budgetSub = document.getElementById('budget-sub-settings');
+  if (budgetSub) budgetSub.style.display = s.budgetEnabled !== false ? '' : 'none';
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
@@ -4812,6 +4827,8 @@ async function openSettings() {
   if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
   if (document.getElementById('set-kanban-show-completed')) document.getElementById('set-kanban-show-completed').checked = s.kanbanShowCompleted === true;
   toggleKanbanSub();
+  toggleDeferSettingRow();
+  toggleTagColoursSection();
   if (document.getElementById('set-stats-enabled'))     document.getElementById('set-stats-enabled').checked     = s.statsEnabled !== false;
   if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
@@ -5227,6 +5244,18 @@ function toggleBudgetSub() {
   const enabled = document.getElementById('set-budget-enabled')?.checked;
   const sub = document.getElementById('budget-sub-settings');
   if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
+function toggleDeferSettingRow() {
+  const enabled = document.getElementById('set-due-enabled')?.checked;
+  const row = document.getElementById('defer-setting-row');
+  if (row) row.style.display = (enabled !== false) ? '' : 'none';
+}
+
+function toggleTagColoursSection() {
+  const enabled = document.getElementById('set-tags')?.checked;
+  const section = document.getElementById('tag-colours-settings-section');
+  if (section) section.style.display = enabled ? '' : 'none';
 }
 
 function toggleBreakInputs() {
