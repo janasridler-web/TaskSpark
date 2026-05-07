@@ -757,14 +757,9 @@ async function connectToSheets() {
     } else if (tasks.length) {
       // Sheet empty but local tasks exist — migrate them up (e.g. from offline mode)
       await api.sheetsSave({ accessToken, spreadsheetId, tasks });
-    } else {
-      // Both empty — brand new user
-      tasks = sampleTasks();
-      await api.sheetsSave({ accessToken, spreadsheetId, tasks });
     }
     await api.saveCache(tasks);
     setSyncStatus('ok');
-    if (tasks.length > 0) checkOnboardingItem('addTask');
     renderAll();
     renderGettingStartedCard();
     setTimeout(checkOverdueAlerts, 500);
@@ -834,21 +829,6 @@ async function saveTasks() {
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
 
-function sampleTasks() {
-  const now = new Date().toISOString();
-  return [
-    { id:1, title:'Review quarterly report', desc:'Check Q3 figures', priority:'high',
-      due:todayStr(), tags:['work'], completed:false, createdAt:now, completedAt:'',
-      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
-    { id:2, title:'Buy groceries', desc:'', priority:'medium', due:'',
-      tags:['personal'], completed:false, createdAt:now, completedAt:'',
-      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
-    { id:3, title:'Schedule dentist', desc:'', priority:'low', due:'',
-      tags:['health'], completed:false, createdAt:now, completedAt:'',
-      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
-  ];
-}
-
 // ── Undo ───────────────────────────────────────────────────────────────────
 function pushUndo(desc) {
   // structuredClone is faster than JSON round-trip and preserves Dates/Maps
@@ -904,6 +884,7 @@ function _isTypingTarget(el) {
 }
 
 document.addEventListener('keydown', e => {
+  trapModalFocus(e);
   // Ctrl+Z: don't hijack the user's text-input undo
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
     if (_isTypingTarget(document.activeElement)) return;
@@ -4608,6 +4589,28 @@ function closeModal(overlayId) {
     try { prev.focus(); } catch {}
   }
 }
+// Keep Tab from escaping the topmost open modal — wraps focus around the
+// first/last focusable element inside it. Called from the global keydown
+// handler.
+function trapModalFocus(e) {
+  if (e.key !== 'Tab') return;
+  const opens = document.querySelectorAll('.modal-overlay.open');
+  if (!opens.length) return;
+  const modal = opens[opens.length - 1];
+  const sel = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+  const focusables = Array.from(modal.querySelectorAll(sel))
+    .filter(el => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last  = focusables[focusables.length - 1];
+  if (!modal.contains(document.activeElement)) {
+    e.preventDefault(); first.focus();
+  } else if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault(); last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault(); first.focus();
+  }
+}
 function closeModalOutside(e, overlayId) {
   if (e.target.id === overlayId) closeModal(overlayId);
 }
@@ -8064,12 +8067,10 @@ async function startOfflineMode() {
 
 async function loadOfflineTasks() {
   tasks = await api.loadCache();
-  if (!tasks.length) tasks = sampleTasks();
   await api.saveCache(tasks);
   setSyncStatus('offline');
   const btn = document.getElementById('connect-google-btn');
   if (btn) btn.style.display = '';
-  if (tasks.length > 0) checkOnboardingItem('addTask');
   renderAll();
   renderGettingStartedCard();
 }
