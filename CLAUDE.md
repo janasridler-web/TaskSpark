@@ -152,8 +152,17 @@ service worker (`web/sw.js`).
 
 `WEB_VERSION` lives at the top of `web/app.js`. The service worker's
 `CACHE_NAME` lives at the top of `web/sw.js`. **Both must be bumped together
-when shipping a new web build** — a comment in `sw.js` reminds you. If only
-one changes, the upgrade trap (stale cached HTML/JS) comes back.
+in the same commit that ships the web build** — a comment in `sw.js`
+reminds you. If only one changes, the upgrade trap (stale cached HTML/JS)
+comes back.
+
+**Don't bump these proactively.** Editing `web/app.js`, `web/index.html`,
+or `web/sw.js` does NOT mean "bump now" — staging auto-deploys only from
+`claude/rebuild-web-companion-v4-3MuP2` (see "Deploy" below), and
+production is manual-dispatch. Wait until Jana explicitly says she's
+deploying / publishing / shipping the web companion, then bump in the
+deploy commit. Multiple un-shipped bumps in a feature branch is just
+version-history noise.
 
 The service worker is network-first for HTML/JS and cache-first for icons /
 audio. On activate it deletes any cache that isn't the current `CACHE_NAME`
