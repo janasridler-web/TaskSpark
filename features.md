@@ -54,12 +54,14 @@ A separate "Deferred" sidebar view lets you see them.
 separate Sheets tab). Bulk restore is supported.
 
 ### External task submissions / Inbox
-**Desktop · V4.2.0** — Each workspace can publish a public submission link
+**Both · V4.2.0** — Each workspace can publish a public submission link
 (via a Google Apps Script bound to the workspace's sheet). Anyone with the
 link can drop a task into a dedicated "Inbox" sidebar view for the owner to
-triage. A 5-step copy-paste wizard handles the one-time setup; no extra
-OAuth scopes or hosting needed. Submitted tasks land with `status=inbox`,
-`source=external`, and the submitter's name and timestamp.
+triage. Setup is desktop-only: a 5-step copy-paste wizard handles the
+one-time configuration; no extra OAuth scopes or hosting needed. The web
+companion shows the same Inbox view (with the submitter and timestamp on
+each card) but doesn't host the setup wizard. Submitted tasks land with
+`status=inbox`, `source=external`, and the submitter's name and timestamp.
 
 ### Sort
 **Both · V3.5** — By created, due date, priority, A–Z, or status.
