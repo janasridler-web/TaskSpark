@@ -7967,7 +7967,7 @@ function renderManageWorkspacesList() {
     const subRow = w.readOnly
       ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic">External submissions unavailable in view-only workspaces</div>`
       : (w.submissionUrl
-          ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">📥 External submissions on · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="copySubmissionUrl('${escJs(w.id)}')">Copy link</a> · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openSubmissionsWizardFor('${escJs(w.id)}')">Manage</a> · <a style="color:var(--red);cursor:pointer;text-decoration:underline" onclick="resetSubmissionsForWorkspace('${escJs(w.id)}')">Reset</a></div>`
+          ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">External submissions on · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="copySubmissionUrl('${escJs(w.id)}')">Copy link</a> · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openSubmissionsWizardFor('${escJs(w.id)}')">Manage</a> · <a style="color:var(--red);cursor:pointer;text-decoration:underline" onclick="resetSubmissionsForWorkspace('${escJs(w.id)}')">Reset</a></div>`
           : `<div style="font-size:11px;color:var(--text3);margin-top:4px"><a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openSubmissionsWizardFor('${escJs(w.id)}')">Set up external submissions →</a></div>`);
     return `<div class="ws-manage-item" data-id="${w.id}">
       <span class="ws-manage-dot" style="background:${c.hex}"></span>
