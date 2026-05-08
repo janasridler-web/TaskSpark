@@ -95,7 +95,7 @@ function submitTask(payload) {
     for (var k = 0; k < row.length; k++) row[k] = '';
     var now = new Date().toISOString();
 
-    if ('id' in idx) row[idx['id']] = Utilities.getUuid();
+    if ('id' in idx) row[idx['id']] = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     row[idx['title']] = title;
     if ('desc' in idx) row[idx['desc']] = desc;
     row[idx['status']] = 'inbox';
