@@ -743,7 +743,8 @@ function sheetsRequest(method, path, accessToken, body, _attempt = 0) {
 const HEADERS = ['id','title','desc','priority','due','tags','completed',
   'createdAt','completedAt','timeLogged','timeSessions','impact','outcome',
   'deliverable','estimate','status','energy','subtasks','archived','archivedAt','recurrence','dueTime',
-  'budget','spent','attachments','hideUntilDays','overdueAlert'];
+  'budget','spent','attachments','hideUntilDays','overdueAlert',
+  'source','submittedBy','submittedAt'];
 
 async function sheetsEnsure(accessToken, spreadsheetId) {
   const info = await sheetsRequest('GET', `/v4/spreadsheets/${spreadsheetId}`, accessToken);
@@ -1014,7 +1015,7 @@ ipcMain.handle('mood-get-today', async (_, { accessToken, spreadsheetId, date })
 
 ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
   const data = await sheetsRequest('GET',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AA10000')}`, accessToken);
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AD10000')}`, accessToken);
   const rows = data.values || [];
   return rows.filter(r => r && r[0]).map(row => {
     while (row.length < HEADERS.length) row.push('');
@@ -1038,6 +1039,9 @@ ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
       attachments: _j(row[24], []),
       hideUntilDays: parseInt(row[25]) || 0,
       overdueAlert: row[26] === '1',
+      source:      row[27] || '',
+      submittedBy: row[28] || '',
+      submittedAt: row[29] || '',
     };
   });
 });
@@ -1061,6 +1065,7 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
       JSON.stringify(t.attachments||[]),
       String(t.hideUntilDays||0),
       t.overdueAlert ? '1' : '0',
+      t.source||'', t.submittedBy||'', t.submittedAt||'',
     ]);
     await sheetsRequest('PUT',
       `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2')}?valueInputOption=RAW`,
@@ -1069,9 +1074,85 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
   // Clear only rows beyond the written data — safe even if this fails (stale rows, not blank sheet)
   const clearFrom = tasks.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:AA100000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:AD100000`)}:clear`,
     accessToken, {});
   return true;
+});
+
+
+// ── External submissions ─────────────────────────────────────────────────────
+ipcMain.handle('submissions-load-template', async (_, { workspaceName }) => {
+  try {
+    const codeRaw = fs.readFileSync(path.join(__dirname, 'templates', 'submissions', 'Code.gs'), 'utf8');
+    const submitHtml = fs.readFileSync(path.join(__dirname, 'templates', 'submissions', 'Submit.html'), 'utf8');
+    const codeGs = codeRaw.replace("'__WORKSPACE_NAME__'", JSON.stringify(String(workspaceName || '')));
+    return { ok: true, codeGs, submitHtml };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Could not read submission templates.' };
+  }
+});
+
+ipcMain.handle('submissions-verify-url', async (_, { url: deploymentUrl }) => {
+  const SHAPE = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/;
+  const trimmed = String(deploymentUrl || '').trim().replace(/[?#].*$/, '').replace(/\/+$/, '');
+  if (!SHAPE.test(trimmed)) {
+    return { ok: false, error: 'That doesn\'t look like a published Apps Script web app URL. It should end with /exec.' };
+  }
+  const target = trimmed + '?ping=1';
+
+  const fetchFollow = (urlStr, hops) => new Promise((resolve, reject) => {
+    if (hops > 5) return reject(new Error('Too many redirects'));
+    const u = url.parse(urlStr);
+    const req = https.request({
+      hostname: u.hostname, path: u.path, method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        return fetchFollow(res.headers.location, hops + 1).then(resolve, reject);
+      }
+      let body = '';
+      res.on('data', c => body += c);
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => { req.destroy(new Error('Request timed out')); });
+    req.end();
+  });
+
+  try {
+    const { status, body } = await fetchFollow(target, 0);
+    if (status !== 200) {
+      return { ok: false, error: `URL responded with HTTP ${status}. Make sure the deployment is published with "Anyone" access.` };
+    }
+    let parsed;
+    try { parsed = JSON.parse(body); }
+    catch { return { ok: false, error: 'URL responded but didn\'t return JSON. Is this the /exec deployment URL?' }; }
+    if (!parsed || parsed.ok !== true || parsed.marker !== 'taskspark-submission-handler') {
+      return { ok: false, error: 'URL is reachable but didn\'t return the TaskSpark marker. Did you paste the latest Code.gs?' };
+    }
+    return { ok: true, version: parsed.version, workspace: parsed.workspace, url: trimmed };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Network error reaching the URL.' };
+  }
+});
+
+ipcMain.handle('submissions-ensure-schema', async (_, { accessToken, spreadsheetId }) => {
+  try {
+    const data = await sheetsRequest('GET',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!1:1')}`, accessToken);
+    const current = (data.values && data.values[0]) || [];
+    const required = ['source', 'submittedBy', 'submittedAt'];
+    const missing = required.filter(h => !current.includes(h));
+    if (!missing.length) return { ok: true, alreadyMigrated: true };
+    const next = current.concat(missing);
+    await sheetsRequest('PUT',
+      `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!1:1')}?valueInputOption=RAW`,
+      accessToken, { range: 'Tasks!1:1', values: [next], majorDimension: 'ROWS' });
+    return { ok: true, added: missing };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Could not update the Tasks sheet header row.' };
+  }
 });
 
 

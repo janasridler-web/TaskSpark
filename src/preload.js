@@ -61,6 +61,11 @@ contextBridge.exposeInMainWorld('api', {
   sheetsLoad:   (data) => ipcRenderer.invoke('sheets-load', data),
   sheetsSave:   (data) => ipcRenderer.invoke('sheets-save', data),
 
+  // External submissions
+  submissionsLoadTemplate: (data) => ipcRenderer.invoke('submissions-load-template', data),
+  submissionsVerifyUrl:    (data) => ipcRenderer.invoke('submissions-verify-url', data),
+  submissionsEnsureSchema: (data) => ipcRenderer.invoke('submissions-ensure-schema', data),
+
   // Auto-updater
   onUpdateAvailable:  (cb) => ipcRenderer.on('update-available',  (_, info) => cb(info)),
   onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, info) => cb(info)),

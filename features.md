@@ -53,6 +53,14 @@ A separate "Deferred" sidebar view lets you see them.
 **Both · V3.5** — Move completed tasks to a separate Archived view (and a
 separate Sheets tab). Bulk restore is supported.
 
+### External task submissions / Inbox
+**Desktop · V4.2.0** — Each workspace can publish a public submission link
+(via a Google Apps Script bound to the workspace's sheet). Anyone with the
+link can drop a task into a dedicated "Inbox" sidebar view for the owner to
+triage. A 5-step copy-paste wizard handles the one-time setup; no extra
+OAuth scopes or hosting needed. Submitted tasks land with `status=inbox`,
+`source=external`, and the submitter's name and timestamp.
+
 ### Sort
 **Both · V3.5** — By created, due date, priority, A–Z, or status.
 
