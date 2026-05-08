@@ -3852,12 +3852,12 @@ function saveCompletion(skip) {
   }
 
   saveTasks(); renderAll();
-  // If the user pressed Skip, don't pile on more prompts
-  if (skip) return;
-  // Sequence the prompts so a recurrence prompt isn't immediately overwritten by a wins prompt
+  // Sequence the prompts so a recurrence prompt isn't immediately overwritten by a wins prompt.
+  // Skip suppresses only the wins prompt — the recurrence prompt always shows so the user
+  // doesn't lose the chance to create the next occurrence.
   const completedTask = tasks.find(t => t.id === completionTaskId);
   const recurring = completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none';
-  const winsOk    = settings.winsEnabled !== false && completedTask;
+  const winsOk    = !skip && settings.winsEnabled !== false && completedTask;
   if (recurring) {
     setTimeout(() => promptRecurringTask(completedTask, winsOk ? () => {
       // After recurrence prompt closes, optionally show wins prompt
