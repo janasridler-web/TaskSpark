@@ -49,7 +49,14 @@ _Empty._
 
 ## Unsorted
 
-_Empty._
+### External Submissions — v2 follow-ups
+- [ ] **E1 — Clean short-URL redirect at app.taskspark.tech/submit/&lt;id&gt;.** v1 ships with raw Apps Script URLs. Build a `/submit/index.html` + `/submit/links.json` mapping system on the web companion so users can hand out a tidy URL. Needs a flow for adding/updating entries in `links.json` without manual cPanel re-uploads (likely a small PHP receiver or Cloudflare Worker).
+- [ ] **E2 — Per-workspace shared password for external submissions.** Owner sets a password; submitter enters it once and it's stored in localStorage on their device. Optional second layer of friction for spam prevention.
+- [ ] **E3 — Custom branding / welcome text on the public submission page.** Today the served page just says "Submit a task to &lt;workspace name&gt;". Let owners add a custom intro paragraph and an optional logo URL.
+- [ ] **E4 — Email notification to owner on new submission.** The bound Apps Script can `MailApp.sendEmail` to the script owner. Add a workspace setting to opt in.
+- [ ] **E5 — File attachments in external submissions.** Submitter attaches a file; the Apps Script writes it to a `TaskSpark Submissions` Drive folder under the owner's account and stores the file ID on the task.
+- [ ] **E6 — Bulk triage actions in Inbox view.** Multi-select inbox tasks and assign status/tags/priority in one go.
+- [ ] **E7 — Inbox-as-Kanban-column.** Optionally show an Inbox column on the kanban board for drag-to-triage. v1 keeps Inbox as a dedicated sidebar view only.
 
 ---
 

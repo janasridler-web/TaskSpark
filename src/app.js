@@ -912,6 +912,10 @@ function filterTasks() {
         !(task.desc||'').toLowerCase().includes(q) &&
         !(task.tags||[]).some(tg => tg.toLowerCase().includes(q))) return false;
     const v = currentView;
+    // Inbox tasks (external submissions awaiting triage) only appear in
+    // the Inbox view and the Archived view (if archived).
+    if (task.status === 'inbox' && v !== 'inbox' && v !== 'archived') return false;
+    if (v === 'inbox')           return !task.completed && !task.archived && task.status === 'inbox';
     if (v === 'all')             return !task.completed && !task.archived && !isDeferred(task);
     if (v === 'today')           return !task.completed && !task.archived && task.due === t && !isDeferred(task);
     if (v === 'overdue')         return !task.completed && !task.archived && task.due && task.due < t;
@@ -938,8 +942,8 @@ function sortTasks(arr) {
   else if (s === 'due') copy.sort((a,b) => (a.due||'9999').localeCompare(b.due||'9999'));
   else if (s === 'priority') copy.sort((a,b) => (pmap[a.priority]||1)-(pmap[b.priority]||1));
   else if (s === 'alpha') copy.sort((a,b) => a.title.localeCompare(b.title));
-  else if (s === 'status-asc')  { const smap = {'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[a.status||'not-started']||0)-(smap[b.status||'not-started']||0)); }
-  else if (s === 'status-desc') { const smap = {'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[b.status||'not-started']||0)-(smap[a.status||'not-started']||0)); }
+  else if (s === 'status-asc')  { const smap = {'inbox':-1,'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[a.status||'not-started']||0)-(smap[b.status||'not-started']||0)); }
+  else if (s === 'status-desc') { const smap = {'inbox':-1,'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[b.status||'not-started']||0)-(smap[a.status||'not-started']||0)); }
   return copy;
 }
 
@@ -976,12 +980,21 @@ function renderTasks() {
   const filtered = sortTasks(filterTasks());
 
   if (!filtered.length) {
-    const msg = currentView === 'completed' ? 'Nothing checked off yet' : 'All clear!';
-    const sub = currentView === 'completed' ? 'Your wins will show up here as you finish tasks.' : 'Nothing on your plate. Add something when you\'re ready.';
-    const cta = currentView === 'completed' || isReadOnly()
-      ? ''
-      : '<button class="btn-primary" style="margin-top:16px" onclick="openTaskModal()">+ New Task</button>';
-    const html = `<div class="empty-state"><div class="empty-icon">${icon('check')}</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div>${cta}</div>`;
+    let msg, sub, cta, emptyIcon;
+    if (currentView === 'inbox') {
+      msg = 'No new submissions';
+      sub = 'When someone submits a task via your external link, it\'ll appear here ready to triage.';
+      cta = '';
+      emptyIcon = icon('inbox');
+    } else {
+      msg = currentView === 'completed' ? 'Nothing checked off yet' : 'All clear!';
+      sub = currentView === 'completed' ? 'Your wins will show up here as you finish tasks.' : 'Nothing on your plate. Add something when you\'re ready.';
+      cta = currentView === 'completed' || isReadOnly()
+        ? ''
+        : '<button class="btn-primary" style="margin-top:16px" onclick="openTaskModal()">+ New Task</button>';
+      emptyIcon = icon('check');
+    }
+    const html = `<div class="empty-state"><div class="empty-icon">${emptyIcon}</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div>${cta}</div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
     return;
@@ -1138,6 +1151,11 @@ function updateCounts() {
   document.getElementById('cnt-completed').textContent = tasks.filter(x => x.completed && !x.archived).length;
   const cntArchived = document.getElementById('cnt-archived');
   if (cntArchived) cntArchived.textContent = tasks.filter(x => x.archived).length;
+  const inboxCount = active.filter(x => x.status === 'inbox' && !x.archived).length;
+  const cntInbox = document.getElementById('cnt-inbox');
+  if (cntInbox) cntInbox.textContent = inboxCount;
+  const sidebarInbox = document.getElementById('sidebar-inbox');
+  if (sidebarInbox) sidebarInbox.style.display = (inboxCount > 0 || currentView === 'inbox') ? '' : 'none';
   document.getElementById('cnt-high').textContent      = active.filter(x => x.priority === 'high').length;
   document.getElementById('cnt-medium').textContent    = active.filter(x => x.priority === 'medium').length;
   document.getElementById('cnt-low').textContent       = active.filter(x => x.priority === 'low').length;
@@ -1376,7 +1394,7 @@ function calcLongestStreak() {
 // ── View ───────────────────────────────────────────────────────────────────
 function setView(view, el) {
   currentView = view;
-  const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
+  const titles = { all:'All Tasks', inbox:'Inbox', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', today:'Due Today', overdue:'Overdue', completed:'Completed', archived:'Archived',
     'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
     'status-not-started':'Not Started', 'status-in-progress':'In Progress',
     'status-blocked':'Blocked', 'status-on-hold':'On Hold', 'budget-view':'Budget View', 'calendar-view':'Calendar', 'stats':'Stats', 'lists':'Lists' };
