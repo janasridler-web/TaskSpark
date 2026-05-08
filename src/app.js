@@ -757,14 +757,9 @@ async function connectToSheets() {
     } else if (tasks.length) {
       // Sheet empty but local tasks exist — migrate them up (e.g. from offline mode)
       await api.sheetsSave({ accessToken, spreadsheetId, tasks });
-    } else {
-      // Both empty — brand new user
-      tasks = sampleTasks();
-      await api.sheetsSave({ accessToken, spreadsheetId, tasks });
     }
     await api.saveCache(tasks);
     setSyncStatus('ok');
-    if (tasks.length > 0) checkOnboardingItem('addTask');
     renderAll();
     renderGettingStartedCard();
     setTimeout(checkOverdueAlerts, 500);
@@ -834,21 +829,6 @@ async function saveTasks() {
   } catch (e) { setSyncStatus('error', e.message.slice(0, 50)); }
 }
 
-function sampleTasks() {
-  const now = new Date().toISOString();
-  return [
-    { id:1, title:'Review quarterly report', desc:'Check Q3 figures', priority:'high',
-      due:todayStr(), tags:['work'], completed:false, createdAt:now, completedAt:'',
-      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
-    { id:2, title:'Buy groceries', desc:'', priority:'medium', due:'',
-      tags:['personal'], completed:false, createdAt:now, completedAt:'',
-      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
-    { id:3, title:'Schedule dentist', desc:'', priority:'low', due:'',
-      tags:['health'], completed:false, createdAt:now, completedAt:'',
-      timeLogged:0, timeSessions:[], impact:'', outcome:'', deliverable:'', estimate:0 },
-  ];
-}
-
 // ── Undo ───────────────────────────────────────────────────────────────────
 function pushUndo(desc) {
   // structuredClone is faster than JSON round-trip and preserves Dates/Maps
@@ -904,6 +884,7 @@ function _isTypingTarget(el) {
 }
 
 document.addEventListener('keydown', e => {
+  trapModalFocus(e);
   // Ctrl+Z: don't hijack the user's text-input undo
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
     if (_isTypingTarget(document.activeElement)) return;
@@ -2114,7 +2095,7 @@ function showCalTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectCalTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectCalTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)">
       <span style="width:8px;height:8px;border-radius:50%;background:${getCalEventTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -3871,12 +3852,12 @@ function saveCompletion(skip) {
   }
 
   saveTasks(); renderAll();
-  // If the user pressed Skip, don't pile on more prompts
-  if (skip) return;
-  // Sequence the prompts so a recurrence prompt isn't immediately overwritten by a wins prompt
+  // Sequence the prompts so a recurrence prompt isn't immediately overwritten by a wins prompt.
+  // Skip suppresses only the wins prompt — the recurrence prompt always shows so the user
+  // doesn't lose the chance to create the next occurrence.
   const completedTask = tasks.find(t => t.id === completionTaskId);
   const recurring = completedTask && completedTask.recurrence && completedTask.recurrence.type !== 'none';
-  const winsOk    = settings.winsEnabled !== false && completedTask;
+  const winsOk    = !skip && settings.winsEnabled !== false && completedTask;
   if (recurring) {
     setTimeout(() => promptRecurringTask(completedTask, winsOk ? () => {
       // After recurrence prompt closes, optionally show wins prompt
@@ -3964,7 +3945,7 @@ function showTagSuggestions(query) {
     if (area) { area.style.position = 'relative'; area.appendChild(dropdown); }
   }
   dropdown.innerHTML = filtered.slice(0,8).map(tag =>
-    `<div onclick="selectTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+    `<div onclick="selectTagSuggestion('${escJs(tag)}')" style="padding:7px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text)">
       <span style="width:8px;height:8px;border-radius:50%;background:${getTagColor(tag)};flex-shrink:0"></span>${esc(tag)}
     </div>`
   ).join('');
@@ -4608,6 +4589,28 @@ function closeModal(overlayId) {
     try { prev.focus(); } catch {}
   }
 }
+// Keep Tab from escaping the topmost open modal — wraps focus around the
+// first/last focusable element inside it. Called from the global keydown
+// handler.
+function trapModalFocus(e) {
+  if (e.key !== 'Tab') return;
+  const opens = document.querySelectorAll('.modal-overlay.open');
+  if (!opens.length) return;
+  const modal = opens[opens.length - 1];
+  const sel = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+  const focusables = Array.from(modal.querySelectorAll(sel))
+    .filter(el => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last  = focusables[focusables.length - 1];
+  if (!modal.contains(document.activeElement)) {
+    e.preventDefault(); first.focus();
+  } else if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault(); last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault(); first.focus();
+  }
+}
 function closeModalOutside(e, overlayId) {
   if (e.target.id === overlayId) closeModal(overlayId);
 }
@@ -4670,6 +4673,21 @@ function applySettings() {
   const overdueAlertFG = document.getElementById('overdue-alert-form-group');
   if (overdueAlertFG) overdueAlertFG.style.display = (s.overdueAlertEnabled && s.overdueAlertMode === 'per-task') ? '' : 'none';
   toggleDeferSidebarItem();
+  // Defer setting row depends on dueEnabled — hidden when due dates are off
+  const deferSettingRow = document.getElementById('defer-setting-row');
+  if (deferSettingRow) deferSettingRow.style.display = s.dueEnabled !== false ? '' : 'none';
+  // Tag Colours settings section depends on tagsEnabled
+  const tagColoursSection = document.getElementById('tag-colours-settings-section');
+  if (tagColoursSection) tagColoursSection.style.display = s.tagsEnabled ? '' : 'none';
+  // Break sub-settings depend on breakEnabled
+  const breakSub = document.getElementById('break-sub-settings');
+  if (breakSub) breakSub.style.display = s.breakEnabled ? '' : 'none';
+  // Kanban sub-settings depend on kanbanEnabled
+  const kanbanSub = document.getElementById('kanban-sub-settings');
+  if (kanbanSub) kanbanSub.style.display = s.kanbanEnabled !== false ? '' : 'none';
+  // Budget sub-settings depend on budgetEnabled
+  const budgetSub = document.getElementById('budget-sub-settings');
+  if (budgetSub) budgetSub.style.display = s.budgetEnabled !== false ? '' : 'none';
   // Mood check-in button
   const moodBtn = document.getElementById('mood-sidebar-btn');
   if (moodBtn) moodBtn.style.display = s.moodEnabled ? '' : 'none';
@@ -4809,6 +4827,8 @@ async function openSettings() {
   if (document.getElementById('set-kanban-group-tags')) document.getElementById('set-kanban-group-tags').checked = s.kanbanGroupByTags !== false;
   if (document.getElementById('set-kanban-show-completed')) document.getElementById('set-kanban-show-completed').checked = s.kanbanShowCompleted === true;
   toggleKanbanSub();
+  toggleDeferSettingRow();
+  toggleTagColoursSection();
   if (document.getElementById('set-stats-enabled'))     document.getElementById('set-stats-enabled').checked     = s.statsEnabled !== false;
   if (document.getElementById('set-ideas-enabled'))     document.getElementById('set-ideas-enabled').checked     = s.ideasEnabled !== false;
   if (document.getElementById('set-habits-enabled'))    document.getElementById('set-habits-enabled').checked    = s.habitsEnabled !== false;
@@ -5224,6 +5244,18 @@ function toggleBudgetSub() {
   const enabled = document.getElementById('set-budget-enabled')?.checked;
   const sub = document.getElementById('budget-sub-settings');
   if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
+function toggleDeferSettingRow() {
+  const enabled = document.getElementById('set-due-enabled')?.checked;
+  const row = document.getElementById('defer-setting-row');
+  if (row) row.style.display = (enabled !== false) ? '' : 'none';
+}
+
+function toggleTagColoursSection() {
+  const enabled = document.getElementById('set-tags')?.checked;
+  const section = document.getElementById('tag-colours-settings-section');
+  if (section) section.style.display = enabled ? '' : 'none';
 }
 
 function toggleBreakInputs() {
@@ -8064,12 +8096,10 @@ async function startOfflineMode() {
 
 async function loadOfflineTasks() {
   tasks = await api.loadCache();
-  if (!tasks.length) tasks = sampleTasks();
   await api.saveCache(tasks);
   setSyncStatus('offline');
   const btn = document.getElementById('connect-google-btn');
   if (btn) btn.style.display = '';
-  if (tasks.length > 0) checkOnboardingItem('addTask');
   renderAll();
   renderGettingStartedCard();
 }
