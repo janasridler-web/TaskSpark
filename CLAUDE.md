@@ -87,7 +87,12 @@ shape.
 ## Project context
 
 TaskSpark is a Windows Electron desktop task manager for ADHD/AuDHD users.
-Current release: V4.0.0.
+Current release: V4.1.1.
+
+> **Roadmap for the next phases lives in `next-phases.md`.** Read it before
+> starting new architectural work — it captures what we decided to do
+> next (Mac via Electron-wraps-web, then reminders), what we deliberately
+> rejected, and which backlog items have been superseded.
 
 ### Architecture
 
