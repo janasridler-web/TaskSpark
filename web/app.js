@@ -272,6 +272,11 @@ if (typeof window !== 'undefined' && window.desktopAPI) {
   if (window.desktopAPI.onUpdateAvailable)  api.onUpdateAvailable  = (cb) => window.desktopAPI.onUpdateAvailable(cb);
   if (window.desktopAPI.onUpdateDownloaded) api.onUpdateDownloaded = (cb) => window.desktopAPI.onUpdateDownloaded(cb);
   if (window.desktopAPI.installUpdate)      api.installUpdate      = ()   => window.desktopAPI.installUpdate();
+  // Quick Add global shortcut (slice 3): the web listener at the bottom of
+  // this file (api.onGlobalQuickAdd(...)) already opens the modal; just
+  // route the event through.
+  if (window.desktopAPI.onGlobalQuickAdd)   api.onGlobalQuickAdd   = (cb) => window.desktopAPI.onGlobalQuickAdd(cb);
+  if (window.desktopAPI.quickaddDone)       api.quickaddDone       = ()   => window.desktopAPI.quickaddDone();
 }
 
 // ── OAuth credentials (web) ─────────────────────────────────────────────────

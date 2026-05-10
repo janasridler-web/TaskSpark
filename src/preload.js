@@ -119,4 +119,10 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   onUpdateAvailable:  (cb) => ipcRenderer.on('update-available',  (_, info) => cb(info)),
   onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, info) => cb(info)),
   installUpdate:      ()   => ipcRenderer.send('install-update'),
+  // Quick Add global shortcut (slice 3). Main registers Ctrl+Space (or
+  // Ctrl+Shift+Space as fallback) and fires global-quick-add with
+  // { wasFocused } so the renderer can decide whether to send
+  // quickaddDone after submission (to restore the previously-focused app).
+  onGlobalQuickAdd:   (cb) => ipcRenderer.on('global-quick-add', (_, data) => cb(data)),
+  quickaddDone:       ()   => ipcRenderer.send('quickadd-done'),
 });
