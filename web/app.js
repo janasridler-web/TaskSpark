@@ -878,11 +878,16 @@ async function handleOAuthCallback() {
       }
       // Restore persistent state from cfg — handleOAuthCallback returns
       // before init() reaches its cfg-loading block, so without this the
-      // user's settings, theme, "Get started" dismiss state, and saved
-      // config-sheet pointer would all be lost on every re-sign-in.
+      // user's settings, theme, "Get started" dismiss state, sort mode,
+      // and saved config-sheet pointer would all be lost on every
+      // re-sign-in.
       if (existingCfg) {
         if (existingCfg.theme) applyTheme(existingCfg.theme);
         if (existingCfg.accentTheme) applyAccentTheme(existingCfg.accentTheme);
+        if (existingCfg.sortMode) {
+          const sortEl = document.getElementById('sort-select');
+          if (sortEl) sortEl.value = existingCfg.sortMode;
+        }
         if (existingCfg.settings) {
           settings = { ...DEFAULT_SETTINGS, ...existingCfg.settings };
           applySettings();
@@ -944,6 +949,7 @@ async function handleOAuthCallback() {
       await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       if (workspaces.length === 0) setTimeout(showWorkspaceSetupModal, 800);
+      await runPostInitWireup();
     } else {
       throw new Error(tokens.error_description || 'No access token received');
     }
@@ -1397,27 +1403,28 @@ async function init() {
     showAuth();
   }
 
-  // Wire up auto-updater notifications
+  await runPostInitWireup();
+}
+
+// The auto-updater listeners, version display, mood/Outlook init, and
+// grace-day/start-of-day/EOD checks that init() runs at the end. Lifted
+// into a helper so handleOAuthCallback can also call it after a fresh
+// sign-in (otherwise these are skipped on every wrapped re-sign-in,
+// because handleOAuthCallback short-circuits init's tail).
+async function runPostInitWireup() {
   api.onUpdateAvailable((info) => {
     showToast(`✨ Update v${info.version} downloading…`);
   });
   api.onUpdateDownloaded((info) => {
     showUpdateBanner(info.version);
   });
-
-  // Show app version in sidebar
   const ver = await api.getVersion();
   const verEl = document.getElementById('app-version');
   if (verEl) verEl.textContent = `v${ver}`;
-  // Check if we should show the what's new modal
   await checkWhatsNew(ver);
-  // Pull today's mood from the cloud so we don't re-prompt on a fresh device
   await syncTodayMoodFromCloud();
-  // Update mood sidebar button on load
   updateMoodSidebarBtn();
-  // Init Outlook
   initOutlook().catch(e => console.error('Outlook init error:', e));
-  // Check if grace day prompt needed
   checkGraceDayPrompt();
   checkStartOfDay();
   scheduleEod();
