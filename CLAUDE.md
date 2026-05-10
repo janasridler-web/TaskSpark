@@ -102,9 +102,18 @@ Current release: V4.1.1.
   which reads real credentials from `.env`. Runs automatically before
   `npm start` (prestart hook). Any changes to `main.template.js` require a
   fresh `node setup.js` run (or `npm start`) before testing locally.
-- `src/app.js` — renderer (UI logic, ~7900 lines).
-- `src/preload.js` — IPC bridge between main and renderer.
+- `src/app.js` — renderer (UI logic, ~7900 lines). **Planned for deletion**
+  once Phase 2 wrapped-web flow has been stable for ≥ 2 weeks (see
+  `next-phases.md`). Don't burn cycles improving it.
+- `src/preload.js` — IPC bridge. Exposes the legacy `window.api` (used by
+  `src/app.js`) and the new Phase 2 `window.desktopAPI` (used by the
+  wrapped web app). The legacy surface is suppressed entirely when
+  `TASKSPARK_USE_WEB=1` is set, because `web/app.js` declares its own
+  top-level `const api` that would otherwise collide.
 - `src/index.html` — main window shell; all views are shown/hidden in here.
+  Also planned for deletion alongside `src/app.js`.
+- `web/index.html` + `web/app.js` — canonical renderer post-Phase-2.
+  Already loaded by the wrapped desktop when `TASKSPARK_USE_WEB=1`.
 - Cloud storage = Google Sheets (per workspace, multiple workspaces supported).
 - Releases publish to a separate public repo `janasridler-web/taskspark-releases`
   via `electron-updater`.
@@ -210,10 +219,12 @@ shipped via the workflow.
 
 ### Plain-language gotchas worth remembering
 
-- Companion has no AI Task Breakdown Helper, no custom break sound, no global
-  keyboard shortcuts, no offline mode, no auto-updater (the refresh banner
-  fills that role), no Calendar / Budget / CSV export. See `features.md` for
-  the full split.
+- Companion (pure web, not wrapped) has no AI Task Breakdown Helper, no
+  custom break sound file picker, no global keyboard shortcuts, no offline
+  mode, no auto-updater (the refresh banner fills that role), and no
+  Budget view. It *does* have Outlook calendar integration and CSV export.
+  See `features.md` for the full split. The wrapped desktop (Phase 2)
+  layers desktop-only features back on via `window.desktopAPI`.
 - iOS Safari renders some Unicode glyphs (☑, 💡, 🔄, ⚠) as colour emoji even
   with `font-feature-settings`. Use plain text glyphs (☰, ❋, ⊕, ✪, !, ▤,
   coloured ●) on the mobile drawer/nav to keep parity with the desktop

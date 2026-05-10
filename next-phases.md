@@ -5,7 +5,8 @@ plan, the decisions already made, and the things still up for grabs. Keep
 this file in sync as you go — when a phase ships, summarise it in
 `CHANGELOG.md` and trim what's done out of here.
 
-Last updated: 2026-05-10 (V4.1.1 just shipped).
+Last updated: 2026-05-10 (Phase 2 slices 1–9 landed behind the
+`TASKSPARK_USE_WEB` flag).
 
 ---
 
@@ -13,8 +14,13 @@ Last updated: 2026-05-10 (V4.1.1 just shipped).
 
 - **V4.1.1 shipped on both desktop and web** with four trust fixes
   (B50/B51/B52/B53). See the V4.1.1 entry in `CHANGELOG.md`.
+- **Phase 2 is in flag-gated testing.** `TASKSPARK_USE_WEB=1 npm start`
+  loads `web/index.html` inside Electron with the full V4.1.1 feature
+  set bridged through `window.desktopAPI`. Default (flag off) is
+  unchanged. Branch: `claude/review-taskspark-docs-jzR1T`.
 - **Desktop and web are still two ~8,500-line copies.** They share schema
   (Tasks sheet now goes A → AG, 33 columns) but the renderer is duplicated.
+  `src/app.js` + `src/index.html` get deleted at the end of Phase 2.
 - **Apple Developer Program is paid for** ($99/yr). Windows code-signing is
   intentionally **not** paid for — desktop installer ships unsigned, with
   SmartScreen friction on first install. Re-evaluate later.
@@ -65,60 +71,78 @@ production is much safer. Mac being added later is then mostly build-config
 
 Order matters here — each step keeps the desktop app shippable.
 
-1. **Stand up the bridge skeleton.** In `preload.js`, expose
-   `window.desktopAPI = { ping: () => 'pong' }`. In `main.template.js`,
-   point `BrowserWindow.loadFile()` at `web/index.html` behind a feature
-   flag (env var or `package.json` field). Verify the web app loads inside
-   Electron.
+1. **Stand up the bridge skeleton.** ✅ **Done.** `TASKSPARK_USE_WEB=1`
+   loads `web/index.html` in Electron with a native frame. `window.desktopAPI`
+   exposed via `src/preload.js`. The legacy `window.api` is suppressed in
+   that mode (`web/app.js`'s top-level `const api` would collide).
 
-2. **Move features behind the bridge, one at a time.** Each feature's web
-   path is the default; the desktop path is `if (window.desktopAPI?.featureFn)`.
-   Suggested order, easiest first:
-   1. **Window memory + frameless chrome** — read/write window size + position.
-   2. **Auto-updater** — `desktopAPI.onUpdateAvailable(callback)`. The web
-      app shows the existing "TaskSpark has updated" banner.
-   3. **Quick Add global shortcut** — `Ctrl+Space` registered in main; the
-      bridge fires a `desktopAPI.onQuickAdd(callback)` that the web app
-      hooks to open the new-task modal.
-   4. **Floating timer window** — separate `BrowserWindow` loading
-      `web/timer.html` (or reuse a fragment of `web/index.html`). IPC for
-      start / pause / stop / elapsed.
-   5. **Break prompt window** — same shape as the floating timer.
-   6. **CSV export** — `desktopAPI.saveFile(suggestedName, contents)`.
-   7. **Custom break sound + file picker** — `desktopAPI.pickAudioFile()`,
-      then web app plays via `<audio>`.
-   8. **Calendar integrations** — see "Risk areas" below; this is the
-      gnarly one. Budget 3–4 days.
-   9. **Offline mode** — `desktopAPI.readLocalCache() / writeLocalCache()`.
-      Web app routes through the bridge when `window.desktopAPI && offlineMode`.
+2. **Move features behind the bridge, one at a time.** ✅ **Done (slices 1–9).**
+   The branch covers feature parity with V4.1.1 desktop:
+   1. **Window memory + native chrome** — main loads `web/index.html`,
+      restores saved bounds, switches to OS frame (web app has no custom
+      title bar).
+   2. **Auto-updater** — `desktopAPI.onUpdateAvailable / onUpdateDownloaded /
+      installUpdate`. Banner wording is still web-flavoured under the
+      wrapped desktop — see `backlog.md` U23.
+   3. **Quick Add global shortcut** — `desktopAPI.onGlobalQuickAdd`. Main
+      already registers Ctrl+Space (Ctrl+Shift+Space fallback); just
+      bridged the event.
+   4. **Floating timer window** — reuses `src/timer.html` +
+      `src/timer-preload.js` (self-contained, no `window.api` dependency).
+      `startTimer` branches on `desktopAPI` so the floating window only
+      appears when wrapped + focus mode off.
+   5. **Break prompt window** — reuses `src/break-prompt.html` +
+      `src/break-prompt-preload.js`. Same shape as the timer.
+   6. **CSV export** — no bridge needed. The web's Blob + `<a download>`
+      flow works as-is inside Electron.
+   7. **Custom break sound + file picker** — `desktopAPI.pickSoundFile`.
+      Web app plays via `new Audio('file:///' + path)` (same as V4.1.1).
+   8. **Outlook calendar OAuth** — `desktopAPI.outlookStart / outlookExchange /
+      outlookRefresh`. `connectOutlook` + `refreshOutlookToken` branch on
+      `desktopAPI` so the wrapped flow uses the loopback PKCE pattern
+      instead of `window.open` + `file://auth-outlook.html`.
+   9. **Persistent storage** — bridged `loadConfig / saveConfig / loadCache /
+      saveCache / getVersion` so the wrapped app reads/writes the same
+      `userData/config.json` + `tasks_cache.json` as V4.1.1 desktop.
+      Wider than the original "cache only when offline" plan — see commit
+      message. Means existing users won't need to re-sign-in or
+      reconfigure when we flip the flag, and offline-mode users keep
+      their local-only tasks.
 
-3. **Delete `src/app.js` and `src/index.html`.** Only after a stable
-   beta release on the new architecture (suggest ≥ 2 weeks).
+3. **Delete `src/app.js` and `src/index.html`.** Pending. Only after a
+   stable beta release on the new architecture (suggest ≥ 2 weeks of
+   running with the flag on by default).
 
-4. **Remove `if (window.desktopAPI)` boilerplate where it accumulates.**
-   Some features can collapse to a single call if the web fallback is
-   "do nothing" (e.g. global shortcuts).
+4. **Flip the flag default to on, then remove the flag entirely.** The
+   `TASKSPARK_USE_WEB` env-var gate gets retired alongside step 3.
+
+5. **Remove `if (window.desktopAPI)` boilerplate where it accumulates.**
+   Some features can collapse to a single call once the flag is gone and
+   web/wrapped are the only two targets. Cosmetic.
 
 ### Risk areas
 
-- **Calendar OAuth** is the hardest piece. Today desktop uses Electron's
-  system-browser flow with custom redirect handling in `main.js`; web uses
-  redirect to `app.taskspark.tech`. Cleanest answer: web keeps its flow;
-  desktop intercepts via a custom protocol (`taskspark://`). Allow 3–4 days.
-- **Offline mode** is desktop-exclusive today (writes to a local config
-  file). Migration must keep this working — losing local-only data is
-  unrecoverable. Add explicit tests / manual checks before deleting old code.
 - **Beta channel.** Worth setting up a separate `beta` release channel in
   `electron-updater` so you can ship the new architecture to volunteers
   before promoting it to stable.
+- **Update banner copy** is wrong for the wrapped desktop (says "refresh"
+  when it should say "close to install"). Auto-install-on-quit covers the
+  functional gap, but the messaging should land before flipping the flag
+  default. Tracked as U23 in `backlog.md`.
+
+(The Calendar OAuth and offline-mode risk areas the original plan flagged
+are resolved by slices 8 and 9 respectively.)
 
 ### Done when
 
-- Windows desktop app launches `web/index.html` and all V4.1.1 features
+- ✅ Windows desktop app launches `web/index.html` and all V4.1.1 features
   work, including: floating timer, break prompt, Quick Add, auto-updater,
   calendar sync, CSV export, custom break sound, offline mode, multi-monitor.
-- `src/app.js` and `src/index.html` are deleted from the repo.
-- `CHANGELOG.md` describes the migration in user-facing terms (mostly:
+  (Functionality wired; needs manual smoke-test before flipping default.)
+- ☐ Flag flipped to on-by-default for ≥ 2 weeks without regressions.
+- ☐ `src/app.js` and `src/index.html` are deleted from the repo.
+- ☐ Update banner copy fixed (U23 in `backlog.md`).
+- ☐ `CHANGELOG.md` describes the migration in user-facing terms (mostly:
   "general stability and architecture work — no user-visible changes").
 
 ---
@@ -290,13 +314,17 @@ home screen, and only since iOS 16.4. UI should explain this honestly:
 | Mac native (Swift) | **Don't** | Solo dev cannot maintain a third codebase. |
 | `core/` shared module | Skip | Going straight to Option C makes this redundant. |
 | Stats accuracy bug-fix scope | Time-up-to-completion (B51) | Compares "actual cost of task" to "estimate of task cost" — semantically right. |
+| Phase 2 storage migration | Bridge both config and cache to the main-process files | Original plan was cache-only behind an `offlineMode` check; bridging both means no re-sign-in or settings reset at flag-flip time. |
 
 ## Decisions still open
 
 - **When to delete `src/app.js` / `src/index.html`** — after Phase 2 has
   been stable in production for ~2 weeks. Don't rush it.
+- **When to flip `TASKSPARK_USE_WEB` to on-by-default** — after manual
+  smoke-testing of the whole feature set on a fresh `userData` and on an
+  existing V4.1.1 install. Banner copy (U23) should land first.
 - **Beta channel for Phase 2** — recommended but optional. Decide before
-  shipping the migration.
+  flipping the flag default.
 - **Mac code-signing CI runner** — GitHub Actions has macOS runners; that
   works fine for solo dev. If build minutes get tight, consider self-hosted.
 - **Web push push-server hosting** — Cloudflare Worker is the default
