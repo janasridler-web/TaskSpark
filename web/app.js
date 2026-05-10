@@ -297,6 +297,15 @@ if (typeof window !== 'undefined' && window.desktopAPI) {
   if (window.desktopAPI.onBreakChoice)        api.onBreakChoice        = (cb)   => window.desktopAPI.onBreakChoice(cb);
   // Custom break sound file picker (slice 7).
   if (window.desktopAPI.pickSoundFile)        api.pickSoundFile        = ()     => window.desktopAPI.pickSoundFile();
+  // Persistent storage (slice 9): make the wrapped app share the same
+  // userData/config.json + tasks_cache.json as V4.1.1 desktop. Existing
+  // users keep their settings, tokens, and (critically for offline mode)
+  // local tasks when we flip the flag.
+  if (window.desktopAPI.loadConfig)           api.loadConfig           = ()      => window.desktopAPI.loadConfig();
+  if (window.desktopAPI.saveConfig)           api.saveConfig           = (data)  => window.desktopAPI.saveConfig(data);
+  if (window.desktopAPI.loadCache)            api.loadCache            = ()      => window.desktopAPI.loadCache();
+  if (window.desktopAPI.saveCache)            api.saveCache            = (tasks) => window.desktopAPI.saveCache(tasks);
+  if (window.desktopAPI.getVersion)           api.getVersion           = ()      => window.desktopAPI.getVersion();
 }
 
 // ── OAuth credentials (web) ─────────────────────────────────────────────────
@@ -902,7 +911,7 @@ async function handleOAuthCallback() {
       document.getElementById('auth-status').textContent = 'Signing you in…';
       const userInfo = await fetchUserInfo(accessToken);
       const newEmail = userInfo ? userInfo.email : null;
-      const existingCfg = api.loadConfig();
+      const existingCfg = await api.loadConfig();
       const previousEmail = existingCfg && existingCfg.userEmail;
       if (previousEmail && newEmail && previousEmail !== newEmail) {
         api.saveCache([]);

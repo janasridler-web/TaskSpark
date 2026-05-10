@@ -158,4 +158,13 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   outlookStart:    ()     => ipcRenderer.invoke('outlook-start'),
   outlookExchange: (data) => ipcRenderer.invoke('outlook-exchange', data),
   outlookRefresh:  (data) => ipcRenderer.invoke('outlook-refresh', data),
+  // Persistent storage (slice 9). Bridging cache fixes the data-loss
+  // case for offline-mode users when we eventually flip the flag;
+  // bridging config means the wrapped app reads/writes the same
+  // userData/config.json as V4.1.1 — no re-sign-in, no settings reset.
+  loadConfig: ()      => ipcRenderer.invoke('config-load'),
+  saveConfig: (data)  => ipcRenderer.invoke('config-save', data),
+  loadCache:  ()      => ipcRenderer.invoke('cache-load'),
+  saveCache:  (tasks) => ipcRenderer.invoke('cache-save', tasks),
+  getVersion: ()      => ipcRenderer.invoke('get-version'),
 });
