@@ -295,6 +295,8 @@ if (typeof window !== 'undefined' && window.desktopAPI) {
   if (window.desktopAPI.breakPromptShow)      api.breakPromptShow      = (data) => window.desktopAPI.breakPromptShow(data);
   if (window.desktopAPI.breakPromptHide)      api.breakPromptHide      = ()     => window.desktopAPI.breakPromptHide();
   if (window.desktopAPI.onBreakChoice)        api.onBreakChoice        = (cb)   => window.desktopAPI.onBreakChoice(cb);
+  // Custom break sound file picker (slice 7).
+  if (window.desktopAPI.pickSoundFile)        api.pickSoundFile        = ()     => window.desktopAPI.pickSoundFile();
 }
 
 // ── OAuth credentials (web) ─────────────────────────────────────────────────

@@ -147,4 +147,8 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   breakPromptShow:     (data) => ipcRenderer.invoke('break-prompt-show', data),
   breakPromptHide:     ()     => ipcRenderer.invoke('break-prompt-hide'),
   onBreakChoice:       (cb)   => ipcRenderer.on('break-choice', (_, choice) => cb(choice)),
+  // Custom break sound file picker (slice 7). Main opens an OS file
+  // dialog and returns the chosen path; the renderer plays it via
+  // `new Audio('file:///' + path)` (same pattern V4.1.1 desktop uses).
+  pickSoundFile:       ()     => ipcRenderer.invoke('pick-sound-file'),
 });
