@@ -290,6 +290,11 @@ if (typeof window !== 'undefined' && window.desktopAPI) {
   if (window.desktopAPI.onTimerResumeRequest) api.onTimerResumeRequest = (cb)   => window.desktopAPI.onTimerResumeRequest(cb);
   if (window.desktopAPI.minimize)             api.minimize             = ()     => window.desktopAPI.minimize();
   if (window.desktopAPI.restore)              api.restore              = ()     => window.desktopAPI.restore();
+  // Break prompt window (slice 5): replace the web's
+  // showInPageBreakPrompt() fallback with the bridge call when wrapped.
+  if (window.desktopAPI.breakPromptShow)      api.breakPromptShow      = (data) => window.desktopAPI.breakPromptShow(data);
+  if (window.desktopAPI.breakPromptHide)      api.breakPromptHide      = ()     => window.desktopAPI.breakPromptHide();
+  if (window.desktopAPI.onBreakChoice)        api.onBreakChoice        = (cb)   => window.desktopAPI.onBreakChoice(cb);
 }
 
 // ── OAuth credentials (web) ─────────────────────────────────────────────────

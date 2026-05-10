@@ -141,4 +141,10 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   onTimerResumeRequest:(cb)   => ipcRenderer.on('timer-resume-request', () => cb()),
   minimize:            ()     => ipcRenderer.send('window-minimize'),
   restore:             ()     => ipcRenderer.send('window-restore'),
+  // Break prompt window (slice 5). Same shape as the floating timer —
+  // self-contained src/break-prompt.html + break-prompt-preload.js. Stays
+  // on top of the focus overlay when one's up.
+  breakPromptShow:     (data) => ipcRenderer.invoke('break-prompt-show', data),
+  breakPromptHide:     ()     => ipcRenderer.invoke('break-prompt-hide'),
+  onBreakChoice:       (cb)   => ipcRenderer.on('break-choice', (_, choice) => cb(choice)),
 });
