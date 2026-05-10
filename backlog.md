@@ -6,7 +6,7 @@ Things we've decided to do later. Items go here when:
 
 When tackling an item, move its checkbox to **In progress**, and on completion, **delete the line** (the commit history keeps the record). New items go under the right severity heading; if you're unsure of severity, drop it under **Unsorted** and we'll triage.
 
-Last updated: 2026-04-26 (V4.0.0 release prep)
+Last updated: 2026-05-10 (Phase 1 trust fixes shipped)
 
 ---
 
@@ -40,12 +40,8 @@ _Empty._
 
 ### Bugs / cleanup
 - [ ] **B43 — Standardise IDs to either string or number across all collections.** Currently habits/wins use `String(Date.now())`, tasks/ideas/lists use numeric. The inline `onclick` handlers quote some and not others. Pick one and migrate all serializers + handlers + saved Sheets columns.
-- [ ] **B50 — Make moveTaskToWorkspace transactional.** `src/app.js` `moveTaskToWorkspace` writes the task to the target workspace's sheet, then deletes from the source. If the second write fails (network blip, token expiry, app close mid-flight), the task ends up in BOTH workspaces — no rollback, no idempotency key. Needs a stable transfer ID on the moved task plus a dedupe-on-load step, OR a transactional sequence that rolls the source back to its pre-move state and surfaces a clear error to the user. Touches a recently-shipped V4 feature, so worth proper design before changing.
 - [ ] **B49 — Sync per-tag custom colours on the web companion.** Desktop now stores `tagColors` and `tagColorsEnabled` on the active workspace (synced via the TaskSpark-Config sheet), but `web/app.js` still reads/writes `settings.tagColors` and `settings.tagCustomColorsEnabled` (localStorage-only). Mirror the desktop change in `web/app.js`: `getTagColor`, `setTagColor`, `toggleTagColorSection`, `applySettings`, plus the migration fallback in `getTagColors`. Once shipped, web will pick up colours desktop set and vice-versa.
 - [ ] **B48 — Migrate web's existing fetch() calls to use apiFetch.** V4 introduced an `apiFetch(url, options)` wrapper in `web/app.js` that adds the `Authorization: Bearer …` header automatically, retries once on 401 by calling `api.oauthRefresh`, and surfaces network/HTTP errors as toasts. ~30+ existing direct `fetch()` call sites (sheetsLoad/Save/Ensure, Drive find/create, oauth-token, contact form, changelog fetch, etc.) still call `fetch` directly. Migrate them to `apiFetch` for consistent error handling and to retire the scattered token-expiry/`ensureToken` calls.
-- [ ] **B51 — On-estimate rate uses lifetime time, not in-range time.** `statsCalcOnEstimate` (web/app.js:6149, src/app.js:2469ish) compares `t.estimate` against `t.timeLogged` (lifetime cumulative). For tasks worked on across multiple periods then completed in this period, the comparison includes work outside the period and skews the accuracy %. Should use time-up-to-completion or in-range time. Found in stats audit 2026-05-10.
-- [ ] **B52 — Stats lose minutes when a session crosses midnight.** Heatmap (web/app.js:6206, src/app.js mirror) buckets the whole session under its start hour, so a 90-min session starting at 23:30 puts 60 min after midnight in the wrong cell. `statsSessionsInRange` filters by `s.start` only, so a session that straddles the window edge is either fully in or fully out. Affects "Time tracked" total + heatmap. Edge case but real. Found in stats audit 2026-05-10.
-- [ ] **B53 — Multi-tag tasks double-count in Time by tag.** A task with two tags adds its full time under each, so tag rows can sum to more than the "Time tracked" total. The "Tasks can have multiple tags" hint warns about it but the behaviour still confuses people. Options: split the time evenly across tags, or keep current behaviour and make the hint more prominent. Found in stats audit 2026-05-10.
 
 ### Dependencies / build
 - [ ] **S20 — Code-sign the NSIS installer.** Currently unsigned, so Windows shows a SmartScreen warning and `electron-updater` can't verify the publisher. Requires obtaining a code-signing certificate (Sectigo / DigiCert / Azure / SignPath, ~$50–$300/year). Once you have the cert, set `win.certificateFile` + `certificatePassword` in `package.json` build config and `win.publisherName` to the cert CN.
