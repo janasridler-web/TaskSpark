@@ -744,7 +744,8 @@ const HEADERS = ['id','title','desc','priority','due','tags','completed',
   'createdAt','completedAt','timeLogged','timeSessions','impact','outcome',
   'deliverable','estimate','status','energy','subtasks','archived','archivedAt','recurrence','dueTime',
   'budget','spent','attachments','hideUntilDays','overdueAlert',
-  'source','submittedBy','submittedAt'];
+  'source','submittedBy','submittedAt',
+  'transferId','transferState','transferTargetWs'];
 
 async function sheetsEnsure(accessToken, spreadsheetId) {
   const info = await sheetsRequest('GET', `/v4/spreadsheets/${spreadsheetId}`, accessToken);
@@ -1015,12 +1016,12 @@ ipcMain.handle('mood-get-today', async (_, { accessToken, spreadsheetId, date })
 
 ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
   const data = await sheetsRequest('GET',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AD10000')}`, accessToken);
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AG10000')}`, accessToken);
   const rows = data.values || [];
   return rows.filter(r => r && r[0]).map(row => {
     while (row.length < HEADERS.length) row.push('');
     const _j = (v, fb) => { try { return v ? JSON.parse(v) : fb; } catch { return fb; } };
-    return {
+    const task = {
       id: parseInt(row[0]) || 0, title: row[1], desc: row[2],
       priority: row[3] || 'medium', due: row[4], tags: _j(row[5], []),
       completed: row[6] === '1', createdAt: row[7], completedAt: row[8],
@@ -1043,6 +1044,12 @@ ipcMain.handle('sheets-load', async (_, { accessToken, spreadsheetId }) => {
       submittedBy: row[28] || '',
       submittedAt: row[29] || '',
     };
+    // Transient fields used by the transactional move flow. Only present on
+    // tasks mid-move; reconcileTransferState clears them after the move lands.
+    if (row[30]) task.transferId = row[30];
+    if (row[31]) task.transferState = row[31];
+    if (row[32]) task.transferTargetWs = row[32];
+    return task;
   });
 });
 
@@ -1066,6 +1073,7 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
       String(t.hideUntilDays||0),
       t.overdueAlert ? '1' : '0',
       t.source||'', t.submittedBy||'', t.submittedAt||'',
+      t.transferId||'', t.transferState||'', t.transferTargetWs||'',
     ]);
     await sheetsRequest('PUT',
       `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2')}?valueInputOption=RAW`,
@@ -1074,7 +1082,7 @@ ipcMain.handle('sheets-save', async (_, { accessToken, spreadsheetId, tasks }) =
   // Clear only rows beyond the written data — safe even if this fails (stale rows, not blank sheet)
   const clearFrom = tasks.length + 2;
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:AD100000`)}:clear`,
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`Tasks!A${clearFrom}:AG100000`)}:clear`,
     accessToken, {});
   return true;
 });
