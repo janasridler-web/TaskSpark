@@ -111,4 +111,5 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   oauthExchange: (data) => ipcRenderer.invoke('oauth-exchange', data),
   oauthRefresh:  (data) => ipcRenderer.invoke('oauth-refresh', data),
   onOauthCode:   (cb)   => ipcRenderer.on('oauth-code', (_, data) => cb(data)),
+  showConfigPicker: (data) => ipcRenderer.invoke('show-config-picker', data),
 });

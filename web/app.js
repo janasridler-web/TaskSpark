@@ -372,6 +372,14 @@ async function findOrCreateConfigSheetWeb(accessToken) {
 
 // Opens Google Picker in a popup for the user to select their TaskSpark-Config file.
 function openConfigPickerWeb(accessToken) {
+  // Wrapped Electron: route to the desktop's separate-browser-window picker.
+  // The in-page Picker requires the calling origin to be registered with the
+  // OAuth client, and file:// can't be — so it falls back to a sign-in prompt
+  // that itself fails. The desktop handler opens a real browser tab on a
+  // localhost origin, which Google accepts.
+  if (window.desktopAPI?.showConfigPicker) {
+    return window.desktopAPI.showConfigPicker({ accessToken });
+  }
   return new Promise((resolve) => {
     if (!window.google || !window.google.picker) {
       const script = document.createElement('script');
