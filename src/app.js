@@ -766,7 +766,7 @@ async function connectToSheets() {
     const loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
     if (loaded.length) {
       // Sheet has tasks — use as source of truth
-      tasks = loaded;
+      tasks = await reconcileTransferState(loaded);
     } else if (tasks.length) {
       // Sheet empty but local tasks exist — migrate them up (e.g. from offline mode)
       await api.sheetsSave({ accessToken, spreadsheetId, tasks });
@@ -811,7 +811,8 @@ async function refreshFromSheets() {
       }
     }
 
-    tasks = await api.sheetsLoad({ accessToken, spreadsheetId });
+    const loaded = await api.sheetsLoad({ accessToken, spreadsheetId });
+    tasks = await reconcileTransferState(loaded);
     await api.saveCache(tasks);
     setSyncStatus('ok');
     renderAll();
@@ -2422,9 +2423,32 @@ function statsRunningSecsForTask(task, start, end) {
   return Math.floor(Date.now() / 1000 - timerStart) + timerPausedElapsed;
 }
 
+// Returns the seconds of `session` that fall within [windowStart, windowEnd].
+// Used so a session that crosses the window edge contributes only its in-window
+// portion, instead of the all-or-nothing behaviour of statsSessionsInRange.
+function statsSessionSecsInWindow(session, windowStart, windowEnd) {
+  const sStart = new Date(session.start).getTime();
+  const sEnd = sStart + (session.elapsed || 0) * 1000;
+  const overlap = Math.min(sEnd, windowEnd.getTime()) - Math.max(sStart, windowStart.getTime());
+  return overlap > 0 ? Math.floor(overlap / 1000) : 0;
+}
+
 function statsTaskTimeInRange(task, start, end) {
-  const fromSessions = statsSessionsInRange(task, start, end).reduce((s, sess) => s + (sess.elapsed || 0), 0);
+  const fromSessions = (task.timeSessions || []).reduce((s, sess) => s + statsSessionSecsInWindow(sess, start, end), 0);
   return fromSessions + statsRunningSecsForTask(task, start, end);
+}
+
+// Total time logged on this task from creation up to when it was completed.
+// Used by estimate-accuracy stats so post-completion sessions (e.g. task
+// reopened and worked on again) don't skew the comparison against the estimate.
+function statsTaskTimeUpToCompletion(task) {
+  if (!task.completedAt) return task.timeLogged || 0;
+  const completedMs = new Date(task.completedAt).getTime();
+  return (task.timeSessions || []).reduce((sum, sess) => {
+    const startMs = new Date(sess.start).getTime();
+    if (startMs > completedMs) return sum;
+    return sum + (sess.elapsed || 0);
+  }, 0);
 }
 
 function statsCompletedInRange(start, end) {
@@ -2486,7 +2510,10 @@ function statsCalcActiveDays(start, end, totalDays) {
 function statsCalcTimeTracked(start, end) {
   let totalSecs = 0, sessionCount = 0;
   tasks.forEach(t => {
-    statsSessionsInRange(t, start, end).forEach(s => { totalSecs += s.elapsed || 0; sessionCount++; });
+    (t.timeSessions || []).forEach(s => {
+      const inWindow = statsSessionSecsInWindow(s, start, end);
+      if (inWindow > 0) { totalSecs += inWindow; sessionCount++; }
+    });
     const run = statsRunningSecsForTask(t, start, end);
     if (run > 0) { totalSecs += run; sessionCount++; }
   });
@@ -2511,7 +2538,7 @@ function statsCalcOnEstimate(start, end) {
   );
   if (!eligible.length) return { rate: 0, onCount: 0, eligibleCount: 0 };
   const onCount = eligible.filter(t => {
-    const actualMins = (t.timeLogged || 0) / 60;
+    const actualMins = statsTaskTimeUpToCompletion(t) / 60;
     return Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
   }).length;
   return { rate: Math.round(onCount / eligible.length * 100), onCount, eligibleCount: eligible.length };
@@ -2562,11 +2589,26 @@ function statsCalcHeatmap(start, end) {
   const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const grid = {}; // grid[dow][hour] = minutes
   days.forEach(d => { grid[d] = new Array(24).fill(0); });
+  const wStart = start.getTime();
+  const wEnd = end.getTime();
   tasks.forEach(t => {
-    statsSessionsInRange(t, start, end).forEach(s => {
-      const d = new Date(s.start);
-      const dow = days[d.getDay() === 0 ? 6 : d.getDay() - 1];
-      grid[dow][d.getHours()] += Math.round((s.elapsed || 0) / 60);
+    (t.timeSessions || []).forEach(s => {
+      const sStartMs = new Date(s.start).getTime();
+      const sEndMs = sStartMs + (s.elapsed || 0) * 1000;
+      // Walk hour by hour, splitting minutes across each cell the session touches.
+      let cursor = sStartMs;
+      while (cursor < sEndMs) {
+        const cur = new Date(cursor);
+        const nextHourMs = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate(), cur.getHours() + 1, 0, 0, 0).getTime();
+        const sliceEndMs = Math.min(nextHourMs, sEndMs);
+        const clippedStart = Math.max(cursor, wStart);
+        const clippedEnd = Math.min(sliceEndMs, wEnd);
+        if (clippedEnd > clippedStart) {
+          const dow = days[cur.getDay() === 0 ? 6 : cur.getDay() - 1];
+          grid[dow][cur.getHours()] += Math.round((clippedEnd - clippedStart) / 1000 / 60);
+        }
+        cursor = sliceEndMs;
+      }
     });
   });
   const allVals = days.flatMap(d => grid[d]);
@@ -2583,7 +2625,10 @@ function statsCalcTimeByTag(start, end) {
     if (!secs) return;
     const tags = t.tags || [];
     if (!tags.length) { untaggedSecs += secs; return; }
-    tags.forEach(tag => { tagTotals[tag] = (tagTotals[tag] || 0) + secs; });
+    // Split a multi-tag task's time evenly across its tags so the rows
+    // sum to the overall "Time tracked" total instead of double-counting.
+    const share = secs / tags.length;
+    tags.forEach(tag => { tagTotals[tag] = (tagTotals[tag] || 0) + share; });
   });
   const sorted = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
   return { sorted, untaggedSecs };
@@ -2593,7 +2638,7 @@ function statsCalcEstimateScatter(start, end) {
   return statsCompletedInRange(start, end)
     .filter(t => t.estimate > 0 && (t.timeSessions || []).length > 0)
     .map(t => {
-      const actualMins = (t.timeLogged || 0) / 60;
+      const actualMins = statsTaskTimeUpToCompletion(t) / 60;
       const onBand = Math.abs(actualMins - t.estimate) / t.estimate <= 0.20;
       return { estimate: t.estimate, actual: actualMins, onBand };
     });
@@ -2950,11 +2995,11 @@ function renderStatsHeatmapCard(start, end) {
 function renderStatsTimeByTagCard(start, end) {
   const { sorted, untaggedSecs } = statsCalcTimeByTag(start, end);
   if (!sorted.length && !untaggedSecs) {
-    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div><div class="stats-empty-msg">No tagged tasks with tracked time yet.</div></div>`;
+    return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Time is split evenly across a task's tags</div></div><div class="stats-empty-msg">No tagged tasks with tracked time yet.</div></div>`;
   }
   const rows = sorted.map(([tag,secs])=>`<div class="stats-tag-row"><div class="stats-tag-name">${esc(tag)}</div><div class="stats-tag-time">${statsFmtTime(secs)}</div></div>`).join('');
   const untagged = untaggedSecs ? `<div class="stats-tag-row"><div class="stats-tag-name untagged">Untagged</div><div class="stats-tag-time">${statsFmtTime(untaggedSecs)}</div></div>` : '';
-  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Tasks can have multiple tags</div></div>${rows}${untagged}</div>`;
+  return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Time by tag</div><div class="stats-card-hint">Time is split evenly across a task's tags</div></div>${rows}${untagged}</div>`;
 }
 
 function renderStatsEstimateBreakdownCard(start, end) {
@@ -3762,6 +3807,18 @@ function openMoveTaskPicker(taskId) {
   document.getElementById('ws-move-picker-overlay').classList.add('open');
 }
 
+// Transactional move: stamps the task with a transferId on both sides so a
+// crash mid-move can be self-healed by reconcileTransferState on next load.
+//
+// Steps:
+//   1. Stamp source task with transferId + state 'moving-out', save source.
+//   2. Append a copy to target with state 'moving-in'. Idempotent on retry.
+//   3. Remove the task from source, save source.
+//   4. Clear the flag on target, save target.
+//
+// If any step fails, the next workspace load runs reconcileTransferState,
+// which checks the target for the matching transferId and either drops the
+// stranded source copy (target got it) or clears the flag (target didn't).
 async function moveTaskToWorkspace(taskId, targetWorkspaceId) {
   const task = tasks.find(t => t.id === taskId);
   if (!task) return;
@@ -3774,18 +3831,41 @@ async function moveTaskToWorkspace(taskId, targetWorkspaceId) {
   closeModal('ws-move-picker-overlay');
   if (activeTimerId === taskId) cancelTimer();
 
+  const transferId = `tx-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const sourceSpreadsheetId = spreadsheetId;
   setSyncStatus('syncing');
+
   try {
     await ensureToken();
-    // Fetch target's current tasks fresh (don't trust cache; target may have changed elsewhere)
+
+    // Step 1: stamp source.
+    task.transferId = transferId;
+    task.transferTargetWs = targetWorkspaceId;
+    task.transferState = 'moving-out';
+    await api.sheetsSave({ accessToken, spreadsheetId: sourceSpreadsheetId, tasks });
+
+    // Step 2: write to target. Skip the append if a retry already placed it there.
     const targetTasks = await api.sheetsLoad({ accessToken, spreadsheetId: target.spreadsheetId });
-    targetTasks.push({ ...task });
-    // Write target first. If this fails, source is untouched.
-    await api.sheetsSave({ accessToken, spreadsheetId: target.spreadsheetId, tasks: targetTasks });
-    // Then remove from source and persist source.
+    if (!targetTasks.some(t => t.transferId === transferId)) {
+      targetTasks.push({ ...task, transferState: 'moving-in' });
+      await api.sheetsSave({ accessToken, spreadsheetId: target.spreadsheetId, tasks: targetTasks });
+    }
+
+    // Step 3: remove from source.
     tasks = tasks.filter(t => t.id !== taskId);
+    await api.sheetsSave({ accessToken, spreadsheetId: sourceSpreadsheetId, tasks });
     await api.saveCache(tasks);
-    await api.sheetsSave({ accessToken, spreadsheetId, tasks });
+
+    // Step 4: clear the flag on target.
+    targetTasks.forEach(t => {
+      if (t.transferId === transferId) {
+        delete t.transferId;
+        delete t.transferState;
+        delete t.transferTargetWs;
+      }
+    });
+    await api.sheetsSave({ accessToken, spreadsheetId: target.spreadsheetId, tasks: targetTasks });
+
     if (_wsCache && _wsCache[target.id]) _wsCache[target.id].tasks = targetTasks;
     setSyncStatus('ok');
     showToast(`Moved to ${target.name}`);
@@ -3793,8 +3873,76 @@ async function moveTaskToWorkspace(taskId, targetWorkspaceId) {
     renderAll();
   } catch (e) {
     setSyncStatus('error', (e.message || 'Move failed').slice(0, 50));
-    showToast('Move failed — task not moved');
+    showToast('Move had issues — refresh to confirm');
+    renderAll();
   }
+}
+
+// Self-healing pass that runs after each workspace load. Cleans up tasks left
+// in a half-moved state by an interrupted moveTaskToWorkspace call.
+//
+//   moving-in  : this side is the target; the move landed safely. Clear the flag.
+//   moving-out : this side was the source. Check the target workspace:
+//                  - target has the matching transferId  -> drop this source copy
+//                  - target doesn't                      -> abandon, clear the flag
+//                  - target unreachable                  -> leave for next load
+async function reconcileTransferState(loaded) {
+  let changed = false;
+  const survivors = [];
+
+  for (const t of loaded) {
+    if (t.transferState === 'moving-in' && t.transferId) {
+      delete t.transferState;
+      delete t.transferId;
+      delete t.transferTargetWs;
+      changed = true;
+      survivors.push(t);
+      continue;
+    }
+
+    if (t.transferState === 'moving-out' && t.transferId && t.transferTargetWs) {
+      const target = workspaces.find(w => w.id === t.transferTargetWs);
+      if (!target || target.readOnly) {
+        delete t.transferState;
+        delete t.transferId;
+        delete t.transferTargetWs;
+        changed = true;
+        survivors.push(t);
+        continue;
+      }
+      try {
+        const targetTasks = await api.sheetsLoad({ accessToken, spreadsheetId: target.spreadsheetId });
+        const match = targetTasks.find(x => x.transferId === t.transferId);
+        if (match) {
+          // Target has it — drop this stranded source copy.
+          changed = true;
+          continue;
+        }
+        // Target never received it — abandon, clear flag.
+        delete t.transferState;
+        delete t.transferId;
+        delete t.transferTargetWs;
+        changed = true;
+        survivors.push(t);
+      } catch (e) {
+        // Target unreachable — leave for next load.
+        survivors.push(t);
+      }
+      continue;
+    }
+
+    survivors.push(t);
+  }
+
+  if (changed && !offlineMode) {
+    try {
+      await api.sheetsSave({ accessToken, spreadsheetId, tasks: survivors });
+    } catch (e) {
+      // Persist failure isn't fatal — next load will retry the cleanup.
+    }
+  }
+
+  return survivors;
 }
 
 function deleteTask(id) {
