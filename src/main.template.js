@@ -447,6 +447,12 @@ const OAUTH_SCOPES = [
 // Per-flow PKCE + state, stored on the closure so the callback can verify
 let _googleOauthState = null;
 let _googleOauthVerifier = null;
+// Remember the loopback redirect URI so the exchange uses the SAME value the
+// auth request did, regardless of what the renderer passes back. Phase 2's
+// wrapped-web flow reloads the page between auth and exchange, which drops
+// the renderer-side `redirectUri` global; trusting main here avoids the
+// resulting redirect_uri mismatch (Google rejects with a policy error).
+let _googleOauthRedirectUri = null;
 
 ipcMain.handle('oauth-start', async () => {
   if (oauthServer) { try { oauthServer.close(); } catch {} oauthServer = null; }
@@ -479,6 +485,7 @@ ipcMain.handle('oauth-start', async () => {
     server.listen(0, '127.0.0.1', () => {
       const port = server.address().port;
       const redirectUri = `http://127.0.0.1:${port}/callback`;
+      _googleOauthRedirectUri = redirectUri;
       oauthServer = server;
       const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authUrl.searchParams.set('client_id', APP_CLIENT_ID);
@@ -501,13 +508,15 @@ ipcMain.handle('oauth-exchange', async (_, { code, redirectUri }) => {
   return new Promise((resolve, reject) => {
     const params = {
       code, client_id: APP_CLIENT_ID, client_secret: APP_CLIENT_SECRET,
-      redirect_uri: redirectUri, grant_type: 'authorization_code',
+      redirect_uri: _googleOauthRedirectUri || redirectUri,
+      grant_type: 'authorization_code',
     };
     if (_googleOauthVerifier) params.code_verifier = _googleOauthVerifier;
     const body = new URLSearchParams(params).toString();
-    // Clear the verifier after one use
+    // Clear the verifier + redirect after one use
     _googleOauthVerifier = null;
     _googleOauthState = null;
+    _googleOauthRedirectUri = null;
     const req = https.request({
       hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
