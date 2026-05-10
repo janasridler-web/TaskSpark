@@ -3080,6 +3080,32 @@ async function outlookAuthUrl() {
 }
 
 async function connectOutlook() {
+  // Wrapped Electron: route through the desktop's loopback PKCE flow.
+  // window.open + a redirect to file:// would fail the AAD redirect-URI
+  // check the same way the Google flow does.
+  if (window.desktopAPI?.outlookStart) {
+    try {
+      const { code, redirectUri, codeVerifier } = await window.desktopAPI.outlookStart();
+      const data = await window.desktopAPI.outlookExchange({ code, redirectUri, codeVerifier });
+      if (data && data.access_token) {
+        outlookAccessToken  = data.access_token;
+        outlookRefreshToken = data.refresh_token;
+        outlookConnected    = true;
+        settings.outlookRefreshToken = outlookRefreshToken;
+        await api.saveConfig({ settings });
+        showToast('Outlook calendar connected!');
+        updateOutlookSettingsBtn();
+        await loadOutlookEvents();
+        if (calendarViewMode) renderCalendarView();
+      } else {
+        showToast('Failed to connect Outlook — please try again');
+      }
+    } catch (e) {
+      console.warn('[Outlook] connect failed:', e && e.message);
+      showToast('Failed to connect Outlook — please try again');
+    }
+    return;
+  }
   const authUrl = await outlookAuthUrl();
   const popup = window.open(authUrl, 'outlook_auth', 'width=500,height=650,scrollbars=yes');
   if (!popup) {
@@ -3167,17 +3193,26 @@ async function exchangeOutlookCode(code, codeVerifier) {
 
 async function refreshOutlookToken() {
   if (!outlookRefreshToken) return false;
-  const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     OUTLOOK_CLIENT_ID,
-      refresh_token: outlookRefreshToken,
-      grant_type:    'refresh_token',
-      scope:         OUTLOOK_SCOPES
-    })
-  });
-  const data = await res.json();
+  // The wrapped-Electron Outlook token was issued to the desktop's AAD
+  // app (confidential client with secret) — refreshing it requires going
+  // back through the bridge with that secret. The web fallback below is
+  // for the public web client.
+  let data;
+  if (window.desktopAPI?.outlookRefresh) {
+    data = await window.desktopAPI.outlookRefresh({ refreshToken: outlookRefreshToken });
+  } else {
+    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id:     OUTLOOK_CLIENT_ID,
+        refresh_token: outlookRefreshToken,
+        grant_type:    'refresh_token',
+        scope:         OUTLOOK_SCOPES
+      })
+    });
+    data = await res.json();
+  }
   if (data.access_token) {
     outlookAccessToken  = data.access_token;
     if (data.refresh_token) {

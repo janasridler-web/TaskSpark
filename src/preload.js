@@ -151,4 +151,11 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   // dialog and returns the chosen path; the renderer plays it via
   // `new Audio('file:///' + path)` (same pattern V4.1.1 desktop uses).
   pickSoundFile:       ()     => ipcRenderer.invoke('pick-sound-file'),
+  // Outlook calendar OAuth (slice 8). Desktop's outlook-start returns
+  // { code, redirectUri, codeVerifier } once the user finishes the
+  // Microsoft auth flow in their default browser (loopback callback),
+  // unlike Google which fires an event — simpler to consume.
+  outlookStart:    ()     => ipcRenderer.invoke('outlook-start'),
+  outlookExchange: (data) => ipcRenderer.invoke('outlook-exchange', data),
+  outlookRefresh:  (data) => ipcRenderer.invoke('outlook-refresh', data),
 });
