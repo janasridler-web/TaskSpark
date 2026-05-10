@@ -6259,7 +6259,7 @@ function statsCalcHeatmap(start, end) {
 function statsCalcTimeByTag(start, end) {
   const tagTotals = {};
   let untaggedSecs = 0;
-  statsCompletedInRange(start, end).forEach(t => {
+  tasks.forEach(t => {
     const secs = statsTaskTimeInRange(t, start, end);
     if (!secs) return;
     const tags = t.tags || [];
