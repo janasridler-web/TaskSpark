@@ -878,9 +878,15 @@ async function handleOAuthCallback() {
       }
       // Restore persistent state from cfg — handleOAuthCallback returns
       // before init() reaches its cfg-loading block, so without this the
-      // user's "Get started" dismiss state and saved config-sheet pointer
-      // would be lost on every re-sign-in.
+      // user's settings, theme, "Get started" dismiss state, and saved
+      // config-sheet pointer would all be lost on every re-sign-in.
       if (existingCfg) {
+        if (existingCfg.theme) applyTheme(existingCfg.theme);
+        if (existingCfg.accentTheme) applyAccentTheme(existingCfg.accentTheme);
+        if (existingCfg.settings) {
+          settings = { ...DEFAULT_SETTINGS, ...existingCfg.settings };
+          applySettings();
+        }
         if (existingCfg.onboardingChecklist) {
           onboardingChecklist = { ...onboardingChecklist, ...existingCfg.onboardingChecklist };
         }
