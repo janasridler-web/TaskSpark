@@ -1,5 +1,24 @@
 # TaskSpark Changelog
 
+## V4.1.1 — May 2026
+
+A small trust-and-accuracy patch on top of V4.1.0.
+
+### Reliability fixes
+
+- **Moving a task between workspaces is now safe** *(both apps)* — if the network drops mid-move, the task no longer ends up in both workspaces. The app stamps both sides during the move and self-heals on the next workspace load.
+
+### Stats accuracy
+
+- **On-estimate rate** *(both apps)* — now compares your estimate against the time you logged up to when the task was completed, not your lifetime time on it. Tasks reopened and worked on after completion no longer skew the percentage.
+- **Heatmap split across hours** *(both apps)* — a 90-minute session starting at 23:30 now correctly puts 30 minutes on the late-night hour and 60 minutes on the early-morning hour, instead of dumping all 90 under the start hour.
+- **Time tracked at window edges** *(both apps)* — sessions that straddle the start or end of the date range now contribute their in-window portion, instead of the all-or-nothing behaviour.
+- **Time by tag stops double-counting** *(both apps)* — a task with two tags now splits its time evenly across them, so the rows sum to the overall "Time tracked" total instead of overshooting.
+
+### Notes for existing users
+
+The Tasks sheet schema gained three columns (`transferId`, `transferState`, `transferTargetWs`) used only during a workspace move. Existing sheets read fine; the new columns appear after the first save.
+
 ## V4.1.0 — May 2026
 
 A polish release with a fresher look and a wide sweep of correctness fixes — most of them quiet bugs that could have lost work without warning.
