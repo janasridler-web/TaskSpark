@@ -876,6 +876,16 @@ async function handleOAuthCallback() {
       if (previousEmail && newEmail && previousEmail !== newEmail) {
         api.saveCache([]);
       }
+      // Restore persistent state from cfg — handleOAuthCallback returns
+      // before init() reaches its cfg-loading block, so without this the
+      // user's "Get started" dismiss state and saved config-sheet pointer
+      // would be lost on every re-sign-in.
+      if (existingCfg) {
+        if (existingCfg.onboardingChecklist) {
+          onboardingChecklist = { ...onboardingChecklist, ...existingCfg.onboardingChecklist };
+        }
+        if (existingCfg.configSheetId) configSheetId = existingCfg.configSheetId;
+      }
       document.getElementById('auth-status').textContent = 'Looking for your spreadsheet…';
       const existingSheet = await api.driveFindSheet({ accessToken });
       let isBrandNewUser = false;
