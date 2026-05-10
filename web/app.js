@@ -247,6 +247,18 @@ const api = {
   driveWorkspacesSave:    (args) => driveWorkspacesSaveWeb(args),
 };
 
+// Phase 2 slice 1: when wrapped by Electron, route OAuth through the desktop's
+// PKCE flow (system browser → localhost callback). Google rejects file://
+// origins, so the web's redirect-and-exchange path can't work here. The
+// startOAuth → onOauthCode → oauthExchange shape already matches what
+// preload.js exposes, so this is a one-for-one override.
+if (typeof window !== 'undefined' && window.desktopAPI) {
+  api.oauthStart    = ()     => window.desktopAPI.oauthStart();
+  api.oauthExchange = (args) => window.desktopAPI.oauthExchange(args);
+  api.oauthRefresh  = (args) => window.desktopAPI.oauthRefresh(args);
+  api.onOauthCode   = (cb)   => window.desktopAPI.onOauthCode(cb);
+}
+
 // ── OAuth credentials (web) ─────────────────────────────────────────────────
 // These are read from a config file loaded at startup — see oauth-config.js
 const WEB_CLIENT_ID     = window.TASKSPARK_CLIENT_ID     || '';

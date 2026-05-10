@@ -96,12 +96,21 @@ function saveWindowState() {
 function createWindow() {
   const savedState = getWindowState();
   const bounds = savedState?.bounds || { width: 1080, height: 720 };
+  // Phase 2 slice 1: TASKSPARK_USE_WEB=1 loads the web companion's HTML
+  // instead of src/index.html. The web app has no custom title bar, so use
+  // the native OS frame in that mode (otherwise the window has no chrome
+  // and can't be moved or closed).
+  const useWeb = process.env.TASKSPARK_USE_WEB === '1';
+  const indexPath = useWeb
+    ? path.join(__dirname, '..', 'web', 'index.html')
+    : path.join(__dirname, 'index.html');
 
   mainWindow = new BrowserWindow({
     width: bounds.width, height: bounds.height,
     x: bounds.x, y: bounds.y,
     minWidth: 820, minHeight: 560,
-    frame: false, titleBarStyle: 'hidden',
+    frame: useWeb ? true : false,
+    titleBarStyle: useWeb ? 'default' : 'hidden',
     backgroundColor: '#f0ede8',
     icon: path.join(__dirname, '../assets/taskspark.ico'),
     webPreferences: {
@@ -114,7 +123,7 @@ function createWindow() {
 
   if (savedState?.isMaximized) mainWindow.maximize();
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile(indexPath);
   // Only allow opening http/https/mailto in the user's default browser.
   // Block file:, javascript:, custom-scheme handlers (vscode://, etc.) that
   // would let an HTML-injection vector spawn arbitrary apps.
@@ -133,7 +142,7 @@ function createWindow() {
   // platform (the previous string concat produced "file://C:/..." on Windows
   // — two slashes — while Electron uses "file:///C:/..." with three, which
   // silently blocked location.reload() during sign-out).
-  const indexFileUrl = url.pathToFileURL(path.join(__dirname, 'index.html')).href;
+  const indexFileUrl = url.pathToFileURL(indexPath).href;
   mainWindow.webContents.on('will-navigate', (e, navUrl) => {
     if (!navUrl.startsWith(indexFileUrl)) {
       e.preventDefault();

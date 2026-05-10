@@ -10,6 +10,8 @@
 <script>
 (function(){
   try {
+    // Wrapped in Electron — never bounce to the mobile route, regardless of UA.
+    if (window.desktopAPI) return;
     if (location.pathname === '/m' || location.pathname === '/m/') return;
     // Loop-guard: /m/ redirects to /?_m=1, and app.js then replaceState's
     // back to /m/. Without this guard, the auto-redirect would fire again

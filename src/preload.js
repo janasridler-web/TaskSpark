@@ -89,3 +89,16 @@ contextBridge.exposeInMainWorld('api', {
   driveWorkspacesSave: (data)   => ipcRenderer.invoke('drive-workspaces-save', data), // data includes spreadsheetId
   showConfigPicker:   (data)   => ipcRenderer.invoke('show-config-picker', data),
 });
+
+// Phase 2 bridge for the wrapped web app. Slice 1 surface: a liveness ping,
+// the platform string, and the four OAuth primitives needed to make sign-in
+// work under file://. Everything else (timer, break prompt, CSV export,
+// calendar, offline) lands in later slices.
+contextBridge.exposeInMainWorld('desktopAPI', {
+  ping:          ()     => 'pong',
+  platform:      process.platform,
+  oauthStart:    ()     => ipcRenderer.invoke('oauth-start'),
+  oauthExchange: (data) => ipcRenderer.invoke('oauth-exchange', data),
+  oauthRefresh:  (data) => ipcRenderer.invoke('oauth-refresh', data),
+  onOauthCode:   (cb)   => ipcRenderer.on('oauth-code', (_, data) => cb(data)),
+});
