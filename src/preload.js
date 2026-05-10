@@ -112,4 +112,11 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   oauthRefresh:  (data) => ipcRenderer.invoke('oauth-refresh', data),
   onOauthCode:   (cb)   => ipcRenderer.on('oauth-code', (_, data) => cb(data)),
   showConfigPicker: (data) => ipcRenderer.invoke('show-config-picker', data),
+  // Auto-updater (slice 2). Wires the existing update-available /
+  // update-downloaded events from main and lets the renderer trigger
+  // an immediate install via install-update (otherwise the update
+  // applies the next time the user quits the app).
+  onUpdateAvailable:  (cb) => ipcRenderer.on('update-available',  (_, info) => cb(info)),
+  onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, info) => cb(info)),
+  installUpdate:      ()   => ipcRenderer.send('install-update'),
 });

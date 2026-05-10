@@ -266,6 +266,12 @@ if (typeof window !== 'undefined' && window.desktopAPI) {
       location.reload();
     });
   };
+  // Auto-updater (slice 2): the web's `api` ships these as no-ops, so the
+  // banner / toast wiring in runPostInitWireup() silently drops events when
+  // wrapped. Route them through the bridge.
+  if (window.desktopAPI.onUpdateAvailable)  api.onUpdateAvailable  = (cb) => window.desktopAPI.onUpdateAvailable(cb);
+  if (window.desktopAPI.onUpdateDownloaded) api.onUpdateDownloaded = (cb) => window.desktopAPI.onUpdateDownloaded(cb);
+  if (window.desktopAPI.installUpdate)      api.installUpdate      = ()   => window.desktopAPI.installUpdate();
 }
 
 // ── OAuth credentials (web) ─────────────────────────────────────────────────
