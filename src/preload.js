@@ -125,4 +125,20 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   // quickaddDone after submission (to restore the previously-focused app).
   onGlobalQuickAdd:   (cb) => ipcRenderer.on('global-quick-add', (_, data) => cb(data)),
   quickaddDone:       ()   => ipcRenderer.send('quickadd-done'),
+  // Floating timer window (slice 4). Reuses the existing src/timer.html +
+  // src/timer-preload.js — self-contained assets that don't depend on the
+  // legacy window.api. Renderer-initiated controls go via the timer*
+  // invokes; floating-window-initiated events come back via the on*
+  // listeners. Window controls (minimize/restore) are also exposed so the
+  // main window can hide itself while the timer is up, matching V4.1.1
+  // desktop UX.
+  timerShow:           (data) => ipcRenderer.invoke('timer-show', data),
+  timerHide:           ()     => ipcRenderer.invoke('timer-hide'),
+  timerPause:          ()     => ipcRenderer.invoke('timer-pause'),
+  timerResume:         ()     => ipcRenderer.invoke('timer-resume'),
+  onTimerStopped:      (cb)   => ipcRenderer.on('timer-stopped',       (_, elapsed) => cb(elapsed)),
+  onTimerPauseRequest: (cb)   => ipcRenderer.on('timer-pause-request',  () => cb()),
+  onTimerResumeRequest:(cb)   => ipcRenderer.on('timer-resume-request', () => cb()),
+  minimize:            ()     => ipcRenderer.send('window-minimize'),
+  restore:             ()     => ipcRenderer.send('window-restore'),
 });

@@ -277,6 +277,19 @@ if (typeof window !== 'undefined' && window.desktopAPI) {
   // route the event through.
   if (window.desktopAPI.onGlobalQuickAdd)   api.onGlobalQuickAdd   = (cb) => window.desktopAPI.onGlobalQuickAdd(cb);
   if (window.desktopAPI.quickaddDone)       api.quickaddDone       = ()   => window.desktopAPI.quickaddDone();
+  // Floating timer window (slice 4): existing api.onTimerStopped /
+  // onTimerPauseRequest / onTimerResumeRequest listeners (further down)
+  // already do the right thing; route them, the controls, and the
+  // window minimize/restore through the bridge.
+  if (window.desktopAPI.timerShow)            api.timerShow            = (data) => window.desktopAPI.timerShow(data);
+  if (window.desktopAPI.timerHide)            api.timerHide            = ()     => window.desktopAPI.timerHide();
+  if (window.desktopAPI.timerPause)           api.timerPause           = ()     => window.desktopAPI.timerPause();
+  if (window.desktopAPI.timerResume)          api.timerResume          = ()     => window.desktopAPI.timerResume();
+  if (window.desktopAPI.onTimerStopped)       api.onTimerStopped       = (cb)   => window.desktopAPI.onTimerStopped(cb);
+  if (window.desktopAPI.onTimerPauseRequest)  api.onTimerPauseRequest  = (cb)   => window.desktopAPI.onTimerPauseRequest(cb);
+  if (window.desktopAPI.onTimerResumeRequest) api.onTimerResumeRequest = (cb)   => window.desktopAPI.onTimerResumeRequest(cb);
+  if (window.desktopAPI.minimize)             api.minimize             = ()     => window.desktopAPI.minimize();
+  if (window.desktopAPI.restore)              api.restore              = ()     => window.desktopAPI.restore();
 }
 
 // ── OAuth credentials (web) ─────────────────────────────────────────────────
@@ -4676,14 +4689,16 @@ function toggleTimer(id) {
     saveTasks();
   }
 
-  // Open the separate always-on-top timer window
-  api.timerShow({
-    taskName:   task.title,
-    baseLogged: task.timeLogged || 0,
-  });
-
-  if (settings.focusModeEnabled) showFocusOverlay(task);
-  else                            showInPageTimer(task.title, task.timeLogged || 0);
+  // Three UX modes:
+  //  - focus mode on (any platform): in-page overlay
+  //  - wrapped desktop, focus mode off: floating always-on-top window + minimize main
+  //  - web, focus mode off: in-page timer panel
+  const useFloatingTimer = !!window.desktopAPI && !settings.focusModeEnabled;
+  if (useFloatingTimer) {
+    api.timerShow({ taskName: task.title, baseLogged: task.timeLogged || 0 });
+  }
+  if (settings.focusModeEnabled)   showFocusOverlay(task);
+  else if (!useFloatingTimer)      showInPageTimer(task.title, task.timeLogged || 0);
   setFaviconRunning(true);
 
   // Start local tick for task card badge updates
@@ -4693,8 +4708,7 @@ function toggleTimer(id) {
   scheduleBreak();
   renderTasks();
 
-  // Minimize main window — timer window stays visible
-  api.minimize();
+  if (useFloatingTimer) api.minimize();
 }
 
 function pauseTimer() {
