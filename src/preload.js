@@ -1,5 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Phase 2 slice 1: when wrapping the web companion, the web's app.js
+// declares its own top-level `const api = {...}`, which collides with the
+// non-configurable `window.api` that contextBridge would otherwise expose
+// here. Skip the legacy `api` surface in that mode — the web app talks to
+// Google directly + uses `window.desktopAPI` for the bits that need a
+// privileged main-process call.
+const WRAP_WEB = process.env.TASKSPARK_USE_WEB === '1';
+
+if (!WRAP_WEB) {
 contextBridge.exposeInMainWorld('api', {
   // Window controls
   minimize: () => ipcRenderer.send('window-minimize'),
@@ -89,6 +98,7 @@ contextBridge.exposeInMainWorld('api', {
   driveWorkspacesSave: (data)   => ipcRenderer.invoke('drive-workspaces-save', data), // data includes spreadsheetId
   showConfigPicker:   (data)   => ipcRenderer.invoke('show-config-picker', data),
 });
+}
 
 // Phase 2 bridge for the wrapped web app. Slice 1 surface: a liveness ping,
 // the platform string, and the four OAuth primitives needed to make sign-in
