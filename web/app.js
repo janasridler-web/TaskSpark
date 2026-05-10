@@ -249,14 +249,23 @@ const api = {
 
 // Phase 2 slice 1: when wrapped by Electron, route OAuth through the desktop's
 // PKCE flow (system browser → localhost callback). Google rejects file://
-// origins, so the web's redirect-and-exchange path can't work here. The
-// startOAuth → onOauthCode → oauthExchange shape already matches what
-// preload.js exposes, so this is a one-for-one override.
+// origins, so the web's redirect-and-exchange path can't work here.
 if (typeof window !== 'undefined' && window.desktopAPI) {
   api.oauthStart    = ()     => window.desktopAPI.oauthStart();
   api.oauthExchange = (args) => window.desktopAPI.oauthExchange(args);
   api.oauthRefresh  = (args) => window.desktopAPI.oauthRefresh(args);
-  api.onOauthCode   = (cb)   => window.desktopAPI.onOauthCode(cb);
+  // The on-code listener registered later (next to startOAuth) is a
+  // stripped-down post-sign-in flow that doesn't load the TaskSpark-Config
+  // sheet or show the first-run welcome modal — so workspaces never appear
+  // for returning users on a fresh install. Side-step it: stash the code
+  // where auth.html would put it on the web, and reload. handleOAuthCallback()
+  // then runs the full web post-sign-in flow (workspace restore included).
+  api.onOauthCode = (_cb) => {
+    window.desktopAPI.onOauthCode(({ code }) => {
+      try { sessionStorage.setItem('oauth_code', code); } catch {}
+      location.reload();
+    });
+  };
 }
 
 // ── OAuth credentials (web) ─────────────────────────────────────────────────
