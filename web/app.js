@@ -144,6 +144,8 @@ function buildMorePopup() {
   if (!popup) return;
   const s = settings || {};
   const items = [];
+  const inboxCount = (tasks || []).filter(t => t.status === 'inbox' && !t.archived && !t.completed).length;
+  if (inboxCount > 0) items.push({ icon:'inbox', label:`Inbox (${inboxCount})`, run:() => { setView('inbox'); }});
   if (s.ideasEnabled !== false) items.push({ icon:'lightbulb', label:'Ideas', run:() => { setView('ideas'); }});
   if (s.winsEnabled  !== false) items.push({ icon:'star',      label:'Wins Board', run:() => { setView('wins'); }});
   if (items.length) items.push({ divider:true });
@@ -433,10 +435,10 @@ async function sheetsEnsureWeb({ accessToken, spreadsheetId }) {
 
 async function sheetsLoadWeb({ accessToken, spreadsheetId }) {
   const res = await sheetsRequest('GET',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AA10000')}`, accessToken);
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AD10000')}`, accessToken);
   const rows = res.values || [];
   return rows.map(r => {
-    while (r.length < 27) r.push('');
+    while (r.length < 30) r.push('');
     return {
       id: Number(r[0]) || Date.now(),
       title: r[1] || '',
@@ -465,13 +467,16 @@ async function sheetsLoadWeb({ accessToken, spreadsheetId }) {
       attachments: safeJSON(r[24], []),
       hideUntilDays: parseInt(r[25]) || 0,
       overdueAlert: r[26] === '1',
+      source: r[27] || '',
+      submittedBy: r[28] || '',
+      submittedAt: r[29] || '',
     };
   });
 }
 
 async function sheetsSaveWeb({ accessToken, spreadsheetId, tasks }) {
   await sheetsRequest('POST',
-    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AA10000')}:clear`, accessToken);
+    `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2:AD10000')}:clear`, accessToken);
   if (tasks.length) {
     const rows = tasks.map(t => [
       String(t.id), t.title, t.desc||'', t.priority||'medium', t.due||'',
@@ -490,6 +495,7 @@ async function sheetsSaveWeb({ accessToken, spreadsheetId, tasks }) {
       JSON.stringify(t.attachments||[]),
       String(t.hideUntilDays||0),
       t.overdueAlert ? '1' : '0',
+      t.source||'', t.submittedBy||'', t.submittedAt||'',
     ]);
     await sheetsRequest('PUT',
       `/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('Tasks!A2')}?valueInputOption=RAW`,
@@ -1103,6 +1109,19 @@ function fmtDate(d) {
   } catch { return d; }
 }
 
+function fmtRelative(iso) {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (!t) return '';
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 0) return 'just now';
+  if (sec < 60) return 'just now';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+  if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+  if (sec < 86400 * 7) return Math.floor(sec / 86400) + 'd ago';
+  return fmtDate(iso.slice(0, 10));
+}
+
 function fmtTime(t) {
   if (!t) return '';
   try {
@@ -1707,6 +1726,10 @@ function filterTasks() {
         !(task.desc||'').toLowerCase().includes(q) &&
         !(task.tags||[]).some(tg => tg.toLowerCase().includes(q))) return false;
     const v = currentView;
+    // Inbox tasks (external submissions awaiting triage) only appear in the
+    // Inbox view and the Archived view (if archived).
+    if (task.status === 'inbox' && v !== 'inbox' && v !== 'archived') return false;
+    if (v === 'inbox')           return !task.completed && !task.archived && task.status === 'inbox';
     if (v === 'all')             return !task.completed && !task.archived && !isDeferred(task);
     if (v === 'today')           return !task.completed && !task.archived && task.due === t && !isDeferred(task);
     if (v === 'upcoming')        {
@@ -1739,8 +1762,8 @@ function sortTasks(arr) {
   else if (s === 'due') copy.sort((a,b) => (a.due||'9999').localeCompare(b.due||'9999'));
   else if (s === 'priority') copy.sort((a,b) => (pmap[a.priority]||1)-(pmap[b.priority]||1));
   else if (s === 'alpha') copy.sort((a,b) => a.title.localeCompare(b.title));
-  else if (s === 'status-asc')  { const smap = {'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[a.status||'not-started']||0)-(smap[b.status||'not-started']||0)); }
-  else if (s === 'status-desc') { const smap = {'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[b.status||'not-started']||0)-(smap[a.status||'not-started']||0)); }
+  else if (s === 'status-asc')  { const smap = {'inbox':-1,'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[a.status||'not-started']||0)-(smap[b.status||'not-started']||0)); }
+  else if (s === 'status-desc') { const smap = {'inbox':-1,'not-started':0,'in-progress':1,'blocked':2,'on-hold':3,'done':4}; copy.sort((a,b) => (smap[b.status||'not-started']||0)-(smap[a.status||'not-started']||0)); }
   return copy;
 }
 
@@ -1778,18 +1801,22 @@ function renderTasks() {
   const filtered = sortTasks(filterTasks());
 
   if (!filtered.length) {
-    let msg, sub;
+    let msg, sub, iconName = 'check';
     if (currentView === 'completed') {
       msg = 'Nothing checked off yet';
       sub = 'Your wins will show up here as you finish tasks.';
     } else if (currentView === 'today') {
       msg = 'Nothing due today';
       sub = 'Enjoy the breathing room — or add something for today.';
+    } else if (currentView === 'inbox') {
+      msg = 'No new submissions';
+      sub = 'Tasks submitted via your external link will appear here ready to triage.';
+      iconName = 'inbox';
     } else {
       msg = 'All clear!';
       sub = 'Nothing on your plate. Add something when you\'re ready.';
     }
-    const html = `<div class="empty-state"><div class="empty-icon">${icon('check')}</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
+    const html = `<div class="empty-state"><div class="empty-icon">${icon(iconName)}</div><div class="empty-text">${msg}</div><div class="empty-sub">${sub}</div></div>`;
     if (html !== _lastTasksHTML) { list.innerHTML = html; _lastTasksHTML = html; }
     updateStats();
     return;
@@ -1890,6 +1917,13 @@ function taskCardHTML(task) {
 
   const ro = isReadOnly();
 
+  let submissionFooter = '';
+  if (task.status === 'inbox' && (task.submittedBy || task.submittedAt)) {
+    const who = task.submittedBy ? esc(task.submittedBy) : 'Anonymous';
+    const when = task.submittedAt ? esc(fmtRelative(task.submittedAt)) : '';
+    submissionFooter = `<div class="task-submission-meta">Submitted by ${who}${when ? ' · ' + when : ''}</div>`;
+  }
+
   return `
   <div class="${cardClass}" id="task-card-${task.id}">
     <div class="task-check-wrap">
@@ -1907,6 +1941,7 @@ function taskCardHTML(task) {
       </div>
       ${completionDetail}
       ${renderSubtasksHTML(task)}
+      ${submissionFooter}
     </div>
     ${ro ? '' : `<div class="task-actions">
       ${timerBtn}
@@ -1944,6 +1979,11 @@ function updateCounts() {
   document.getElementById('cnt-completed').textContent = tasks.filter(x => x.completed && !x.archived).length;
   const cntArchived = document.getElementById('cnt-archived');
   if (cntArchived) cntArchived.textContent = tasks.filter(x => x.archived).length;
+  const inboxCount = active.filter(x => x.status === 'inbox' && !x.archived).length;
+  const cntInbox = document.getElementById('cnt-inbox');
+  if (cntInbox) cntInbox.textContent = inboxCount;
+  const sidebarInbox = document.getElementById('sidebar-inbox');
+  if (sidebarInbox) sidebarInbox.style.display = (inboxCount > 0 || currentView === 'inbox') ? '' : 'none';
   document.getElementById('cnt-high').textContent      = active.filter(x => x.priority === 'high').length;
   document.getElementById('cnt-medium').textContent    = active.filter(x => x.priority === 'medium').length;
   document.getElementById('cnt-low').textContent       = active.filter(x => x.priority === 'low').length;
@@ -2199,7 +2239,7 @@ function setView(view, el) {
       tasksTabBtn.classList.add('active');
     }
   }
-  const titles = { all:'All Tasks', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', lists:'Lists', stats:'Stats', deferred:'Deferred', today:'Due Today', upcoming:'Upcoming', overdue:'Overdue', completed:'Completed', archived:'Archived',
+  const titles = { all:'All Tasks', inbox:'Inbox', kanban:'Kanban', ideas:'Ideas', wins:'Wins Board', lists:'Lists', stats:'Stats', deferred:'Deferred', today:'Due Today', upcoming:'Upcoming', overdue:'Overdue', completed:'Completed', archived:'Archived',
     'priority-high':'High Priority', 'priority-medium':'Medium Priority', 'priority-low':'Low Priority',
     'status-not-started':'Not Started', 'status-in-progress':'In Progress',
     'status-blocked':'Blocked', 'status-on-hold':'On Hold',

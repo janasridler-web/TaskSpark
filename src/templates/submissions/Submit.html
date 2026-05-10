@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <style>
+      :root {
+        --bg: #f5f6fa;
+        --card: #ffffff;
+        --text: #1a1d24;
+        --muted: #5b6470;
+        --line: #d2d6dc;
+        --brand: #5b5dd0;
+        --brand-text: #ffffff;
+        --ok-bg: #e3f5e1;
+        --ok-text: #1d5b16;
+        --err-bg: #fdecea;
+        --err-text: #6e1d17;
+      }
+      html, body { margin: 0; padding: 0; background: var(--bg); }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--text); line-height: 1.4; padding: 24px 16px 48px;
+      }
+      .card {
+        max-width: 540px; margin: 0 auto; background: var(--card);
+        border: 1px solid var(--line); border-radius: 10px; padding: 24px;
+      }
+      h1 { font-size: 1.4rem; margin: 0 0 4px; }
+      .subtitle { color: var(--muted); margin: 0 0 20px; font-size: 0.95rem; }
+      label { display: block; font-weight: 600; margin: 14px 0 6px; font-size: 0.95rem; }
+      input[type=text], input[type=date], textarea {
+        width: 100%; box-sizing: border-box; padding: 10px 12px;
+        border: 1px solid var(--line); border-radius: 6px;
+        font-size: 1rem; background: #fff; color: var(--text);
+        font-family: inherit;
+      }
+      textarea { min-height: 96px; resize: vertical; }
+      input:focus, textarea:focus { outline: 2px solid var(--brand); outline-offset: -1px; border-color: var(--brand); }
+      .hint { color: var(--muted); font-size: 0.8rem; margin: 4px 0 0; }
+      button {
+        margin-top: 22px; background: var(--brand); color: var(--brand-text);
+        border: 0; padding: 12px 22px; font-size: 1rem; font-weight: 600;
+        border-radius: 6px; cursor: pointer; font-family: inherit;
+      }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .msg { margin-top: 18px; padding: 12px 14px; border-radius: 6px; font-size: 0.95rem; }
+      .ok { background: var(--ok-bg); color: var(--ok-text); }
+      .err { background: var(--err-bg); color: var(--err-text); }
+      .footer { text-align: center; color: var(--muted); font-size: 0.78rem; margin-top: 22px; }
+      .footer a { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Submit a task</h1>
+      <p class="subtitle">to <?= workspaceName ?></p>
+
+      <form id="f" autocomplete="off" novalidate>
+        <label for="title">Task title</label>
+        <input type="text" id="title" name="title" required maxlength="200">
+
+        <label for="desc">Description <span class="hint" style="font-weight:normal">(optional)</span></label>
+        <textarea id="desc" name="desc" maxlength="2000"></textarea>
+
+        <label for="from">Your name <span class="hint" style="font-weight:normal">(optional)</span></label>
+        <input type="text" id="from" name="from" maxlength="100" value="<?= fromName ?>" autocomplete="name">
+
+        <label for="due">Due date <span class="hint" style="font-weight:normal">(optional)</span></label>
+        <input type="date" id="due" name="due">
+
+        <button type="submit" id="b">Submit task</button>
+        <div id="msg" class="msg" style="display:none"></div>
+      </form>
+    </div>
+
+    <p class="footer">Powered by <a href="https://taskspark.tech" target="_blank" rel="noopener">TaskSpark</a></p>
+
+    <script>
+      (function () {
+        var f = document.getElementById('f');
+        var b = document.getElementById('b');
+        var msg = document.getElementById('msg');
+        var title = document.getElementById('title');
+        var desc = document.getElementById('desc');
+        var from = document.getElementById('from');
+        var due = document.getElementById('due');
+
+        function show(kind, text) {
+          msg.className = 'msg ' + kind;
+          msg.textContent = text;
+          msg.style.display = 'block';
+        }
+
+        function hide() {
+          msg.style.display = 'none';
+          msg.textContent = '';
+          msg.className = 'msg';
+        }
+
+        f.addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          hide();
+          if (!title.value.trim()) {
+            show('err', 'Please enter a task title.');
+            title.focus();
+            return;
+          }
+          b.disabled = true;
+          b.textContent = 'Submitting…';
+
+          google.script.run
+            .withSuccessHandler(function (res) {
+              if (res && res.ok) {
+                show('ok', 'Thanks — your task was submitted.');
+                f.reset();
+                b.disabled = false;
+                b.textContent = 'Submit another';
+              } else {
+                show('err', (res && res.error) || 'Something went wrong. Please try again.');
+                b.disabled = false;
+                b.textContent = 'Submit task';
+              }
+            })
+            .withFailureHandler(function (err) {
+              show('err', 'Could not submit — please try again. (' + (err && err.message ? err.message : 'network error') + ')');
+              b.disabled = false;
+              b.textContent = 'Submit task';
+            })
+            .submitTask({
+              title: title.value,
+              desc: desc.value,
+              from: from.value,
+              due: due.value
+            });
+        });
+      })();
+    </script>
+  </body>
+</html>

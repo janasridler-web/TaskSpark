@@ -1099,6 +1099,8 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
 .status-blocked{background:var(--red-l);color:var(--red)}
 .status-on-hold{background:var(--amber-l);color:var(--amber)}
 .status-done{background:var(--accent-l);color:var(--accent)}
+.status-inbox{background:#ede4ff;color:#6e42c1}
+.task-submission-meta{font-size:11px;color:var(--text3);margin-top:6px;font-style:italic}
 .badge-energy{font-size:11px;padding:2px 7px;border-radius:20px;font-weight:600;white-space:nowrap}
 .energy-high{background:#fde8e8;color:#c0392b}
 .energy-medium{background:var(--amber-l);color:var(--amber)}
@@ -1369,6 +1371,7 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
 <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
 <symbol id="icon-alert-triangle" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
 <symbol id="icon-archive" viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></symbol>
+<symbol id="icon-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
 <symbol id="icon-bar-chart-3" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
 <symbol id="icon-lightbulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14a4 4 0 0 0 1.41-3 4.5 4.5 0 1 0-9 0 4 4 0 0 0 1.41 3"/></symbol>
 <symbol id="icon-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
@@ -1502,6 +1505,7 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
       <div class="sidebar-divider"></div>
       <div class="sidebar-section-label">Tasks</div>
       <div class="sidebar-item active" data-view="all" onclick="setView('all',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-menu"/></svg></span>All Tasks<span class="si-count" id="cnt-all">0</span></div>
+      <div class="sidebar-item" data-view="inbox" id="sidebar-inbox" onclick="setView('inbox',this)" style="display:none"><span class="si-icon" style="color:#6e42c1"><svg class="lc-icon" aria-hidden="true"><use href="#icon-inbox"/></svg></span>Inbox<span class="si-count" id="cnt-inbox">0</span></div>
       <div class="sidebar-item" data-view="today" onclick="setView('today',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-clock"/></svg></span>Due Today<span class="si-count" id="cnt-today">0</span></div>
       <div class="sidebar-item" data-view="overdue" onclick="setView('overdue',this)"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-alert-triangle"/></svg></span>Overdue<span class="si-count" id="cnt-overdue">0</span></div>
       <div class="sidebar-item" data-view="deferred" id="sidebar-deferred" onclick="setView('deferred',this)" style="display:none"><span class="si-icon"><svg class="lc-icon" aria-hidden="true"><use href="#icon-clock"/></svg></span>Deferred<span class="si-count" id="cnt-deferred">0</span></div>
@@ -1741,6 +1745,7 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
       <div class="form-group" id="status-form-group">
         <label class="form-label">Status</label>
         <select class="form-input" id="tm-status">
+          <option value="inbox" hidden>Inbox</option>
           <option value="not-started">Not Started</option>
           <option value="in-progress">In Progress</option>
           <option value="blocked">Blocked</option>
@@ -2935,6 +2940,20 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
         <button class="btn-secondary" onclick="closeAddSharedWorkspaceModal()">Cancel</button>
         <button class="btn-primary" onclick="confirmAddSharedWorkspace()">Connect</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ── External Submissions Wizard ──────────────────────────────────── -->
+  <div class="modal-overlay" id="ws-submissions-modal-overlay" onclick="closeModalOutside(event,'ws-submissions-modal-overlay')">
+    <div class="modal" style="max-width:560px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="modal-title" style="margin:0">Set up external submissions</div>
+        <button onclick="closeSubmissionsWizard()" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
+      </div>
+      <div id="ws-sub-step-indicator" style="font-size:12px;color:var(--text3);margin-bottom:14px"></div>
+      <div id="ws-sub-step-body" style="font-size:14px;line-height:1.55;color:var(--text2)"></div>
+      <div id="ws-sub-status" style="font-size:12px;min-height:18px;margin-top:10px"></div>
+      <div class="modal-footer" id="ws-sub-footer"></div>
     </div>
   </div>
 
