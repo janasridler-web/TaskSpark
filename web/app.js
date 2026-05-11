@@ -1306,7 +1306,18 @@ function applyTheme(mode) {
   document.documentElement.setAttribute('data-theme', mode);
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) btn.textContent = mode === 'dark' ? 'Light mode' : 'Dark mode';
-  if (window.desktopAPI?.setTitleBarTheme) window.desktopAPI.setTitleBarTheme(mode);
+  syncTitleBarToAccent();
+}
+
+// Read the resolved --accent + --accent-text from CSS and push to the
+// wrapped desktop's titleBarOverlay so the chrome buttons match whatever
+// accent + theme the user has on. Cheap to call; no-op if not wrapped.
+function syncTitleBarToAccent() {
+  if (!window.desktopAPI?.setTitleBarTheme) return;
+  const styles = getComputedStyle(document.documentElement);
+  const color = styles.getPropertyValue('--accent').trim() || '#f0ede8';
+  const symbolColor = styles.getPropertyValue('--accent-text').trim() || '#ffffff';
+  window.desktopAPI.setTitleBarTheme({ color, symbolColor });
 }
 
 const ACCENT_NAMES = {
@@ -1326,6 +1337,7 @@ function applyAccentTheme(accent) {
   });
   const nameEl = document.getElementById('colour-theme-name');
   if (nameEl) nameEl.textContent = ACCENT_NAMES[accent || 'forest'] || '';
+  syncTitleBarToAccent();
 }
 
 function setAccentTheme(accent, btn) {

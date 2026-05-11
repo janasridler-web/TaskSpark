@@ -167,10 +167,11 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   loadCache:  ()      => ipcRenderer.invoke('cache-load'),
   saveCache:  (tasks) => ipcRenderer.invoke('cache-save', tasks),
   getVersion: ()      => ipcRenderer.invoke('get-version'),
-  // Re-tint the Windows titleBarOverlay buttons when the user toggles
-  // dark/light mode. Renderer just sends 'light' or 'dark'; main owns the
-  // colour palette so the renderer stays decoupled from window chrome.
-  setTitleBarTheme: (mode) => ipcRenderer.send('titlebar-theme', mode),
+  // Re-tint the Windows titleBarOverlay buttons. Renderer reads the
+  // resolved --accent and --accent-text CSS variables (which vary by
+  // light/dark theme AND chosen accent) and passes them through; main
+  // just applies. Pass null/empty to clear back to defaults.
+  setTitleBarTheme: (colors) => ipcRenderer.send('titlebar-theme', colors),
   // External submissions wizard (porting from V4.1.1 desktop). Pure web
   // has no way to load Apps Script templates or verify a deployment URL,
   // so the feature is gated on window.desktopAPI in the renderer — these

@@ -267,13 +267,15 @@ ipcMain.on('window-maximize', () => {
 ipcMain.on('window-close', () => mainWindow.close());
 
 // Re-tint the Windows titleBarOverlay when the wrapped renderer flips
-// theme. setTitleBarOverlay throws on platforms that don't support it
-// (mac, Linux without overlay) — swallow.
-ipcMain.on('titlebar-theme', (_, mode) => {
-  if (!mainWindow) return;
-  const palette = mode === 'dark'
-    ? { color: '#141210', symbolColor: '#e0dcd4' }
-    : { color: '#f0ede8', symbolColor: '#1a1814' };
+// theme or accent. Renderer passes the resolved --accent / --accent-text
+// CSS values; main just applies. setTitleBarOverlay throws on platforms
+// that don't support it (mac, Linux without overlay) — swallow.
+ipcMain.on('titlebar-theme', (_, colors) => {
+  if (!mainWindow || !colors) return;
+  const palette = {
+    color: colors.color || '#f0ede8',
+    symbolColor: colors.symbolColor || '#1a1814',
+  };
   try { mainWindow.setTitleBarOverlay(palette); } catch {}
 });
 

@@ -47,7 +47,7 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
    top for window dragging that matches the app background — the OS
    buttons sit at the right edge in their own ~150px area. */
 body.taskspark-wrapped{padding-top:30px}
-body.taskspark-wrapped::before{content:'';position:fixed;top:0;left:0;right:150px;height:30px;background:var(--bg);-webkit-app-region:drag;z-index:1100}
+body.taskspark-wrapped::before{content:'';position:fixed;top:0;left:0;right:150px;height:30px;background:var(--accent);-webkit-app-region:drag;z-index:1100}
 /* Task-completion celebration — toggleable from Settings → Appearance */
 @keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
 @keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
