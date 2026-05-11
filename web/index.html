@@ -43,11 +43,21 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:15px;background:var(--bg);color:var(--text)}
 /* Phase 2 wrapped Electron: native title bar replaced with Windows
-   titleBarOverlay (handles min/max/close). Reserve a 30px strip at the
-   top for window dragging that matches the app background — the OS
-   buttons sit at the right edge in their own ~150px area. */
-body.taskspark-wrapped{padding-top:30px}
-body.taskspark-wrapped::before{content:'';position:fixed;top:0;left:0;right:150px;height:30px;background:var(--accent);-webkit-app-region:drag;z-index:1100}
+   titleBarOverlay (handles min/max/close). The env(titlebar-area-*) CSS
+   variables expose the exact dimensions the OS uses, so the spacer
+   covers the overlay area with no gap and no overlap with the buttons. */
+body.taskspark-wrapped{padding-top:env(titlebar-area-height, 30px)}
+body.taskspark-wrapped::before{
+  content:'';
+  position:fixed;
+  top:env(titlebar-area-y, 0);
+  left:env(titlebar-area-x, 0);
+  width:env(titlebar-area-width, calc(100% - 150px));
+  height:env(titlebar-area-height, 30px);
+  background:var(--accent);
+  -webkit-app-region:drag;
+  z-index:1100;
+}
 /* Task-completion celebration — toggleable from Settings → Appearance */
 @keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
 @keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
