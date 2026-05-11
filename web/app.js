@@ -930,13 +930,16 @@ async function handleOAuthCallback() {
         }
         if (existingCfg.settings) {
           settings = { ...DEFAULT_SETTINGS, ...existingCfg.settings };
-          applySettings();
         }
         if (existingCfg.onboardingChecklist) {
           onboardingChecklist = { ...onboardingChecklist, ...existingCfg.onboardingChecklist };
         }
         if (existingCfg.configSheetId) configSheetId = existingCfg.configSheetId;
       }
+      // Always apply — even with no saved settings, the defaults (e.g.
+      // stateColorsEnabled: true) need to be reflected on the <body> for
+      // the CSS rules to take effect.
+      applySettings();
       document.getElementById('auth-status').textContent = 'Looking for your spreadsheet…';
       const existingSheet = await api.driveFindSheet({ accessToken });
       let isBrandNewUser = false;
