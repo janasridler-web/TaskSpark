@@ -7204,13 +7204,15 @@ async function loadLists() {
   if (offlineMode || !accessToken || !spreadsheetId) {
     const cfg = await api.loadConfig();
     if (cfg && Array.isArray(cfg.lists)) lists = cfg.lists;
-    return;
+  } else {
+    try {
+      await ensureToken();
+      const loaded = await api.listsLoad({ accessToken, spreadsheetId });
+      if (Array.isArray(loaded)) lists = loaded;
+    } catch (e) { console.warn('Lists load failed:', e); }
   }
-  try {
-    await ensureToken();
-    const loaded = await api.listsLoad({ accessToken, spreadsheetId });
-    if (Array.isArray(loaded)) lists = loaded;
-  } catch (e) { console.warn('Lists load failed:', e); }
+  const cntEl = document.getElementById('cnt-lists');
+  if (cntEl) cntEl.textContent = lists.length;
 }
 
 async function saveLists() {
@@ -8166,17 +8168,19 @@ async function prefetchAllWorkspaces() {
   for (const ws of others) {
     try {
       await ensureToken();
-      const [wsTasks, wsHabits, wsIdeas, wsWins] = await Promise.all([
+      const [wsTasks, wsHabits, wsIdeas, wsWins, wsLists] = await Promise.all([
         api.sheetsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.habitsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.ideasLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.winsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+        api.listsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
       ]);
       _wsCache[ws.id] = {
         tasks: wsTasks || [],
         habits: wsHabits || [],
         ideas: wsIdeas || [],
         wins: wsWins || [],
+        lists: wsLists || [],
       };
     } catch (e) {
       console.warn(`[prefetch] Failed for workspace ${ws.name}:`, e.message);
@@ -8315,6 +8319,7 @@ async function switchWorkspace(id) {
       habits: [...habits],
       ideas: [...ideas],
       wins: [...wins],
+      lists: [...lists],
     };
 
     activeWorkspaceId = id;
@@ -8338,6 +8343,7 @@ async function switchWorkspace(id) {
       habits  = _wsCache[id].habits  || [];
       ideas   = _wsCache[id].ideas   || [];
       wins    = _wsCache[id].wins    || [];
+      lists   = _wsCache[id].lists   || [];
       await api.saveCache(tasks);
       renderAll();
       updateHabitsSidebar();
@@ -8345,6 +8351,8 @@ async function switchWorkspace(id) {
       if (cntIdeas) cntIdeas.textContent = ideas.length;
       const cntWins = document.getElementById('cnt-wins');
       if (cntWins) cntWins.textContent = wins.length;
+      const cntLists = document.getElementById('cnt-lists');
+      if (cntLists) cntLists.textContent = lists.length;
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
       setTimeout(async () => {
@@ -8358,7 +8366,7 @@ async function switchWorkspace(id) {
             renderAll();
           }
           await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-          _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+          _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists] };
           setSyncStatus('ok');
         } catch (syncErr) {
           // Keep showing cached data; just flag the sync error.
@@ -8394,7 +8402,7 @@ async function switchWorkspace(id) {
       renderAll();
       setSyncStatus('ok');
       await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists] };
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
     }
