@@ -1127,6 +1127,8 @@ const DEFAULT_SETTINGS = {
   whatNowEnabled:    true,
   completionDialog:  true,
   celebrationEnabled: true,
+  overdueAlertEnabled: false,
+  overdueAlertMode:  'all',
   soundEnabled:      true,
   soundFile:         null,  // null = use bundled default
   moodEnabled:       true,
@@ -1482,12 +1484,48 @@ async function runPostInitWireup() {
   checkStartOfDay();
   scheduleEod();
   _scheduleMidnight();
+  setTimeout(checkOverdueAlerts, 500);
 }
 
 // Re-render and re-check overdue / start-of-day state when the date rolls
 // over. Without this the task list keeps showing "today" badges on what's
 // actually yesterday until the user does something that triggers a render.
 let _midnightTimer = null;
+// ── Overdue alerts ────────────────────────────────────────────────────────
+// Once-per-day blocking modal listing tasks whose due date has passed.
+// Gated on settings.overdueAlertEnabled; in 'per-task' mode only tasks
+// flagged via the modal checkbox are listed.
+function checkOverdueAlerts() {
+  if (!settings.overdueAlertEnabled) return;
+  const t = todayStr();
+  try {
+    if (localStorage.getItem('taskspark_overdue_alert_shown') === t) return;
+  } catch {}
+  let overdue = tasks.filter(task => !task.completed && !task.archived && task.due && task.due < t);
+  if (settings.overdueAlertMode === 'per-task') overdue = overdue.filter(task => task.overdueAlert);
+  if (!overdue.length) return;
+  const list = document.getElementById('overdue-alert-list');
+  if (!list) return;
+  list.innerHTML = overdue.map(task =>
+    `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="font-weight:600;color:var(--text)">${esc(task.title)}</div>
+      <div style="font-size:12px;color:var(--red);margin-top:2px">Due: ${fmtDate(task.due)}</div>
+    </div>`
+  ).join('');
+  document.getElementById('overdue-alert-overlay').classList.add('open');
+  try { localStorage.setItem('taskspark_overdue_alert_shown', t); } catch {}
+}
+
+function acknowledgeOverdueAlert() {
+  document.getElementById('overdue-alert-overlay').classList.remove('open');
+}
+
+function toggleOverdueAlertSub() {
+  const enabled = document.getElementById('set-overdue-alert-enabled')?.checked;
+  const sub = document.getElementById('overdue-alert-sub');
+  if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
 // Brief card-pop + sparkle when a task is completed, gated on the
 // celebrationEnabled setting. The callback runs after the animation so
 // saveTasks/renderAll can swap the card out without cutting the animation.
@@ -2741,6 +2779,8 @@ function openTaskModal(id = null) {
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
+    const oaCb = document.getElementById('tm-overdue-alert');
+    if (oaCb) oaCb.checked = task.overdueAlert === true;
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -2755,6 +2795,8 @@ function openTaskModal(id = null) {
     const clearBtnNewT = document.getElementById('tm-due-time-clear');
     if (clearBtnNewT) clearBtnNewT.style.display = 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
+    const oaCbNew = document.getElementById('tm-overdue-alert');
+    if (oaCbNew) oaCbNew.checked = false;
   }
   renderModalAttachments();
 
@@ -2794,6 +2836,7 @@ function saveTask() {
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
     hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
+    overdueAlert: document.getElementById('tm-overdue-alert')?.checked || false,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -3718,6 +3761,8 @@ function openTaskModal(id = null) {
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
+    const oaCb = document.getElementById('tm-overdue-alert');
+    if (oaCb) oaCb.checked = task.overdueAlert === true;
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -3732,6 +3777,8 @@ function openTaskModal(id = null) {
     const clearBtnNewT = document.getElementById('tm-due-time-clear');
     if (clearBtnNewT) clearBtnNewT.style.display = 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
+    const oaCbNew = document.getElementById('tm-overdue-alert');
+    if (oaCbNew) oaCbNew.checked = false;
   }
 
   renderModalAttachments();
@@ -3772,6 +3819,7 @@ function saveTask() {
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
     hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
+    overdueAlert: document.getElementById('tm-overdue-alert')?.checked || false,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -5196,6 +5244,9 @@ function applySettings() {
   if (deferredSidebar) deferredSidebar.style.display = s.deferEnabled ? '' : 'none';
   const hideUntilGroup = document.getElementById('hide-until-form-group');
   if (hideUntilGroup) hideUntilGroup.style.display = (s.deferEnabled && !!modalDue) ? '' : 'none';
+  // Per-task overdue-alert checkbox only shown in 'per-task' mode
+  const overdueAlertFG = document.getElementById('overdue-alert-form-group');
+  if (overdueAlertFG) overdueAlertFG.style.display = (s.overdueAlertEnabled && s.overdueAlertMode === 'per-task') ? '' : 'none';
   // Defer setting row depends on dueEnabled — hidden when due dates are off
   const deferSettingRow = document.getElementById('defer-setting-row');
   if (deferSettingRow) deferSettingRow.style.display = s.dueEnabled !== false ? '' : 'none';
@@ -5372,6 +5423,9 @@ async function openSettings() {
   if (document.getElementById('set-whatnow'))        document.getElementById('set-whatnow').checked        = s.whatNowEnabled;
   if (document.getElementById('set-completion'))     document.getElementById('set-completion').checked     = s.completionDialog;
   if (document.getElementById('set-celebration-enabled')) document.getElementById('set-celebration-enabled').checked = s.celebrationEnabled !== false;
+  if (document.getElementById('set-overdue-alert-enabled')) document.getElementById('set-overdue-alert-enabled').checked = s.overdueAlertEnabled === true;
+  if (document.getElementById('set-overdue-alert-mode'))    document.getElementById('set-overdue-alert-mode').value     = s.overdueAlertMode || 'all';
+  toggleOverdueAlertSub();
   if (document.getElementById('set-sound-enabled'))  document.getElementById('set-sound-enabled').checked  = s.soundEnabled;
   if (document.getElementById('set-mood-enabled'))   document.getElementById('set-mood-enabled').checked   = s.moodEnabled;
   if (document.getElementById('set-changelog-enabled')) document.getElementById('set-changelog-enabled').checked = s.changelogEnabled !== false;
@@ -5735,6 +5789,8 @@ function saveSettingsFromModal() {
   settings.whatNowEnabled    = _c('set-whatnow', settings.whatNowEnabled);
   settings.completionDialog  = _c('set-completion', settings.completionDialog);
   settings.celebrationEnabled = _c('set-celebration-enabled', settings.celebrationEnabled);
+  if (document.getElementById('set-overdue-alert-enabled')) settings.overdueAlertEnabled = document.getElementById('set-overdue-alert-enabled').checked;
+  if (document.getElementById('set-overdue-alert-mode'))    settings.overdueAlertMode    = document.getElementById('set-overdue-alert-mode').value;
   settings.soundEnabled      = _c('set-sound-enabled', settings.soundEnabled);
   settings.moodEnabled       = _c('set-mood-enabled', settings.moodEnabled);
   settings.changelogEnabled  = _c('set-changelog-enabled', settings.changelogEnabled);

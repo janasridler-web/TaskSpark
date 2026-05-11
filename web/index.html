@@ -463,6 +463,10 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
 .setting-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
 .setting-row:last-child{border-bottom:none}
 .setting-label{font-size:14px;font-weight:500;color:var(--text)}
+.setting-sub-group{background:var(--surface2);border-radius:8px;padding:4px 12px;margin:4px 0 6px}
+.setting-sub-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 0 2px}
+.setting-row-sub{padding:5px 0;border-bottom:none}
+.setting-row-sub .setting-label{font-size:13px}
 .setting-desc{font-size:12px;color:var(--text3);margin-top:2px}
 .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
@@ -750,6 +754,10 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
 .setting-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
 .setting-row:last-child{border-bottom:none}
 .setting-label{font-size:14px;font-weight:500;color:var(--text)}
+.setting-sub-group{background:var(--surface2);border-radius:8px;padding:4px 12px;margin:4px 0 6px}
+.setting-sub-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 0 2px}
+.setting-row-sub{padding:5px 0;border-bottom:none}
+.setting-row-sub .setting-label{font-size:13px}
 .setting-desc{font-size:12px;color:var(--text3);margin-top:2px}
 .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
@@ -2193,6 +2201,12 @@ body.mobile-essentials #task-list-container{padding-top:0}
       <label class="form-label">Hide until <span style="font-weight:400;color:var(--text3)">(days before due date)</span></label>
       <input class="form-input" id="tm-hide-until" type="number" min="1" placeholder="e.g. 3">
     </div>
+    <div class="form-group" id="overdue-alert-form-group" style="display:none">
+      <label class="form-label" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="tm-overdue-alert" style="width:16px;height:16px;accent-color:var(--accent)">
+        Flag for overdue alert
+      </label>
+    </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Priority</label>
@@ -2473,6 +2487,20 @@ body.mobile-essentials #task-list-container{padding-top:0}
             <div class="setting-row" id="defer-setting-row">
               <div><div class="setting-label">Hide-until (Defer)</div><div class="setting-desc">Hide tasks until N days before their due date — adds a Deferred view in the sidebar</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-defer-enabled" onchange="settings.deferEnabled = this.checked; toggleDeferSidebarItem(); renderAll()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Overdue task alerts</div><div class="setting-desc">Show a blocking warning when tasks become overdue</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-overdue-alert-enabled" onchange="saveSettingsFromModal();toggleOverdueAlertSub();applySettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-sub-group" id="overdue-alert-sub" style="display:none">
+              <div class="setting-sub-label">Alert me for</div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Alert mode</div></div>
+                <select id="set-overdue-alert-mode" class="form-input" onchange="saveSettingsFromModal();applySettings()" style="width:auto;font-size:12px;padding:4px 8px;height:auto">
+                  <option value="all">All overdue tasks</option>
+                  <option value="per-task">Flagged tasks only</option>
+                </select>
+              </div>
             </div>
             <div class="setting-row">
               <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
@@ -3674,6 +3702,20 @@ function filterByPriority(p) {
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeAddSharedWorkspaceModal()">Cancel</button>
         <button class="btn-primary" onclick="confirmAddSharedWorkspace()">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overdue alert modal -->
+  <div class="modal-overlay" id="overdue-alert-overlay">
+    <div class="modal modal-sm" id="overdue-alert-modal">
+      <div style="background:var(--red);margin:-28px -28px 20px;padding:18px 24px;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+        <div style="font-size:18px;font-weight:700;color:#fff">⚠ Overdue Tasks</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.7);margin-top:3px">These tasks need your attention</div>
+      </div>
+      <div id="overdue-alert-list" style="max-height:320px;overflow-y:auto"></div>
+      <div class="modal-footer">
+        <button class="btn-primary" onclick="acknowledgeOverdueAlert()">Acknowledge</button>
       </div>
     </div>
   </div>
