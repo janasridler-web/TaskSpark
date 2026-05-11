@@ -57,6 +57,7 @@ _Empty._
 - [ ] **E5 — File attachments in external submissions.** Submitter attaches a file; the Apps Script writes it to a `TaskSpark Submissions` Drive folder under the owner's account and stores the file ID on the task.
 - [ ] **E6 — Bulk triage actions in Inbox view.** Multi-select inbox tasks and assign status/tags/priority in one go.
 - [ ] **E7 — Inbox-as-Kanban-column.** Optionally show an Inbox column on the kanban board for drag-to-triage. v1 keeps Inbox as a dedicated sidebar view only.
+- [ ] **E8 — Submission setup UI for pure-web users.** The wizard ported in Phase 2 slice 10 (`openSubmissionsWizardFor` and friends in `web/app.js`) is gated on `window.desktopAPI`, so users at `app.taskspark.tech` still can't set up external submissions — only the wrapped desktop can. The three backing IPCs (`submissionsLoadTemplate`, `submissionsVerifyUrl`, `submissionsEnsureSchema`) need web-side equivalents: the templates can be served from a static path under `web/templates/submissions/`; URL verification needs a small CORS-safe proxy (Cloudflare Worker is the obvious fit) since browsers can't fetch the Apps Script `/exec` endpoint cross-origin from `app.taskspark.tech`. The schema migration already runs against the Google Sheets REST API, so that part is portable. Once those exist, drop the `if (window.desktopAPI)` gate in `renderManageWorkspacesList`.
 
 ---
 
