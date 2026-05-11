@@ -42,6 +42,12 @@
 /* ── Reset & base ──────────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:15px;background:var(--bg);color:var(--text)}
+/* Phase 2 wrapped Electron: native title bar replaced with Windows
+   titleBarOverlay (handles min/max/close). Reserve a 30px strip at the
+   top for window dragging that matches the app background — the OS
+   buttons sit at the right edge in their own ~150px area. */
+body.taskspark-wrapped{padding-top:30px}
+body.taskspark-wrapped::before{content:'';position:fixed;top:0;left:0;right:150px;height:30px;background:var(--bg);-webkit-app-region:drag;z-index:1100}
 
 /* ── Lucide icons (ISC license) ────────────────────────────────────────────── */
 .lc-icon{width:1em;height:1em;vertical-align:-0.125em;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}

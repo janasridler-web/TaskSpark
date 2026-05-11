@@ -251,6 +251,14 @@ const api = {
 // PKCE flow (system browser → localhost callback). Google rejects file://
 // origins, so the web's redirect-and-exchange path can't work here.
 if (typeof window !== 'undefined' && window.desktopAPI) {
+  // Marker class for wrapped-Electron-only CSS (reserves the
+  // titleBarOverlay drag strip at the top of the body).
+  if (document.body) {
+    document.body.classList.add('taskspark-wrapped');
+  } else {
+    document.addEventListener('DOMContentLoaded', () =>
+      document.body.classList.add('taskspark-wrapped'));
+  }
   api.oauthStart    = ()     => window.desktopAPI.oauthStart();
   api.oauthExchange = (args) => window.desktopAPI.oauthExchange(args);
   api.oauthRefresh  = (args) => window.desktopAPI.oauthRefresh(args);

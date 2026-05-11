@@ -97,20 +97,27 @@ function createWindow() {
   const savedState = getWindowState();
   const bounds = savedState?.bounds || { width: 1080, height: 720 };
   // Phase 2 slice 1: TASKSPARK_USE_WEB=1 loads the web companion's HTML
-  // instead of src/index.html. The web app has no custom title bar, so use
-  // the native OS frame in that mode (otherwise the window has no chrome
-  // and can't be moved or closed).
+  // instead of src/index.html. The web app has no custom title bar — use
+  // Windows' titleBarOverlay so we get native min/max/close buttons in a
+  // colour that matches the app, and hide the default Electron menu strip
+  // (File/Edit/View/Window/Help) which otherwise sits below the title bar.
   const useWeb = process.env.TASKSPARK_USE_WEB === '1';
   const indexPath = useWeb
     ? path.join(__dirname, '..', 'web', 'index.html')
     : path.join(__dirname, 'index.html');
+  if (useWeb) Menu.setApplicationMenu(null);
 
   mainWindow = new BrowserWindow({
     width: bounds.width, height: bounds.height,
     x: bounds.x, y: bounds.y,
     minWidth: 820, minHeight: 560,
-    frame: useWeb ? true : false,
-    titleBarStyle: useWeb ? 'default' : 'hidden',
+    frame: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: useWeb ? {
+      color: '#f0ede8',
+      symbolColor: '#1a1814',
+      height: 30,
+    } : false,
     backgroundColor: '#f0ede8',
     icon: path.join(__dirname, '../assets/taskspark.ico'),
     webPreferences: {
