@@ -167,4 +167,8 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   loadCache:  ()      => ipcRenderer.invoke('cache-load'),
   saveCache:  (tasks) => ipcRenderer.invoke('cache-save', tasks),
   getVersion: ()      => ipcRenderer.invoke('get-version'),
+  // Re-tint the Windows titleBarOverlay buttons when the user toggles
+  // dark/light mode. Renderer just sends 'light' or 'dark'; main owns the
+  // colour palette so the renderer stays decoupled from window chrome.
+  setTitleBarTheme: (mode) => ipcRenderer.send('titlebar-theme', mode),
 });

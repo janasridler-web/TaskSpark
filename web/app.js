@@ -1303,6 +1303,7 @@ function applyTheme(mode) {
   document.documentElement.setAttribute('data-theme', mode);
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) btn.textContent = mode === 'dark' ? 'Light mode' : 'Dark mode';
+  if (window.desktopAPI?.setTitleBarTheme) window.desktopAPI.setTitleBarTheme(mode);
 }
 
 const ACCENT_NAMES = {
