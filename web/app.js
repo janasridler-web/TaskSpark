@@ -8692,6 +8692,17 @@ function renderManageWorkspacesList() {
     const sharedBadge = w.shared ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface2);color:var(--text3);border:1px solid var(--border);margin-right:4px">⇄ Shared</span>` : '';
     const readOnlyBadge = w.readOnly ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface2);color:var(--amber);border:1px solid var(--amber);margin-right:4px">View only</span>` : '';
     const shareNudge = !w.shared ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">To share: open the sheet via <strong>Open Sheet</strong>, then share it via Google Drive.</div>` : '';
+    // External submissions row — only available in the wrapped Electron app
+    // (pure web has no way to load Apps Script templates or verify the
+    // deployment URL without the desktop bridge).
+    let subRow = '';
+    if (window.desktopAPI) {
+      subRow = w.readOnly
+        ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic">External submissions unavailable in view-only workspaces</div>`
+        : (w.submissionUrl
+            ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">External submissions on · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="copySubmissionUrl('${_subEscJs(w.id)}')">Copy link</a> · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openSubmissionsWizardFor('${_subEscJs(w.id)}')">Manage</a> · <a style="color:var(--red);cursor:pointer;text-decoration:underline" onclick="resetSubmissionsForWorkspace('${_subEscJs(w.id)}')">Reset</a></div>`
+            : `<div style="font-size:11px;color:var(--text3);margin-top:4px"><a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openSubmissionsWizardFor('${_subEscJs(w.id)}')">Set up external submissions →</a></div>`);
+    }
     return `<div class="ws-manage-item" data-id="${w.id}">
       <span class="ws-manage-dot" style="background:${c.hex}"></span>
       <div style="flex:1;min-width:0">
@@ -8701,6 +8712,7 @@ function renderManageWorkspacesList() {
           ${isActive ? '<span class="ws-manage-badge">Active</span>' : ''}
         </div>
         ${shareNudge}
+        ${subRow}
       </div>
       <div class="ws-manage-actions">
         <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openRenameWorkspace('${w.id}')">Rename</button>
@@ -8708,6 +8720,234 @@ function renderManageWorkspacesList() {
       </div>
     </div>`;
   }).join('');
+}
+
+// ── External Submissions wizard ────────────────────────────────────────────
+// Ported from src/app.js. Only invocable in the wrapped desktop (the
+// renderManageWorkspacesList row gates it on window.desktopAPI), because
+// the three submissionsLoadTemplate/Verify/Ensure IPCs require main.
+function _subEscJs(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
+}
+
+let _subWizardWorkspaceId = null;
+let _subWizardStep = 1;
+let _subWizardCodeGs = '';
+let _subWizardSubmitHtml = '';
+
+function openSubmissionsWizardFor(workspaceId) {
+  const ws = workspaces.find(w => w.id === workspaceId);
+  if (!ws) return;
+  if (ws.readOnly) { showToast('This workspace is view-only — submissions need write access'); return; }
+  if (!ws.spreadsheetId) { showToast('This workspace has no Google Sheet yet'); return; }
+  _subWizardWorkspaceId = workspaceId;
+  _subWizardStep = ws.submissionUrl ? 5 : 1;
+  _subWizardCodeGs = '';
+  _subWizardSubmitHtml = '';
+  document.getElementById('ws-submissions-modal-overlay').classList.add('open');
+  renderSubmissionsWizardStep();
+  api.submissionsLoadTemplate({ workspaceName: ws.name }).then(res => {
+    if (res && res.ok) {
+      _subWizardCodeGs = res.codeGs;
+      _subWizardSubmitHtml = res.submitHtml;
+    } else {
+      _setSubWizardStatus(res && res.error ? res.error : 'Could not load templates.', 'err');
+    }
+  });
+}
+
+function closeSubmissionsWizard() {
+  closeModal('ws-submissions-modal-overlay');
+  _subWizardWorkspaceId = null;
+  _subWizardStep = 1;
+  _subWizardCodeGs = '';
+  _subWizardSubmitHtml = '';
+}
+
+function _setSubWizardStatus(msg, kind) {
+  const el = document.getElementById('ws-sub-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = kind === 'err' ? 'var(--red)' : kind === 'ok' ? 'var(--accent)' : 'var(--text3)';
+}
+
+function _subWizardWs() {
+  return workspaces.find(w => w.id === _subWizardWorkspaceId);
+}
+
+function renderSubmissionsWizardStep() {
+  const ws = _subWizardWs();
+  if (!ws) return;
+  const ind = document.getElementById('ws-sub-step-indicator');
+  const body = document.getElementById('ws-sub-step-body');
+  const footer = document.getElementById('ws-sub-footer');
+  if (!ind || !body || !footer) return;
+
+  ind.textContent = `Step ${_subWizardStep} of 5 · ${esc(ws.name)}`;
+  _setSubWizardStatus('', '');
+
+  const sheetUrl = `https://docs.google.com/spreadsheets/d/${esc(ws.spreadsheetId)}`;
+
+  if (_subWizardStep === 1) {
+    body.innerHTML = `
+      <p>This sets up a public form so anyone with a link can drop a task into <strong>${esc(ws.name)}</strong>'s Inbox. About 3 minutes of copy-and-paste in Google Apps Script.</p>
+      <ol style="padding-left:20px;margin:12px 0">
+        <li>Open this workspace's Google Sheet.</li>
+        <li>In the sheet's menu, click <strong>Extensions → Apps Script</strong>. A new tab opens.</li>
+      </ol>
+      <button class="btn-secondary" onclick="window.open('${_subEscJs(sheetUrl)}', '_blank')">Open the sheet</button>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="closeSubmissionsWizard()">Cancel</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 2) {
+    body.innerHTML = `
+      <p>In Apps Script, you'll see a file called <code>Code.gs</code> with some default code. <strong>Delete all of it</strong>, then paste the TaskSpark version in.</p>
+      <button class="btn-primary" onclick="copySubmissionsCodeGs()">Copy Code.gs to clipboard</button>
+      <p style="margin-top:12px;font-size:13px;color:var(--text3)">In Apps Script: select all (Ctrl+A) inside Code.gs, delete, paste (Ctrl+V), then click the save icon.</p>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 3) {
+    body.innerHTML = `
+      <p>Now add a second file for the submission page.</p>
+      <ol style="padding-left:20px;margin:12px 0">
+        <li>In Apps Script, click the <strong>+</strong> next to "Files" → <strong>HTML</strong>.</li>
+        <li>Name it exactly <code>Submit</code> (Apps Script will add <code>.html</code> automatically).</li>
+        <li>Delete the default content, then paste the TaskSpark version.</li>
+      </ol>
+      <button class="btn-primary" onclick="copySubmissionsSubmitHtml()">Copy Submit.html to clipboard</button>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 4) {
+    body.innerHTML = `
+      <p>Now publish the form so people can use it.</p>
+      <ol style="padding-left:20px;margin:12px 0">
+        <li>In Apps Script, click <strong>Deploy → New deployment</strong>.</li>
+        <li>Click the gear icon next to "Select type" → choose <strong>Web app</strong>.</li>
+        <li>For <em>Execute as</em>: keep <strong>Me</strong>.</li>
+        <li>For <em>Who has access</em>: choose <strong>Anyone</strong>.</li>
+        <li>Click <strong>Deploy</strong>. Apps Script may ask for permissions — click <strong>Authorize access</strong> and approve.</li>
+        <li>Copy the <strong>Web app URL</strong> shown on the success screen (ends with <code>/exec</code>).</li>
+      </ol>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 5) {
+    const cur = ws.submissionUrl || '';
+    body.innerHTML = `
+      <p>Paste the deployment URL below. TaskSpark will check it and turn on external submissions for <strong>${esc(ws.name)}</strong>.</p>
+      <input type="text" id="ws-sub-url-input" class="form-input" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(cur)}" style="margin-top:6px">
+      <p style="margin-top:10px;font-size:12px;color:var(--text3)">When verified, TaskSpark will add <code>source</code>, <code>submittedBy</code>, and <code>submittedAt</code> columns to this workspace's Tasks sheet (if they're not already there).</p>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" id="ws-sub-verify-btn" onclick="_subWizardVerify()">${cur ? 'Re-verify & save' : 'Verify & save'}</button>
+    `;
+    setTimeout(() => {
+      const input = document.getElementById('ws-sub-url-input');
+      if (input) {
+        input.focus();
+        input.addEventListener('input', () => _setSubWizardStatus('', ''));
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); _subWizardVerify(); } });
+      }
+    }, 0);
+  }
+}
+
+function _subWizardNext() { if (_subWizardStep < 5) { _subWizardStep++; renderSubmissionsWizardStep(); } }
+function _subWizardBack() { if (_subWizardStep > 1) { _subWizardStep--; renderSubmissionsWizardStep(); } }
+
+async function copySubmissionsCodeGs() {
+  if (!_subWizardCodeGs) { _setSubWizardStatus('Templates not loaded yet — please wait a moment.', 'err'); return; }
+  try { await navigator.clipboard.writeText(_subWizardCodeGs); _setSubWizardStatus('Code.gs copied to clipboard ✓', 'ok'); }
+  catch { _setSubWizardStatus('Could not copy. Open the file path in src/templates/submissions/Code.gs and copy manually.', 'err'); }
+}
+
+async function copySubmissionsSubmitHtml() {
+  if (!_subWizardSubmitHtml) { _setSubWizardStatus('Templates not loaded yet — please wait a moment.', 'err'); return; }
+  try { await navigator.clipboard.writeText(_subWizardSubmitHtml); _setSubWizardStatus('Submit.html copied to clipboard ✓', 'ok'); }
+  catch { _setSubWizardStatus('Could not copy. Open the file at src/templates/submissions/Submit.html and copy manually.', 'err'); }
+}
+
+async function copySubmissionUrl(workspaceId) {
+  const ws = workspaces.find(w => w.id === workspaceId);
+  if (!ws || !ws.submissionUrl) { showToast('No submission URL set for this workspace'); return; }
+  try { await navigator.clipboard.writeText(ws.submissionUrl); showToast('Submission link copied ✓'); }
+  catch { showToast('Could not copy — try opening Manage to copy by hand'); }
+}
+
+async function _subWizardVerify() {
+  const ws = _subWizardWs();
+  if (!ws) return;
+  const input = document.getElementById('ws-sub-url-input');
+  const btn = document.getElementById('ws-sub-verify-btn');
+  if (!input) return;
+  const raw = input.value.trim();
+  if (!raw) { _setSubWizardStatus('Paste the URL first.', 'err'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+  _setSubWizardStatus('Checking the URL…', '');
+
+  try {
+    const res = await api.submissionsVerifyUrl({ url: raw });
+    if (!res || !res.ok) {
+      _setSubWizardStatus(res && res.error ? res.error : 'Could not verify the URL.', 'err');
+      if (btn) { btn.disabled = false; btn.textContent = ws.submissionUrl ? 'Re-verify & save' : 'Verify & save'; }
+      return;
+    }
+
+    _setSubWizardStatus('Verified — adding submission columns to the sheet…', '');
+    const ws2 = _subWizardWs();
+    if (!ws2 || !ws2.spreadsheetId) {
+      _setSubWizardStatus('Workspace lost its sheet reference. Refresh and try again.', 'err');
+      if (btn) { btn.disabled = false; btn.textContent = 'Verify & save'; }
+      return;
+    }
+    await ensureToken();
+    const mig = await api.submissionsEnsureSchema({ accessToken, spreadsheetId: ws2.spreadsheetId });
+    if (!mig || !mig.ok) {
+      _setSubWizardStatus(mig && mig.error ? mig.error : 'Could not update the Tasks sheet.', 'err');
+      if (btn) { btn.disabled = false; btn.textContent = 'Verify & save'; }
+      return;
+    }
+
+    ws2.submissionUrl = res.url;
+    await saveWorkspaces();
+    renderManageWorkspacesList();
+    renderAll();
+    showToast('External submissions enabled ✓');
+    closeSubmissionsWizard();
+  } catch (e) {
+    _setSubWizardStatus((e && e.message) || 'Unexpected error.', 'err');
+    if (btn) { btn.disabled = false; btn.textContent = ws.submissionUrl ? 'Re-verify & save' : 'Verify & save'; }
+  }
+}
+
+function resetSubmissionsForWorkspace(workspaceId) {
+  const ws = workspaces.find(w => w.id === workspaceId);
+  if (!ws) return;
+  showConfirmModal(
+    'Reset external submissions?',
+    'TaskSpark will forget the link. <strong>Anyone who already has the link can still post until you also delete the deployment in Apps Script</strong> (Deploy → Manage deployments → Archive).',
+    'Reset',
+    async () => {
+      delete ws.submissionUrl;
+      await saveWorkspaces();
+      renderManageWorkspacesList();
+      renderAll();
+      showToast('External submissions reset');
+    },
+    true
+  );
 }
 
 function openRenameWorkspace(id) {

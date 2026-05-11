@@ -171,4 +171,11 @@ contextBridge.exposeInMainWorld('desktopAPI', {
   // dark/light mode. Renderer just sends 'light' or 'dark'; main owns the
   // colour palette so the renderer stays decoupled from window chrome.
   setTitleBarTheme: (mode) => ipcRenderer.send('titlebar-theme', mode),
+  // External submissions wizard (porting from V4.1.1 desktop). Pure web
+  // has no way to load Apps Script templates or verify a deployment URL,
+  // so the feature is gated on window.desktopAPI in the renderer — these
+  // three IPCs only exist under the wrap.
+  submissionsLoadTemplate: (data) => ipcRenderer.invoke('submissions-load-template', data),
+  submissionsVerifyUrl:    (data) => ipcRenderer.invoke('submissions-verify-url', data),
+  submissionsEnsureSchema: (data) => ipcRenderer.invoke('submissions-ensure-schema', data),
 });
