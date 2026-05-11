@@ -997,7 +997,7 @@ async function handleOAuthCallback() {
       if (tlc) { tlc.style.display = 'block'; tlc.style.flex = '1'; tlc.style.minHeight = '0'; }
 
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       if (workspaces.length === 0) setTimeout(showWorkspaceSetupModal, 800);
       await runPostInitWireup();
@@ -1425,7 +1425,7 @@ async function init() {
         renderWorkspaceDropdown();
         updateWorkspaceTitle();
         await connectToSheets();
-        await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
         if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
@@ -1439,7 +1439,7 @@ async function init() {
       renderWorkspaceDropdown();
       updateWorkspaceTitle();
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
       if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
