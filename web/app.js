@@ -6380,6 +6380,11 @@ function statsFmtTime(secs) {
 }
 
 function statsDateRange(range) {
+  const now = new Date();
+  if (range === 'today') {
+    const s = dateToLocalStr(now);
+    return { start: new Date(s + 'T00:00:00'), end: new Date(s + 'T23:59:59.999'), totalDays: 1 };
+  }
   const days = { '7d': 7, '30d': 30, '90d': 90, 'year': 365 }[range] || 30;
   const end = new Date(); end.setHours(23, 59, 59, 999);
   const start = new Date(end); start.setDate(start.getDate() - days + 1); start.setHours(0, 0, 0, 0);
@@ -6765,13 +6770,14 @@ function statsLineSvg(points, maxVal, color, W, H, PL, PT, PB, dashed) {
     `<path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"${dashed?' stroke-dasharray="4,3"':''}/>`;
 }
 
-// Range picker (web omits desktop's 'today' range — no daily-tick layout)
+// Range picker — 'today' shows a daily-tick layout (KPIs, activity strip,
+// hour chart, today's task lists) with an auto-refreshing date banner.
 function statsRangeLabel(range) {
-  return { '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
+  return { 'today':'Today', '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
 }
 
 function statsRangePicker(active) {
-  return ['7d','30d','90d','year'].map(r =>
+  return ['today','7d','30d','90d','year'].map(r =>
     `<button class="stats-range-btn${r === active ? ' active' : ''}" onclick="statsSetRange('${r}')">${statsRangeLabel(r)}</button>`
   ).join('');
 }
@@ -6947,6 +6953,148 @@ function renderStatsScatterCard(start, end) {
   return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimated vs actual</div><div class="stats-card-hint">Each dot is a completed task</div></div>${svg}</div>`;
 }
 
+// ── Today stats range (ported from V4.1.1 desktop) ─────────────────────────
+function statsCalcTodayKPIs() {
+  const today = dateToLocalStr(new Date());
+  const { start, end } = statsDateRange('today');
+  const doneToday = statsCompletedInRange(start, end);
+  const plannedToday = tasks.filter(t => !t.completed && !t.archived && t.due === today).length;
+  const { totalSecs, sessionCount } = statsCalcTimeTracked(start, end);
+  const running = activeTimerId ? tasks.find(t => t.id === activeTimerId) : null;
+  const runningMins = running && timerStart ? Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed) / 60) : 0;
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today && t.id !== activeTimerId).length;
+  return { doneCount: doneToday.length, plannedToday, totalSecs, sessionCount, running, runningMins, openToday };
+}
+
+function renderStatsDailyLayout() {
+  const { start, end } = statsDateRange('today');
+  const kpis = statsCalcTodayKPIs();
+  const timerOn = settings.timerEnabled !== false;
+  const hasActivity = kpis.doneCount > 0 || (timerOn && kpis.sessionCount > 0);
+  const now = new Date();
+  const banner = `<div class="stats-date-banner" id="stats-date-banner">${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
+  let kpiHtml = `
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed today</div><div class="stats-kpi-value">${kpis.doneCount}</div><div class="stats-kpi-delta">of ${kpis.plannedToday} planned</div></div>`;
+  if (timerOn) {
+    kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(kpis.totalSecs)}</div><div class="stats-kpi-delta">across ${kpis.sessionCount} session${kpis.sessionCount !== 1 ? 's' : ''}</div></div>
+    <div class="stats-kpi"><div class="stats-kpi-label">In progress</div><div class="stats-kpi-value">${kpis.running ? 1 : 0}</div><div class="stats-kpi-delta">${kpis.running ? `running for ${kpis.runningMins}m` : 'no active timer'}</div></div>`;
+  }
+  kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Still open today</div><div class="stats-kpi-value">${kpis.openToday}</div><div class="stats-kpi-delta">due before end of day</div></div>`;
+  const kpiCols = timerOn ? 4 : 2;
+  const kpiRow = `<div class="stats-kpi-row stats-kpi-cols-${kpiCols}">${kpiHtml}</div>`;
+  const activityCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Today's activity</div><div class="stats-card-hint">24-hour view</div></div>${renderStatsActivityStrip()}</div>` : '';
+  if (!hasActivity) {
+    return banner + kpiRow + activityCard + `<div class="stats-card"><div class="stats-empty-msg">Nothing to reflect on yet. Come back once you've got the day going.</div></div>`;
+  }
+  const hourCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Time by hour</div><div class="stats-card-hint">Minutes tracked</div></div>${renderStatsHourChart()}</div>` : '';
+  return banner + kpiRow + activityCard + renderStatsDailyTaskLists(start, end) + hourCard + `<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>`;
+}
+
+function renderStatsDailyTaskLists(start, end) {
+  const today = dateToLocalStr(new Date());
+  const doneToday = statsCompletedInRange(start, end);
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today);
+
+  const doneItems = doneToday.map(t => {
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const secs = statsTaskTimeInRange(t, start, end);
+    return `<div class="stats-task-item"><div class="stats-task-check">✓</div><div class="stats-task-title done">${esc(t.title)}${tags}</div><div class="stats-task-time">${secs ? statsFmtTime(secs) : ''}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">Nothing checked off today yet. One small thing counts.</div>`;
+
+  const openItems = openToday.map(t => {
+    const isRunning = activeTimerId === t.id;
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const timeStr = isRunning ? `running · ${Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed)/60)}m` : (t.dueTime ? `due ${fmtTime(t.dueTime)}` : 'due today');
+    return `<div class="stats-task-item"><div class="stats-task-check ${isRunning ? 'running' : 'open'}"></div><div class="stats-task-title">${esc(t.title)}${tags}</div><div class="stats-task-time">${timeStr}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">Nothing else due today.</div>`;
+
+  return `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Completed today</div><div class="stats-card-hint">${doneToday.length} tasks</div></div><div class="stats-task-list">${doneItems}</div></div>
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Still on today's plate</div><div class="stats-card-hint">${openToday.length} open</div></div><div class="stats-task-list">${openItems}</div></div>
+  </div>`;
+}
+
+function renderStatsActivityStrip() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowPct = Math.min(100, ((Date.now() - midnight) / dayMs) * 100);
+  const blocks = [], dots = [];
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs) {
+        const startPct = ((sStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((s.elapsed || 0) * 1000 / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%"></div>`);
+      }
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = Math.max(timerStart * 1000, midnight);
+      if (runStart < midnight + dayMs) {
+        const startPct = ((runStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((Date.now() - runStart) / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%;background:var(--amber)"></div>`);
+      }
+    }
+    if (t.completed && t.completedAt) {
+      const cAt = new Date(t.completedAt).getTime();
+      if (cAt >= midnight && cAt < midnight + dayMs) {
+        const pct = ((cAt - midnight) / dayMs) * 100;
+        dots.push(`<div class="stats-strip-dot" style="left:${pct.toFixed(2)}%"></div>`);
+      }
+    }
+  });
+  const hourLabels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  const legend = `<div class="stats-strip-legend">
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch"></div><span>Session</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch" style="background:var(--amber);opacity:1"></div><span>Running now</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-dot"></div><span>Task completed</span></div>
+  </div>`;
+  return `<div class="stats-strip-track">${blocks.join('')}${dots.join('')}<div class="stats-strip-now" style="left:${nowPct.toFixed(2)}%"></div></div>
+    <div class="stats-strip-hours">${hourLabels}</div>${legend}`;
+}
+
+function renderStatsHourChart() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowHour = new Date().getHours();
+  const hourMins = new Array(24).fill(0);
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs)
+        hourMins[new Date(s.start).getHours()] += Math.round((s.elapsed || 0) / 60);
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = timerStart * 1000;
+      if (runStart >= midnight && runStart < midnight + dayMs)
+        hourMins[new Date(runStart).getHours()] += Math.floor((Date.now()/1000 - timerStart) / 60);
+    }
+  });
+  const maxMins = Math.max(...hourMins, 1);
+  const bars = hourMins.map((mins, h) => {
+    const pct = (mins / maxMins) * 100;
+    const cls = h === nowHour ? 'stats-hour-bar now' : mins === 0 ? 'stats-hour-bar empty' : 'stats-hour-bar';
+    return `<div class="${cls}" style="height:${mins > 0 ? Math.max(pct, 4).toFixed(1) : '0'}%"></div>`;
+  }).join('');
+  const labels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  return `<div class="stats-hour-chart">${bars}</div><div class="stats-hour-labels">${labels}</div>`;
+}
+
+let _statsDailyTick = null;
+function statsStartDailyTick() {
+  clearInterval(_statsDailyTick);
+  _statsDailyTick = setInterval(() => {
+    if (!statsMode || statsCurrentRange !== 'today') { clearInterval(_statsDailyTick); return; }
+    const el = document.getElementById('stats-date-banner');
+    if (!el) { clearInterval(_statsDailyTick); return; }
+    const now = new Date();
+    el.textContent = `${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}`;
+  }, 30000);
+}
+
 function renderStatsView() {
   const container = document.getElementById('stats-container');
   if (!container) return;
@@ -6957,6 +7105,12 @@ function renderStatsView() {
 
   const range = statsCurrentRange;
   const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div></div></div>`;
+
+  if (range === 'today') {
+    container.innerHTML = `<div class="stats-page">${header}${renderStatsDailyLayout()}</div>`;
+    statsStartDailyTick();
+    return;
+  }
 
   const { start, end, totalDays } = statsDateRange(range);
   const profile = statsDetectProfile(start, end);
