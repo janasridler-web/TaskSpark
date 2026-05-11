@@ -997,7 +997,7 @@ async function handleOAuthCallback() {
       if (tlc) { tlc.style.display = 'block'; tlc.style.flex = '1'; tlc.style.minHeight = '0'; }
 
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       if (workspaces.length === 0) setTimeout(showWorkspaceSetupModal, 800);
       await runPostInitWireup();
@@ -1425,7 +1425,7 @@ async function init() {
         renderWorkspaceDropdown();
         updateWorkspaceTitle();
         await connectToSheets();
-        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
+        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
         if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
@@ -1439,14 +1439,14 @@ async function init() {
       renderWorkspaceDropdown();
       updateWorkspaceTitle();
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
       if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
   } else if (cfg && cfg.offlineMode) {
     offlineMode = true;
     showApp();
-    loadOfflineTasks();
+    await loadOfflineTasks();
     await loadIdeas();
     await loadHabits();
     await loadWins();
@@ -1480,6 +1480,28 @@ async function runPostInitWireup() {
   checkGraceDayPrompt();
   checkStartOfDay();
   scheduleEod();
+  _scheduleMidnight();
+}
+
+// Re-render and re-check overdue / start-of-day state when the date rolls
+// over. Without this the task list keeps showing "today" badges on what's
+// actually yesterday until the user does something that triggers a render.
+let _midnightTimer = null;
+function _scheduleMidnight() {
+  if (_midnightTimer) { clearTimeout(_midnightTimer); _midnightTimer = null; }
+  const now = new Date();
+  const next = new Date(now);
+  next.setDate(now.getDate() + 1);
+  next.setHours(0, 0, 30, 0);
+  const ms = Math.max(60000, next.getTime() - now.getTime());
+  _midnightTimer = setTimeout(() => {
+    try {
+      renderAll();
+      if (typeof checkOverdueAlerts === 'function') checkOverdueAlerts();
+      checkStartOfDay();
+    } catch (e) { console.warn('midnight tick error', e); }
+    _scheduleMidnight();
+  }, ms);
 }
 
 
