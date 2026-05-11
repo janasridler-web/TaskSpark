@@ -1926,16 +1926,29 @@ function renderTasks() {
   }
 
   // Today hero — only on All Tasks, only when toggle is on, only when both
-  // groups have entries (otherwise sections look empty/awkward).
+  // groups have entries (otherwise sections look empty/awkward). Includes
+  // overdue tasks alongside today's, with overdue sorted first inside the
+  // section — they're at least as urgent as today's, and burying them
+  // under "Later" hides exactly the work that needs attention now.
   const useHero = settings.todayHeroEnabled !== false && currentView === 'all';
   let newHTML;
   if (useHero) {
     const t = todayStr();
-    const todayTasks = filtered.filter(task => !task.completed && task.due === t);
+    const todayTasks = filtered.filter(task => !task.completed && task.due && task.due <= t);
+    todayTasks.sort((a, b) => {
+      const aOver = a.due < t ? 0 : 1;
+      const bOver = b.due < t ? 0 : 1;
+      if (aOver !== bOver) return aOver - bOver;
+      return a.due.localeCompare(b.due);
+    });
     const otherTasks = filtered.filter(task => !todayTasks.includes(task));
     if (todayTasks.length && otherTasks.length) {
+      const overdueCount = todayTasks.filter(task => task.due < t).length;
+      const label = overdueCount
+        ? `Today · ${todayTasks.length} (${overdueCount} overdue)`
+        : `Today · ${todayTasks.length}`;
       newHTML =
-        `<div class="task-section-label">Today · ${todayTasks.length}</div>` +
+        `<div class="task-section-label">${label}</div>` +
         todayTasks.map(taskCardHTML).join('') +
         `<div class="task-section-label task-section-later">Later · ${otherTasks.length}</div>` +
         otherTasks.map(taskCardHTML).join('');
