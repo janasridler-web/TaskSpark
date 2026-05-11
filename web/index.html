@@ -48,6 +48,25 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
    buttons sit at the right edge in their own ~150px area. */
 body.taskspark-wrapped{padding-top:30px}
 body.taskspark-wrapped::before{content:'';position:fixed;top:0;left:0;right:150px;height:30px;background:var(--bg);-webkit-app-region:drag;z-index:1100}
+/* Task-completion celebration — toggleable from Settings → Appearance */
+@keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
+.task-card.celebrating{animation:card-pop .45s ease-out}
+.task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out;position:relative}
+.task-card.celebrating .task-checkbox::before,
+.task-card.celebrating .task-checkbox::after{
+  content:'';position:absolute;top:50%;left:50%;width:5px;height:5px;
+  background:#f8a826;border-radius:50%;pointer-events:none}
+.task-card.celebrating .task-checkbox::before{animation:sparkle-fly-tr .55s ease-out forwards}
+.task-card.celebrating .task-checkbox::after{animation:sparkle-fly-bl .55s ease-out forwards}
+@keyframes sparkle-fly-tr{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1.2);opacity:1}
+  100%{transform:translate(160%,-280%) scale(.4);opacity:0}}
+@keyframes sparkle-fly-bl{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1);opacity:1}
+  100%{transform:translate(-260%,160%) scale(.4);opacity:0}}
 
 /* ── Lucide icons (ISC license) ────────────────────────────────────────────── */
 .lc-icon{width:1em;height:1em;vertical-align:-0.125em;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -2474,6 +2493,10 @@ body.mobile-essentials #task-list-container{padding-top:0}
             <div class="setting-row">
               <div><div class="setting-label">Completion dialog</div><div class="setting-desc">Ask for impact, outcome and deliverable when completing a task</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-completion"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Celebrate completions</div><div class="setting-desc">Brief pop + sparkle animation when you tick a task off</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-celebration-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
         </div>

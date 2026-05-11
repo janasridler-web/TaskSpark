@@ -1126,6 +1126,7 @@ const DEFAULT_SETTINGS = {
   quickAddEnabled:   true,
   whatNowEnabled:    true,
   completionDialog:  true,
+  celebrationEnabled: true,
   soundEnabled:      true,
   soundFile:         null,  // null = use bundled default
   moodEnabled:       true,
@@ -1487,6 +1488,22 @@ async function runPostInitWireup() {
 // over. Without this the task list keeps showing "today" badges on what's
 // actually yesterday until the user does something that triggers a render.
 let _midnightTimer = null;
+// Brief card-pop + sparkle when a task is completed, gated on the
+// celebrationEnabled setting. The callback runs after the animation so
+// saveTasks/renderAll can swap the card out without cutting the animation.
+function triggerCelebration(id, callback) {
+  const card = document.getElementById(`task-card-${id}`);
+  if (!settings.celebrationEnabled || !card) {
+    if (callback) callback();
+    return;
+  }
+  card.classList.add('celebrating');
+  setTimeout(() => {
+    if (callback) callback();
+    else card.classList.remove('celebrating');
+  }, 450);
+}
+
 function _scheduleMidnight() {
   if (_midnightTimer) { clearTimeout(_midnightTimer); _midnightTimer = null; }
   const now = new Date();
@@ -4429,11 +4446,14 @@ function toggleComplete(id) {
     task.status = 'done';
     checkOnboardingItem('completeTask');
     if (!settings.completionDialog) {
-      saveTasks(); renderAll();
-      if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      triggerCelebration(id, () => {
+        saveTasks(); renderAll();
+        if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      });
       return;
     }
-    // Show completion dialog
+    // Show completion dialog — animate while the card is still in the DOM
+    triggerCelebration(id);
     completionTaskId = id;
     selectedImpact   = 'medium';
     document.getElementById('cm-task-name').textContent = task.title.length > 50 ? task.title.slice(0,48)+'…' : task.title;
@@ -5351,6 +5371,7 @@ async function openSettings() {
   if (document.getElementById('set-quickadd'))       document.getElementById('set-quickadd').checked       = s.quickAddEnabled;
   if (document.getElementById('set-whatnow'))        document.getElementById('set-whatnow').checked        = s.whatNowEnabled;
   if (document.getElementById('set-completion'))     document.getElementById('set-completion').checked     = s.completionDialog;
+  if (document.getElementById('set-celebration-enabled')) document.getElementById('set-celebration-enabled').checked = s.celebrationEnabled !== false;
   if (document.getElementById('set-sound-enabled'))  document.getElementById('set-sound-enabled').checked  = s.soundEnabled;
   if (document.getElementById('set-mood-enabled'))   document.getElementById('set-mood-enabled').checked   = s.moodEnabled;
   if (document.getElementById('set-changelog-enabled')) document.getElementById('set-changelog-enabled').checked = s.changelogEnabled !== false;
@@ -5713,6 +5734,7 @@ function saveSettingsFromModal() {
   if (_g('set-quickadd'))         settings.quickAddEnabled = _c('set-quickadd', settings.quickAddEnabled);
   settings.whatNowEnabled    = _c('set-whatnow', settings.whatNowEnabled);
   settings.completionDialog  = _c('set-completion', settings.completionDialog);
+  settings.celebrationEnabled = _c('set-celebration-enabled', settings.celebrationEnabled);
   settings.soundEnabled      = _c('set-sound-enabled', settings.soundEnabled);
   settings.moodEnabled       = _c('set-mood-enabled', settings.moodEnabled);
   settings.changelogEnabled  = _c('set-changelog-enabled', settings.changelogEnabled);
