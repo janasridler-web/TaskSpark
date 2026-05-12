@@ -1885,11 +1885,22 @@ function showToast(msg, opts = {}) {
 
 function showUpdateBanner(version) {
   const banner = document.getElementById('update-banner');
-  const verSpan = document.getElementById('update-version');
-  if (banner) {
-    if (verSpan) verSpan.textContent = version;
-    banner.style.display = 'flex';
+  if (!banner) return;
+  const msg = document.getElementById('update-banner-msg');
+  const actions = document.getElementById('update-banner-actions');
+  // Wrapped desktop: an installer .exe has been downloaded by
+  // electron-updater. Reloading the renderer doesn't apply it — the user
+  // needs to quit (auto-install-on-quit is set in main) or hit
+  // 'Install now' which triggers quitAndInstall.
+  if (window.desktopAPI?.installUpdate && msg && actions) {
+    const v = version ? `v${version} ` : '';
+    msg.innerHTML = `<svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> TaskSpark ${v}is ready — close the app to install, or click below.`;
+    actions.innerHTML = `
+      <button onclick="window.desktopAPI.installUpdate()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Install now</button>
+      <button onclick="document.getElementById('update-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px">Later</button>
+    `;
   }
+  banner.style.display = 'flex';
 }
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────

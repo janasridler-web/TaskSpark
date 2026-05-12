@@ -1963,10 +1963,13 @@ body.mobile-essentials #task-list-container{padding-top:0}
 <!-- Toast region (U16) — see showToast() in app.js -->
 <div id="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
 
-<!-- Update banner — shown when a new service worker has taken over -->
+<!-- Update banner — content is swapped at runtime by showUpdateBanner() so
+     the wording + actions can differ between the web companion (service-
+     worker swap; reload picks up new code) and the wrapped desktop (the
+     update is an installer .exe that applies on next quit). -->
 <div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;background:var(--accent);color:#fff;font-size:13px;font-weight:600;padding:8px 20px;z-index:999;align-items:center;justify-content:space-between;gap:12px">
-  <span><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> TaskSpark has updated — refresh to get the latest.</span>
-  <div style="display:flex;gap:8px">
+  <span id="update-banner-msg"><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> TaskSpark has updated — refresh to get the latest.</span>
+  <div id="update-banner-actions" style="display:flex;gap:8px">
     <button onclick="location.reload()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Refresh</button>
     <button onclick="document.getElementById('update-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px">Later</button>
   </div>

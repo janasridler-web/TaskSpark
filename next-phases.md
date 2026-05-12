@@ -82,8 +82,10 @@ Order matters here — each step keeps the desktop app shippable.
       restores saved bounds, switches to OS frame (web app has no custom
       title bar).
    2. **Auto-updater** — `desktopAPI.onUpdateAvailable / onUpdateDownloaded /
-      installUpdate`. Banner wording is still web-flavoured under the
-      wrapped desktop — see `backlog.md` U23.
+      installUpdate`. Banner copy swaps based on `window.desktopAPI`:
+      "v{X} is ready — close the app to install, or click below" +
+      "Install now" button under the wrap; the original
+      "refresh to get the latest" + Refresh button on pure web.
    3. **Quick Add global shortcut** — `desktopAPI.onGlobalQuickAdd`. Main
       already registers Ctrl+Space (Ctrl+Shift+Space fallback); just
       bridged the event.
@@ -125,13 +127,9 @@ Order matters here — each step keeps the desktop app shippable.
 - **Beta channel.** Worth setting up a separate `beta` release channel in
   `electron-updater` so you can ship the new architecture to volunteers
   before promoting it to stable.
-- **Update banner copy** is wrong for the wrapped desktop (says "refresh"
-  when it should say "close to install"). Auto-install-on-quit covers the
-  functional gap, but the messaging should land before flipping the flag
-  default. Tracked as U23 in `backlog.md`.
-
 (The Calendar OAuth and offline-mode risk areas the original plan flagged
-are resolved by slices 8 and 9 respectively.)
+are resolved by slices 8 and 9 respectively. The update-banner copy
+issue is resolved by the banner-copy fix in `showUpdateBanner`.)
 
 ### Done when
 
@@ -141,7 +139,6 @@ are resolved by slices 8 and 9 respectively.)
   (Functionality wired; needs manual smoke-test before flipping default.)
 - ☐ Flag flipped to on-by-default for ≥ 2 weeks without regressions.
 - ☐ `src/app.js` and `src/index.html` are deleted from the repo.
-- ☐ Update banner copy fixed (U23 in `backlog.md`).
 - ☐ `CHANGELOG.md` describes the migration in user-facing terms (mostly:
   "general stability and architecture work — no user-visible changes").
 
@@ -322,7 +319,7 @@ home screen, and only since iOS 16.4. UI should explain this honestly:
   been stable in production for ~2 weeks. Don't rush it.
 - **When to flip `TASKSPARK_USE_WEB` to on-by-default** — after manual
   smoke-testing of the whole feature set on a fresh `userData` and on an
-  existing V4.1.1 install. Banner copy (U23) should land first.
+  existing V4.1.1 install.
 - **Beta channel for Phase 2** — recommended but optional. Decide before
   flipping the flag default.
 - **Mac code-signing CI runner** — GitHub Actions has macOS runners; that
