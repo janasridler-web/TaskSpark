@@ -42,10 +42,13 @@
 /* ── Reset & base ──────────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:15px;background:var(--bg);color:var(--text)}
-/* Phase 2 wrapped Electron: native title bar replaced with Windows
-   titleBarOverlay (handles min/max/close). The env(titlebar-area-*) CSS
-   variables expose the exact dimensions the OS uses, so the spacer
-   covers the overlay area with no gap and no overlap with the buttons. */
+/* Phase 2 wrapped Electron: native title bar replaced with platform-
+   appropriate window controls. Windows uses titleBarOverlay (handles
+   min/max/close in their own area on the right) — env(titlebar-area-*)
+   gives the exact dimensions so the accent strip matches with no gap.
+   macOS uses titleBarStyle: 'hiddenInset' for inset traffic-light
+   buttons at the top-left — they overlay the HTML and still receive
+   clicks, so the accent strip can safely span the full width. */
 body.taskspark-wrapped{padding-top:env(titlebar-area-height, 30px)}
 body.taskspark-wrapped::before{
   content:'';
@@ -57,6 +60,12 @@ body.taskspark-wrapped::before{
   background:var(--accent);
   -webkit-app-region:drag;
   z-index:1100;
+}
+body.taskspark-wrapped.taskspark-platform-darwin{padding-top:28px}
+body.taskspark-wrapped.taskspark-platform-darwin::before{
+  left:0;
+  width:100%;
+  height:28px;
 }
 /* Task-completion celebration — toggleable from Settings → Appearance */
 @keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
