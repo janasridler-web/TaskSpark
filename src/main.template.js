@@ -96,24 +96,31 @@ function saveWindowState() {
 function createWindow() {
   const savedState = getWindowState();
   const bounds = savedState?.bounds || { width: 1080, height: 720 };
-  // Phase 2 slice 1: TASKSPARK_USE_WEB=1 loads the web companion's HTML
-  // instead of src/index.html. The web app has no custom title bar — use
-  // Windows' titleBarOverlay so we get native min/max/close buttons in a
-  // colour that matches the app, and hide the default Electron menu strip
-  // (File/Edit/View/Window/Help) which otherwise sits below the title bar.
-  const useWeb = process.env.TASKSPARK_USE_WEB === '1';
+  // Phase 2: wrapped web path. macOS is always on the wrapped path
+  // (Mac is brand-new and has no V4.1.1 legacy to preserve). Windows
+  // still gates behind TASKSPARK_USE_WEB so existing V4.1.1 desktop
+  // users keep the old src/ renderer until we flip the default.
+  const isMac = process.platform === 'darwin';
+  const useWeb = isMac || process.env.TASKSPARK_USE_WEB === '1';
   const indexPath = useWeb
     ? path.join(__dirname, '..', 'web', 'index.html')
     : path.join(__dirname, 'index.html');
-  if (useWeb) Menu.setApplicationMenu(null);
+  // Mac gets its standard menu bar (Cmd+Q, Cmd+W, Edit menu items etc.
+  // come for free with Electron's default). Windows wrapped flow hides
+  // the File/Edit/View/Window/Help strip — there's no equivalent on Mac
+  // because the menu lives in the global menubar at the top of the screen.
+  if (useWeb && !isMac) Menu.setApplicationMenu(null);
 
   mainWindow = new BrowserWindow({
     width: bounds.width, height: bounds.height,
     x: bounds.x, y: bounds.y,
     minWidth: 820, minHeight: 560,
     frame: false,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: useWeb ? {
+    // macOS: 'hiddenInset' inset traffic-light buttons render at top-left,
+    // HTML draws under the title bar area. Windows wrapped flow uses our
+    // titleBarOverlay (Windows-only API) for accent-coloured min/max/close.
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    titleBarOverlay: useWeb && !isMac ? {
       color: '#f0ede8',
       symbolColor: '#1a1814',
       height: 30,
@@ -185,8 +192,9 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  // Register global Quick Add shortcut. Try Ctrl+Space first; fall back to
-  // Ctrl+Shift+Space if the OS already uses Ctrl+Space (Spotlight, IME).
+  // Register global Quick Add shortcut. Cmd+Space is Spotlight on macOS
+  // so we skip straight to Cmd+Shift+Space there. Windows tries Ctrl+Space
+  // first, falling back to Ctrl+Shift+Space if the OS already uses it.
   const quickAddHandler = () => {
     if (mainWindow) {
       const wasFocused = mainWindow.isFocused() && mainWindow.isVisible() && !mainWindow.isMinimized();
@@ -196,7 +204,9 @@ app.whenReady().then(() => {
     }
   };
   let registered = false;
-  try { registered = globalShortcut.register('CommandOrControl+Space', quickAddHandler); } catch {}
+  if (process.platform !== 'darwin') {
+    try { registered = globalShortcut.register('CommandOrControl+Space', quickAddHandler); } catch {}
+  }
   if (!registered) {
     try { globalShortcut.register('CommandOrControl+Shift+Space', quickAddHandler); } catch {}
   }

@@ -252,13 +252,17 @@ const api = {
 // origins, so the web's redirect-and-exchange path can't work here.
 if (typeof window !== 'undefined' && window.desktopAPI) {
   // Marker class for wrapped-Electron-only CSS (reserves the
-  // titleBarOverlay drag strip at the top of the body).
-  if (document.body) {
+  // titleBarOverlay drag strip at the top of the body). Also tag the
+  // platform so Mac-specific tweaks (full-width drag strip, since the
+  // traffic lights overlap it harmlessly) can override Windows' defaults.
+  const platformClass = window.desktopAPI.platform === 'darwin'
+    ? 'taskspark-platform-darwin' : 'taskspark-platform-other';
+  const addClasses = () => {
     document.body.classList.add('taskspark-wrapped');
-  } else {
-    document.addEventListener('DOMContentLoaded', () =>
-      document.body.classList.add('taskspark-wrapped'));
-  }
+    document.body.classList.add(platformClass);
+  };
+  if (document.body) addClasses();
+  else document.addEventListener('DOMContentLoaded', addClasses);
   api.oauthStart    = ()     => window.desktopAPI.oauthStart();
   api.oauthExchange = (args) => window.desktopAPI.oauthExchange(args);
   api.oauthRefresh  = (args) => window.desktopAPI.oauthRefresh(args);

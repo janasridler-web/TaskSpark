@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the macOS build. Required because
+  Electron uses V8 JIT (which is otherwise blocked under hardened runtime)
+  and because the renderer reaches out to Google + Microsoft APIs.
+
+  Keep this minimal — every entitlement is a surface area you signed up
+  for in Apple's review and that the notarisation pipeline scans for.
+-->
+<plist version="1.0">
+<dict>
+  <!-- Electron requires JIT for V8. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Electron's child processes read DYLD_* env vars. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+  <!-- Outbound network for Google Sheets/Drive + Microsoft Graph. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Inbound for the OAuth loopback callback server (127.0.0.1:RANDOM). -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+  <!-- For the file dialogs (custom break sound, attachments). -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+</dict>
+</plist>
