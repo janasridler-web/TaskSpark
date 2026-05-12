@@ -6,7 +6,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 // here. Skip the legacy `api` surface in that mode — the web app talks to
 // Google directly + uses `window.desktopAPI` for the bits that need a
 // privileged main-process call.
-const WRAP_WEB = process.env.TASKSPARK_USE_WEB === '1';
+//
+// Must mirror main.template.js's useWeb logic exactly — both processes
+// have to agree on whether we're wrapping. macOS always wraps (Phase 3
+// ships the wrapped path from day one); Windows only wraps when the
+// TASKSPARK_USE_WEB env var is set.
+const WRAP_WEB = process.platform === 'darwin' || process.env.TASKSPARK_USE_WEB === '1';
 
 if (!WRAP_WEB) {
 contextBridge.exposeInMainWorld('api', {
