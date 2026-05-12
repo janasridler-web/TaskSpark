@@ -161,7 +161,11 @@ body.taskspark-wrapped::before{
 [data-accent="moss"][data-theme="dark"]{--accent:#7aaa50;--accent-l:#182410;--accent-h:#98cc70}
 
 /* ── App shell ─────────────────────────────────────────────────────────────── */
-#app{display:flex;height:100vh;max-height:100vh;background:var(--bg);overflow:hidden}
+/* height:100% (not 100vh) so the app sizes relative to body's content
+   area — under the wrapped flag, body has padding-top reserved for the
+   titleBarOverlay strip, and 100vh would push the stats-bar off the
+   bottom of the viewport. */
+#app{display:flex;height:100%;max-height:100%;background:var(--bg);overflow:hidden}
 
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
