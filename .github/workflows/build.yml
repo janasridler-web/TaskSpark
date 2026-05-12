@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -47,8 +47,68 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: TaskSpark-installer
+          name: TaskSpark-installer-windows
           path: |
             dist/TaskSpark.Setup.exe
             dist/latest.yml
+          retention-days: 30
+
+  # Same code-signing + notarisation pipeline as the release workflow, but
+  # publish:never and the artifacts uploaded as a downloadable workflow
+  # artifact for smoke-testing. First-time setup of signing/notarisation
+  # is finicky — use this to debug before running the release workflow.
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare main.js from template
+        run: cp src/main.template.js src/main.js
+
+      - name: Inject OAuth credentials
+        shell: node {0}
+        run: |
+          const fs = require('fs');
+          const path = require('path');
+          const mainJsPath = path.join(process.cwd(), 'src', 'main.js');
+          let src = fs.readFileSync(mainJsPath, 'utf8');
+          src = src.replace("'__APP_CLIENT_ID__'",         `'${process.env.GOOGLE_CLIENT_ID}'`);
+          src = src.replace("'__APP_CLIENT_SECRET__'",     `'${process.env.GOOGLE_CLIENT_SECRET}'`);
+          src = src.replace("'__OUTLOOK_CLIENT_ID__'",     `'${process.env.OUTLOOK_CLIENT_ID}'`);
+          src = src.replace("'__OUTLOOK_CLIENT_SECRET__'", `'${process.env.OUTLOOK_CLIENT_SECRET}'`);
+          fs.writeFileSync(mainJsPath, src);
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+          OUTLOOK_CLIENT_SECRET: ${{ secrets.OUTLOOK_CLIENT_SECRET }}
+
+      - name: Build (signed + notarised)
+        run: npm run build:mac -- --publish never
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskSpark-installer-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
           retention-days: 30
