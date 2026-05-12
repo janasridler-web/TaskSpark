@@ -10,6 +10,8 @@
 <script>
 (function(){
   try {
+    // Wrapped in Electron — never bounce to the mobile route, regardless of UA.
+    if (window.desktopAPI) return;
     if (location.pathname === '/m' || location.pathname === '/m/') return;
     // Loop-guard: /m/ redirects to /?_m=1, and app.js then replaceState's
     // back to /m/. Without this guard, the auto-redirect would fire again
@@ -40,6 +42,41 @@
 /* ── Reset & base ──────────────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:15px;background:var(--bg);color:var(--text)}
+/* Phase 2 wrapped Electron: native title bar replaced with Windows
+   titleBarOverlay (handles min/max/close). The env(titlebar-area-*) CSS
+   variables expose the exact dimensions the OS uses, so the spacer
+   covers the overlay area with no gap and no overlap with the buttons. */
+body.taskspark-wrapped{padding-top:env(titlebar-area-height, 30px)}
+body.taskspark-wrapped::before{
+  content:'';
+  position:fixed;
+  top:env(titlebar-area-y, 0);
+  left:env(titlebar-area-x, 0);
+  width:env(titlebar-area-width, calc(100% - 150px));
+  height:env(titlebar-area-height, 30px);
+  background:var(--accent);
+  -webkit-app-region:drag;
+  z-index:1100;
+}
+/* Task-completion celebration — toggleable from Settings → Appearance */
+@keyframes card-pop{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes checkbox-pop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
+.task-card.celebrating{animation:card-pop .45s ease-out}
+.task-card.celebrating .task-checkbox{animation:checkbox-pop .3s ease-out;position:relative}
+.task-card.celebrating .task-checkbox::before,
+.task-card.celebrating .task-checkbox::after{
+  content:'';position:absolute;top:50%;left:50%;width:5px;height:5px;
+  background:#f8a826;border-radius:50%;pointer-events:none}
+.task-card.celebrating .task-checkbox::before{animation:sparkle-fly-tr .55s ease-out forwards}
+.task-card.celebrating .task-checkbox::after{animation:sparkle-fly-bl .55s ease-out forwards}
+@keyframes sparkle-fly-tr{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1.2);opacity:1}
+  100%{transform:translate(160%,-280%) scale(.4);opacity:0}}
+@keyframes sparkle-fly-bl{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1);opacity:1}
+  100%{transform:translate(-260%,160%) scale(.4);opacity:0}}
 
 /* ── Lucide icons (ISC license) ────────────────────────────────────────────── */
 .lc-icon{width:1em;height:1em;vertical-align:-0.125em;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -124,7 +161,11 @@ html,body{height:100%;overflow:hidden;font-family:'Outfit',sans-serif;font-size:
 [data-accent="moss"][data-theme="dark"]{--accent:#7aaa50;--accent-l:#182410;--accent-h:#98cc70}
 
 /* ── App shell ─────────────────────────────────────────────────────────────── */
-#app{display:flex;height:100vh;max-height:100vh;background:var(--bg);overflow:hidden}
+/* height:100% (not 100vh) so the app sizes relative to body's content
+   area — under the wrapped flag, body has padding-top reserved for the
+   titleBarOverlay strip, and 100vh would push the stats-bar off the
+   bottom of the viewport. */
+#app{display:flex;height:100%;max-height:100%;background:var(--bg);overflow:hidden}
 
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
@@ -436,6 +477,10 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
 .setting-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
 .setting-row:last-child{border-bottom:none}
 .setting-label{font-size:14px;font-weight:500;color:var(--text)}
+.setting-sub-group{background:var(--surface2);border-radius:8px;padding:4px 12px;margin:4px 0 6px}
+.setting-sub-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 0 2px}
+.setting-row-sub{padding:5px 0;border-bottom:none}
+.setting-row-sub .setting-label{font-size:13px}
 .setting-desc{font-size:12px;color:var(--text3);margin-top:2px}
 .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
@@ -723,6 +768,10 @@ body.card-depth-enabled .task-card:hover{transform:translateY(-1px);box-shadow:v
 .setting-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
 .setting-row:last-child{border-bottom:none}
 .setting-label{font-size:14px;font-weight:500;color:var(--text)}
+.setting-sub-group{background:var(--surface2);border-radius:8px;padding:4px 12px;margin:4px 0 6px}
+.setting-sub-label{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:6px 0 2px}
+.setting-row-sub{padding:5px 0;border-bottom:none}
+.setting-row-sub .setting-label{font-size:13px}
 .setting-desc{font-size:12px;color:var(--text3);margin-top:2px}
 .toggle-switch{position:relative;width:44px;height:24px;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
@@ -1653,6 +1702,36 @@ body.mobile-essentials .lists-empty-icon{font-size:22px}
 .stats-range-btn{padding:6px 13px;font-size:13px;border:none;background:transparent;color:var(--text2);cursor:pointer;border-radius:6px;font-family:inherit;font-weight:500;transition:background .15s,color .15s}
 .stats-range-btn:hover{background:var(--surface2);color:var(--text)}
 .stats-range-btn.active{background:var(--text);color:#fff}
+/* Today stats range — daily-tick layout */
+.stats-date-banner{font-size:13px;color:var(--text2);margin-bottom:16px}
+.stats-empty-msg{padding:28px 16px;text-align:center;color:var(--text3);font-size:13px;font-style:italic}
+.stats-strip-track{position:relative;height:50px;background:var(--surface2);border-radius:6px;overflow:hidden;margin-bottom:4px}
+.stats-strip-session{position:absolute;top:8px;height:14px;background:var(--accent);border-radius:3px;opacity:.75}
+.stats-strip-dot{position:absolute;top:32px;width:8px;height:8px;background:var(--accent);border:2px solid var(--surface);border-radius:50%;transform:translateX(-50%)}
+.stats-strip-now{position:absolute;top:0;bottom:0;width:2px;background:var(--amber);z-index:2}
+.stats-strip-hours{display:grid;grid-template-columns:repeat(24,1fr);font-size:9px;color:var(--text3);margin-bottom:4px;text-align:center}
+.stats-strip-legend{display:flex;gap:16px;margin-top:14px;font-size:11px;color:var(--text2);align-items:center}
+.stats-strip-legend-swatch{width:14px;height:8px;border-radius:2px;background:var(--accent);opacity:.75}
+.stats-strip-legend-dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.stats-strip-legend-item{display:flex;align-items:center;gap:6px}
+.stats-task-list{display:flex;flex-direction:column}
+.stats-task-item{display:grid;grid-template-columns:18px 1fr auto;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center;font-size:13px}
+.stats-task-item:last-child{border-bottom:none}
+.stats-task-check{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--accent);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;flex-shrink:0}
+.stats-task-check.open{background:transparent;border-color:var(--border2)}
+.stats-task-check.running{background:#fff;border-color:var(--amber);position:relative}
+[data-theme="dark"] .stats-task-check.running{background:var(--surface2)}
+.stats-task-check.running::after{content:'';width:6px;height:6px;background:var(--amber);border-radius:50%;animation:stats-pulse 1.5s ease-in-out infinite;position:absolute}
+@keyframes stats-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.stats-task-title{line-height:1.4}
+.stats-task-title.done{color:var(--text2);text-decoration:line-through;text-decoration-color:var(--text3)}
+.stats-task-tag{font-size:10px;color:var(--text2);background:var(--surface2);padding:1px 6px;border-radius:3px;font-weight:500;margin-left:4px;display:inline-block}
+.stats-task-time{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats-hour-chart{display:flex;align-items:flex-end;gap:2px;height:130px;border-bottom:1px solid var(--border);padding-bottom:2px}
+.stats-hour-bar{flex:1;background:var(--accent);border-radius:2px 2px 0 0;min-height:2px;opacity:.8}
+.stats-hour-bar.now{background:var(--amber);opacity:1}
+.stats-hour-bar.empty{background:var(--surface2);opacity:1;min-height:3px}
+.stats-hour-labels{display:grid;grid-template-columns:repeat(24,1fr);margin-top:6px;font-size:9px;color:var(--text3);text-align:center}
 .stats-kpi-row{display:grid;gap:12px;margin-bottom:20px}
 .stats-kpi-cols-2{grid-template-columns:repeat(2,1fr);max-width:600px}
 .stats-kpi-cols-3{grid-template-columns:repeat(3,1fr)}
@@ -1884,10 +1963,13 @@ body.mobile-essentials #task-list-container{padding-top:0}
 <!-- Toast region (U16) — see showToast() in app.js -->
 <div id="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
 
-<!-- Update banner — shown when a new service worker has taken over -->
+<!-- Update banner — content is swapped at runtime by showUpdateBanner() so
+     the wording + actions can differ between the web companion (service-
+     worker swap; reload picks up new code) and the wrapped desktop (the
+     update is an installer .exe that applies on next quit). -->
 <div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;background:var(--accent);color:#fff;font-size:13px;font-weight:600;padding:8px 20px;z-index:999;align-items:center;justify-content:space-between;gap:12px">
-  <span><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> TaskSpark has updated — refresh to get the latest.</span>
-  <div style="display:flex;gap:8px">
+  <span id="update-banner-msg"><svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> TaskSpark has updated — refresh to get the latest.</span>
+  <div id="update-banner-actions" style="display:flex;gap:8px">
     <button onclick="location.reload()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Refresh</button>
     <button onclick="document.getElementById('update-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px">Later</button>
   </div>
@@ -2165,6 +2247,12 @@ body.mobile-essentials #task-list-container{padding-top:0}
     <div class="form-group" id="hide-until-form-group" style="display:none">
       <label class="form-label">Hide until <span style="font-weight:400;color:var(--text3)">(days before due date)</span></label>
       <input class="form-input" id="tm-hide-until" type="number" min="1" placeholder="e.g. 3">
+    </div>
+    <div class="form-group" id="overdue-alert-form-group" style="display:none">
+      <label class="form-label" style="display:flex;align-items:center;gap:10px;cursor:pointer">
+        <input type="checkbox" id="tm-overdue-alert" style="width:16px;height:16px;accent-color:var(--accent)">
+        Flag for overdue alert
+      </label>
     </div>
     <div class="form-row">
       <div class="form-group">
@@ -2448,6 +2536,20 @@ body.mobile-essentials #task-list-container{padding-top:0}
               <label class="toggle-switch"><input type="checkbox" id="set-defer-enabled" onchange="settings.deferEnabled = this.checked; toggleDeferSidebarItem(); renderAll()"><span class="toggle-slider"></span></label>
             </div>
             <div class="setting-row">
+              <div><div class="setting-label">Overdue task alerts</div><div class="setting-desc">Show a blocking warning when tasks become overdue</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-overdue-alert-enabled" onchange="saveSettingsFromModal();toggleOverdueAlertSub();applySettings()"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-sub-group" id="overdue-alert-sub" style="display:none">
+              <div class="setting-sub-label">Alert me for</div>
+              <div class="setting-row setting-row-sub">
+                <div><div class="setting-label">Alert mode</div></div>
+                <select id="set-overdue-alert-mode" class="form-input" onchange="saveSettingsFromModal();applySettings()" style="width:auto;font-size:12px;padding:4px 8px;height:auto">
+                  <option value="all">All overdue tasks</option>
+                  <option value="per-task">Flagged tasks only</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
               <div><div class="setting-label">Energy level</div><div class="setting-desc">Set energy level on tasks and factor into What Now?</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-energy-enabled"><span class="toggle-slider"></span></label>
             </div>
@@ -2466,6 +2568,10 @@ body.mobile-essentials #task-list-container{padding-top:0}
             <div class="setting-row">
               <div><div class="setting-label">Completion dialog</div><div class="setting-desc">Ask for impact, outcome and deliverable when completing a task</div></div>
               <label class="toggle-switch"><input type="checkbox" id="set-completion"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Celebrate completions</div><div class="setting-desc">Brief pop + sparkle animation when you tick a task off</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="set-celebration-enabled"><span class="toggle-slider"></span></label>
             </div>
           </div>
         </div>
@@ -3644,6 +3750,34 @@ function filterByPriority(p) {
         <button class="btn-secondary" onclick="closeAddSharedWorkspaceModal()">Cancel</button>
         <button class="btn-primary" onclick="confirmAddSharedWorkspace()">Connect</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Overdue alert modal -->
+  <div class="modal-overlay" id="overdue-alert-overlay">
+    <div class="modal modal-sm" id="overdue-alert-modal">
+      <div style="background:var(--red);margin:-28px -28px 20px;padding:18px 24px;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+        <div style="font-size:18px;font-weight:700;color:#fff">⚠ Overdue Tasks</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.7);margin-top:3px">These tasks need your attention</div>
+      </div>
+      <div id="overdue-alert-list" style="max-height:320px;overflow-y:auto"></div>
+      <div class="modal-footer">
+        <button class="btn-primary" onclick="acknowledgeOverdueAlert()">Acknowledge</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── External Submissions Wizard ──────────────────────────────────── -->
+  <div class="modal-overlay" id="ws-submissions-modal-overlay" onclick="closeModalOutside(event,'ws-submissions-modal-overlay')">
+    <div class="modal" style="max-width:560px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="modal-title" style="margin:0">Set up external submissions</div>
+        <button onclick="closeSubmissionsWizard()" style="font-size:16px;color:var(--text3);background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>
+      </div>
+      <div id="ws-sub-step-indicator" style="font-size:12px;color:var(--text3);margin-bottom:14px"></div>
+      <div id="ws-sub-step-body" style="font-size:14px;line-height:1.55;color:var(--text2)"></div>
+      <div id="ws-sub-status" style="font-size:12px;min-height:18px;margin-top:10px"></div>
+      <div class="modal-footer" id="ws-sub-footer"></div>
     </div>
   </div>
 

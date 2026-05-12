@@ -96,12 +96,28 @@ function saveWindowState() {
 function createWindow() {
   const savedState = getWindowState();
   const bounds = savedState?.bounds || { width: 1080, height: 720 };
+  // Phase 2 slice 1: TASKSPARK_USE_WEB=1 loads the web companion's HTML
+  // instead of src/index.html. The web app has no custom title bar — use
+  // Windows' titleBarOverlay so we get native min/max/close buttons in a
+  // colour that matches the app, and hide the default Electron menu strip
+  // (File/Edit/View/Window/Help) which otherwise sits below the title bar.
+  const useWeb = process.env.TASKSPARK_USE_WEB === '1';
+  const indexPath = useWeb
+    ? path.join(__dirname, '..', 'web', 'index.html')
+    : path.join(__dirname, 'index.html');
+  if (useWeb) Menu.setApplicationMenu(null);
 
   mainWindow = new BrowserWindow({
     width: bounds.width, height: bounds.height,
     x: bounds.x, y: bounds.y,
     minWidth: 820, minHeight: 560,
-    frame: false, titleBarStyle: 'hidden',
+    frame: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: useWeb ? {
+      color: '#f0ede8',
+      symbolColor: '#1a1814',
+      height: 30,
+    } : false,
     backgroundColor: '#f0ede8',
     icon: path.join(__dirname, '../assets/taskspark.ico'),
     webPreferences: {
@@ -114,7 +130,7 @@ function createWindow() {
 
   if (savedState?.isMaximized) mainWindow.maximize();
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile(indexPath);
   // Only allow opening http/https/mailto in the user's default browser.
   // Block file:, javascript:, custom-scheme handlers (vscode://, etc.) that
   // would let an HTML-injection vector spawn arbitrary apps.
@@ -133,7 +149,7 @@ function createWindow() {
   // platform (the previous string concat produced "file://C:/..." on Windows
   // — two slashes — while Electron uses "file:///C:/..." with three, which
   // silently blocked location.reload() during sign-out).
-  const indexFileUrl = url.pathToFileURL(path.join(__dirname, 'index.html')).href;
+  const indexFileUrl = url.pathToFileURL(indexPath).href;
   mainWindow.webContents.on('will-navigate', (e, navUrl) => {
     if (!navUrl.startsWith(indexFileUrl)) {
       e.preventDefault();
@@ -249,6 +265,19 @@ ipcMain.on('window-maximize', () => {
   else mainWindow.maximize();
 });
 ipcMain.on('window-close', () => mainWindow.close());
+
+// Re-tint the Windows titleBarOverlay when the wrapped renderer flips
+// theme or accent. Renderer passes the resolved --accent / --accent-text
+// CSS values; main just applies. setTitleBarOverlay throws on platforms
+// that don't support it (mac, Linux without overlay) — swallow.
+ipcMain.on('titlebar-theme', (_, colors) => {
+  if (!mainWindow || !colors) return;
+  const palette = {
+    color: colors.color || '#f0ede8',
+    symbolColor: colors.symbolColor || '#1a1814',
+  };
+  try { mainWindow.setTitleBarOverlay(palette); } catch {}
+});
 
 // ── Timer window ──────────────────────────────────────────────────────────────
 // Returns the display TaskSpark's main window is currently on, falling back
@@ -438,6 +467,12 @@ const OAUTH_SCOPES = [
 // Per-flow PKCE + state, stored on the closure so the callback can verify
 let _googleOauthState = null;
 let _googleOauthVerifier = null;
+// Remember the loopback redirect URI so the exchange uses the SAME value the
+// auth request did, regardless of what the renderer passes back. Phase 2's
+// wrapped-web flow reloads the page between auth and exchange, which drops
+// the renderer-side `redirectUri` global; trusting main here avoids the
+// resulting redirect_uri mismatch (Google rejects with a policy error).
+let _googleOauthRedirectUri = null;
 
 ipcMain.handle('oauth-start', async () => {
   if (oauthServer) { try { oauthServer.close(); } catch {} oauthServer = null; }
@@ -470,6 +505,7 @@ ipcMain.handle('oauth-start', async () => {
     server.listen(0, '127.0.0.1', () => {
       const port = server.address().port;
       const redirectUri = `http://127.0.0.1:${port}/callback`;
+      _googleOauthRedirectUri = redirectUri;
       oauthServer = server;
       const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       authUrl.searchParams.set('client_id', APP_CLIENT_ID);
@@ -492,13 +528,15 @@ ipcMain.handle('oauth-exchange', async (_, { code, redirectUri }) => {
   return new Promise((resolve, reject) => {
     const params = {
       code, client_id: APP_CLIENT_ID, client_secret: APP_CLIENT_SECRET,
-      redirect_uri: redirectUri, grant_type: 'authorization_code',
+      redirect_uri: _googleOauthRedirectUri || redirectUri,
+      grant_type: 'authorization_code',
     };
     if (_googleOauthVerifier) params.code_verifier = _googleOauthVerifier;
     const body = new URLSearchParams(params).toString();
-    // Clear the verifier after one use
+    // Clear the verifier + redirect after one use
     _googleOauthVerifier = null;
     _googleOauthState = null;
+    _googleOauthRedirectUri = null;
     const req = https.request({
       hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },

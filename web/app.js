@@ -247,6 +247,75 @@ const api = {
   driveWorkspacesSave:    (args) => driveWorkspacesSaveWeb(args),
 };
 
+// Phase 2 slice 1: when wrapped by Electron, route OAuth through the desktop's
+// PKCE flow (system browser → localhost callback). Google rejects file://
+// origins, so the web's redirect-and-exchange path can't work here.
+if (typeof window !== 'undefined' && window.desktopAPI) {
+  // Marker class for wrapped-Electron-only CSS (reserves the
+  // titleBarOverlay drag strip at the top of the body).
+  if (document.body) {
+    document.body.classList.add('taskspark-wrapped');
+  } else {
+    document.addEventListener('DOMContentLoaded', () =>
+      document.body.classList.add('taskspark-wrapped'));
+  }
+  api.oauthStart    = ()     => window.desktopAPI.oauthStart();
+  api.oauthExchange = (args) => window.desktopAPI.oauthExchange(args);
+  api.oauthRefresh  = (args) => window.desktopAPI.oauthRefresh(args);
+  // The on-code listener registered later (next to startOAuth) is a
+  // stripped-down post-sign-in flow that doesn't load the TaskSpark-Config
+  // sheet or show the first-run welcome modal — so workspaces never appear
+  // for returning users on a fresh install. Side-step it: stash the code
+  // where auth.html would put it on the web, and reload. handleOAuthCallback()
+  // then runs the full web post-sign-in flow (workspace restore included).
+  api.onOauthCode = (_cb) => {
+    window.desktopAPI.onOauthCode(({ code }) => {
+      try { sessionStorage.setItem('oauth_code', code); } catch {}
+      location.reload();
+    });
+  };
+  // Auto-updater (slice 2): the web's `api` ships these as no-ops, so the
+  // banner / toast wiring in runPostInitWireup() silently drops events when
+  // wrapped. Route them through the bridge.
+  if (window.desktopAPI.onUpdateAvailable)  api.onUpdateAvailable  = (cb) => window.desktopAPI.onUpdateAvailable(cb);
+  if (window.desktopAPI.onUpdateDownloaded) api.onUpdateDownloaded = (cb) => window.desktopAPI.onUpdateDownloaded(cb);
+  if (window.desktopAPI.installUpdate)      api.installUpdate      = ()   => window.desktopAPI.installUpdate();
+  // Quick Add global shortcut (slice 3): the web listener at the bottom of
+  // this file (api.onGlobalQuickAdd(...)) already opens the modal; just
+  // route the event through.
+  if (window.desktopAPI.onGlobalQuickAdd)   api.onGlobalQuickAdd   = (cb) => window.desktopAPI.onGlobalQuickAdd(cb);
+  if (window.desktopAPI.quickaddDone)       api.quickaddDone       = ()   => window.desktopAPI.quickaddDone();
+  // Floating timer window (slice 4): existing api.onTimerStopped /
+  // onTimerPauseRequest / onTimerResumeRequest listeners (further down)
+  // already do the right thing; route them, the controls, and the
+  // window minimize/restore through the bridge.
+  if (window.desktopAPI.timerShow)            api.timerShow            = (data) => window.desktopAPI.timerShow(data);
+  if (window.desktopAPI.timerHide)            api.timerHide            = ()     => window.desktopAPI.timerHide();
+  if (window.desktopAPI.timerPause)           api.timerPause           = ()     => window.desktopAPI.timerPause();
+  if (window.desktopAPI.timerResume)          api.timerResume          = ()     => window.desktopAPI.timerResume();
+  if (window.desktopAPI.onTimerStopped)       api.onTimerStopped       = (cb)   => window.desktopAPI.onTimerStopped(cb);
+  if (window.desktopAPI.onTimerPauseRequest)  api.onTimerPauseRequest  = (cb)   => window.desktopAPI.onTimerPauseRequest(cb);
+  if (window.desktopAPI.onTimerResumeRequest) api.onTimerResumeRequest = (cb)   => window.desktopAPI.onTimerResumeRequest(cb);
+  if (window.desktopAPI.minimize)             api.minimize             = ()     => window.desktopAPI.minimize();
+  if (window.desktopAPI.restore)              api.restore              = ()     => window.desktopAPI.restore();
+  // Break prompt window (slice 5): replace the web's
+  // showInPageBreakPrompt() fallback with the bridge call when wrapped.
+  if (window.desktopAPI.breakPromptShow)      api.breakPromptShow      = (data) => window.desktopAPI.breakPromptShow(data);
+  if (window.desktopAPI.breakPromptHide)      api.breakPromptHide      = ()     => window.desktopAPI.breakPromptHide();
+  if (window.desktopAPI.onBreakChoice)        api.onBreakChoice        = (cb)   => window.desktopAPI.onBreakChoice(cb);
+  // Custom break sound file picker (slice 7).
+  if (window.desktopAPI.pickSoundFile)        api.pickSoundFile        = ()     => window.desktopAPI.pickSoundFile();
+  // Persistent storage (slice 9): make the wrapped app share the same
+  // userData/config.json + tasks_cache.json as V4.1.1 desktop. Existing
+  // users keep their settings, tokens, and (critically for offline mode)
+  // local tasks when we flip the flag.
+  if (window.desktopAPI.loadConfig)           api.loadConfig           = ()      => window.desktopAPI.loadConfig();
+  if (window.desktopAPI.saveConfig)           api.saveConfig           = (data)  => window.desktopAPI.saveConfig(data);
+  if (window.desktopAPI.loadCache)            api.loadCache            = ()      => window.desktopAPI.loadCache();
+  if (window.desktopAPI.saveCache)            api.saveCache            = (tasks) => window.desktopAPI.saveCache(tasks);
+  if (window.desktopAPI.getVersion)           api.getVersion           = ()      => window.desktopAPI.getVersion();
+}
+
 // ── OAuth credentials (web) ─────────────────────────────────────────────────
 // These are read from a config file loaded at startup — see oauth-config.js
 const WEB_CLIENT_ID     = window.TASKSPARK_CLIENT_ID     || '';
@@ -351,6 +420,14 @@ async function findOrCreateConfigSheetWeb(accessToken) {
 
 // Opens Google Picker in a popup for the user to select their TaskSpark-Config file.
 function openConfigPickerWeb(accessToken) {
+  // Wrapped Electron: route to the desktop's separate-browser-window picker.
+  // The in-page Picker requires the calling origin to be registered with the
+  // OAuth client, and file:// can't be — so it falls back to a sign-in prompt
+  // that itself fails. The desktop handler opens a real browser tab on a
+  // localhost origin, which Google accepts.
+  if (window.desktopAPI?.showConfigPicker) {
+    return window.desktopAPI.showConfigPicker({ accessToken });
+  }
   return new Promise((resolve) => {
     if (!window.google || !window.google.picker) {
       const script = document.createElement('script');
@@ -842,11 +919,35 @@ async function handleOAuthCallback() {
       document.getElementById('auth-status').textContent = 'Signing you in…';
       const userInfo = await fetchUserInfo(accessToken);
       const newEmail = userInfo ? userInfo.email : null;
-      const existingCfg = api.loadConfig();
+      const existingCfg = await api.loadConfig();
       const previousEmail = existingCfg && existingCfg.userEmail;
       if (previousEmail && newEmail && previousEmail !== newEmail) {
         api.saveCache([]);
       }
+      // Restore persistent state from cfg — handleOAuthCallback returns
+      // before init() reaches its cfg-loading block, so without this the
+      // user's settings, theme, "Get started" dismiss state, sort mode,
+      // and saved config-sheet pointer would all be lost on every
+      // re-sign-in.
+      if (existingCfg) {
+        if (existingCfg.theme) applyTheme(existingCfg.theme);
+        if (existingCfg.accentTheme) applyAccentTheme(existingCfg.accentTheme);
+        if (existingCfg.sortMode) {
+          const sortEl = document.getElementById('sort-select');
+          if (sortEl) sortEl.value = existingCfg.sortMode;
+        }
+        if (existingCfg.settings) {
+          settings = { ...DEFAULT_SETTINGS, ...existingCfg.settings };
+        }
+        if (existingCfg.onboardingChecklist) {
+          onboardingChecklist = { ...onboardingChecklist, ...existingCfg.onboardingChecklist };
+        }
+        if (existingCfg.configSheetId) configSheetId = existingCfg.configSheetId;
+      }
+      // Always apply — even with no saved settings, the defaults (e.g.
+      // stateColorsEnabled: true) need to be reflected on the <body> for
+      // the CSS rules to take effect.
+      applySettings();
       document.getElementById('auth-status').textContent = 'Looking for your spreadsheet…';
       const existingSheet = await api.driveFindSheet({ accessToken });
       let isBrandNewUser = false;
@@ -896,9 +997,10 @@ async function handleOAuthCallback() {
       if (tlc) { tlc.style.display = 'block'; tlc.style.flex = '1'; tlc.style.minHeight = '0'; }
 
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       if (workspaces.length === 0) setTimeout(showWorkspaceSetupModal, 800);
+      await runPostInitWireup();
     } else {
       throw new Error(tokens.error_description || 'No access token received');
     }
@@ -1024,6 +1126,9 @@ const DEFAULT_SETTINGS = {
   quickAddEnabled:   true,
   whatNowEnabled:    true,
   completionDialog:  true,
+  celebrationEnabled: true,
+  overdueAlertEnabled: false,
+  overdueAlertMode:  'all',
   soundEnabled:      true,
   soundFile:         null,  // null = use bundled default
   moodEnabled:       true,
@@ -1201,6 +1306,18 @@ function applyTheme(mode) {
   document.documentElement.setAttribute('data-theme', mode);
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) btn.textContent = mode === 'dark' ? 'Light mode' : 'Dark mode';
+  syncTitleBarToAccent();
+}
+
+// Read the resolved --accent + --accent-text from CSS and push to the
+// wrapped desktop's titleBarOverlay so the chrome buttons match whatever
+// accent + theme the user has on. Cheap to call; no-op if not wrapped.
+function syncTitleBarToAccent() {
+  if (!window.desktopAPI?.setTitleBarTheme) return;
+  const styles = getComputedStyle(document.documentElement);
+  const color = styles.getPropertyValue('--accent').trim() || '#f0ede8';
+  const symbolColor = styles.getPropertyValue('--accent-text').trim() || '#ffffff';
+  window.desktopAPI.setTitleBarTheme({ color, symbolColor });
 }
 
 const ACCENT_NAMES = {
@@ -1220,6 +1337,7 @@ function applyAccentTheme(accent) {
   });
   const nameEl = document.getElementById('colour-theme-name');
   if (nameEl) nameEl.textContent = ACCENT_NAMES[accent || 'forest'] || '';
+  syncTitleBarToAccent();
 }
 
 function setAccentTheme(accent, btn) {
@@ -1322,7 +1440,7 @@ async function init() {
         renderWorkspaceDropdown();
         updateWorkspaceTitle();
         await connectToSheets();
-        await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+        await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
         if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
         if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
       }
@@ -1336,14 +1454,14 @@ async function init() {
       renderWorkspaceDropdown();
       updateWorkspaceTitle();
       await connectToSheets();
-      await Promise.all([loadIdeas(), loadHabits(), loadWins()]);
+      await Promise.all([loadIdeas(), loadHabits(), loadWins(), loadLists(), loadCalEvents()]);
       if (!cfg.onboardingComplete && !cfg.tutorialComplete) setTimeout(startOnboarding, 1000);
       if (workspaces.length > 1) setTimeout(prefetchAllWorkspaces, 2000);
     }
   } else if (cfg && cfg.offlineMode) {
     offlineMode = true;
     showApp();
-    loadOfflineTasks();
+    await loadOfflineTasks();
     await loadIdeas();
     await loadHabits();
     await loadWins();
@@ -1352,30 +1470,105 @@ async function init() {
     showAuth();
   }
 
-  // Wire up auto-updater notifications
+  await runPostInitWireup();
+}
+
+// The auto-updater listeners, version display, mood/Outlook init, and
+// grace-day/start-of-day/EOD checks that init() runs at the end. Lifted
+// into a helper so handleOAuthCallback can also call it after a fresh
+// sign-in (otherwise these are skipped on every wrapped re-sign-in,
+// because handleOAuthCallback short-circuits init's tail).
+async function runPostInitWireup() {
   api.onUpdateAvailable((info) => {
     showToast(`✨ Update v${info.version} downloading…`);
   });
   api.onUpdateDownloaded((info) => {
     showUpdateBanner(info.version);
   });
-
-  // Show app version in sidebar
   const ver = await api.getVersion();
   const verEl = document.getElementById('app-version');
   if (verEl) verEl.textContent = `v${ver}`;
-  // Check if we should show the what's new modal
   await checkWhatsNew(ver);
-  // Pull today's mood from the cloud so we don't re-prompt on a fresh device
   await syncTodayMoodFromCloud();
-  // Update mood sidebar button on load
   updateMoodSidebarBtn();
-  // Init Outlook
   initOutlook().catch(e => console.error('Outlook init error:', e));
-  // Check if grace day prompt needed
   checkGraceDayPrompt();
   checkStartOfDay();
   scheduleEod();
+  _scheduleMidnight();
+  setTimeout(checkOverdueAlerts, 500);
+}
+
+// Re-render and re-check overdue / start-of-day state when the date rolls
+// over. Without this the task list keeps showing "today" badges on what's
+// actually yesterday until the user does something that triggers a render.
+let _midnightTimer = null;
+// ── Overdue alerts ────────────────────────────────────────────────────────
+// Once-per-day blocking modal listing tasks whose due date has passed.
+// Gated on settings.overdueAlertEnabled; in 'per-task' mode only tasks
+// flagged via the modal checkbox are listed.
+function checkOverdueAlerts() {
+  if (!settings.overdueAlertEnabled) return;
+  const t = todayStr();
+  try {
+    if (localStorage.getItem('taskspark_overdue_alert_shown') === t) return;
+  } catch {}
+  let overdue = tasks.filter(task => !task.completed && !task.archived && task.due && task.due < t);
+  if (settings.overdueAlertMode === 'per-task') overdue = overdue.filter(task => task.overdueAlert);
+  if (!overdue.length) return;
+  const list = document.getElementById('overdue-alert-list');
+  if (!list) return;
+  list.innerHTML = overdue.map(task =>
+    `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="font-weight:600;color:var(--text)">${esc(task.title)}</div>
+      <div style="font-size:12px;color:var(--red);margin-top:2px">Due: ${fmtDate(task.due)}</div>
+    </div>`
+  ).join('');
+  document.getElementById('overdue-alert-overlay').classList.add('open');
+  try { localStorage.setItem('taskspark_overdue_alert_shown', t); } catch {}
+}
+
+function acknowledgeOverdueAlert() {
+  document.getElementById('overdue-alert-overlay').classList.remove('open');
+}
+
+function toggleOverdueAlertSub() {
+  const enabled = document.getElementById('set-overdue-alert-enabled')?.checked;
+  const sub = document.getElementById('overdue-alert-sub');
+  if (sub) sub.style.display = enabled ? '' : 'none';
+}
+
+// Brief card-pop + sparkle when a task is completed, gated on the
+// celebrationEnabled setting. The callback runs after the animation so
+// saveTasks/renderAll can swap the card out without cutting the animation.
+function triggerCelebration(id, callback) {
+  const card = document.getElementById(`task-card-${id}`);
+  if (!settings.celebrationEnabled || !card) {
+    if (callback) callback();
+    return;
+  }
+  card.classList.add('celebrating');
+  setTimeout(() => {
+    if (callback) callback();
+    else card.classList.remove('celebrating');
+  }, 450);
+}
+
+function _scheduleMidnight() {
+  if (_midnightTimer) { clearTimeout(_midnightTimer); _midnightTimer = null; }
+  const now = new Date();
+  const next = new Date(now);
+  next.setDate(now.getDate() + 1);
+  next.setHours(0, 0, 30, 0);
+  const ms = Math.max(60000, next.getTime() - now.getTime());
+  _midnightTimer = setTimeout(() => {
+    try {
+      renderAll();
+      if (typeof checkOverdueAlerts === 'function') checkOverdueAlerts();
+      checkStartOfDay();
+    } catch (e) { console.warn('midnight tick error', e); }
+    _scheduleMidnight();
+  }, ms);
 }
 
 
@@ -1692,11 +1885,22 @@ function showToast(msg, opts = {}) {
 
 function showUpdateBanner(version) {
   const banner = document.getElementById('update-banner');
-  const verSpan = document.getElementById('update-version');
-  if (banner) {
-    if (verSpan) verSpan.textContent = version;
-    banner.style.display = 'flex';
+  if (!banner) return;
+  const msg = document.getElementById('update-banner-msg');
+  const actions = document.getElementById('update-banner-actions');
+  // Wrapped desktop: an installer .exe has been downloaded by
+  // electron-updater. Reloading the renderer doesn't apply it — the user
+  // needs to quit (auto-install-on-quit is set in main) or hit
+  // 'Install now' which triggers quitAndInstall.
+  if (window.desktopAPI?.installUpdate && msg && actions) {
+    const v = version ? `v${version} ` : '';
+    msg.innerHTML = `<svg class="lc-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg> TaskSpark ${v}is ready — close the app to install, or click below.`;
+    actions.innerHTML = `
+      <button onclick="window.desktopAPI.installUpdate()" style="background:#fff;color:var(--accent);border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;font-size:13px">Install now</button>
+      <button onclick="document.getElementById('update-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:12px">Later</button>
+    `;
   }
+  banner.style.display = 'flex';
 }
 
 // ── Keyboard shortcuts ─────────────────────────────────────────────────────
@@ -1831,16 +2035,29 @@ function renderTasks() {
   }
 
   // Today hero — only on All Tasks, only when toggle is on, only when both
-  // groups have entries (otherwise sections look empty/awkward).
+  // groups have entries (otherwise sections look empty/awkward). Includes
+  // overdue tasks alongside today's, with overdue sorted first inside the
+  // section — they're at least as urgent as today's, and burying them
+  // under "Later" hides exactly the work that needs attention now.
   const useHero = settings.todayHeroEnabled !== false && currentView === 'all';
   let newHTML;
   if (useHero) {
     const t = todayStr();
-    const todayTasks = filtered.filter(task => !task.completed && task.due === t);
+    const todayTasks = filtered.filter(task => !task.completed && task.due && task.due <= t);
+    todayTasks.sort((a, b) => {
+      const aOver = a.due < t ? 0 : 1;
+      const bOver = b.due < t ? 0 : 1;
+      if (aOver !== bOver) return aOver - bOver;
+      return a.due.localeCompare(b.due);
+    });
     const otherTasks = filtered.filter(task => !todayTasks.includes(task));
     if (todayTasks.length && otherTasks.length) {
+      const overdueCount = todayTasks.filter(task => task.due < t).length;
+      const label = overdueCount
+        ? `Today · ${todayTasks.length} (${overdueCount} overdue)`
+        : `Today · ${todayTasks.length}`;
       newHTML =
-        `<div class="task-section-label">Today · ${todayTasks.length}</div>` +
+        `<div class="task-section-label">${label}</div>` +
         todayTasks.map(taskCardHTML).join('') +
         `<div class="task-section-label task-section-later">Later · ${otherTasks.length}</div>` +
         otherTasks.map(taskCardHTML).join('');
@@ -2585,6 +2802,8 @@ function openTaskModal(id = null) {
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
+    const oaCb = document.getElementById('tm-overdue-alert');
+    if (oaCb) oaCb.checked = task.overdueAlert === true;
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -2599,6 +2818,8 @@ function openTaskModal(id = null) {
     const clearBtnNewT = document.getElementById('tm-due-time-clear');
     if (clearBtnNewT) clearBtnNewT.style.display = 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
+    const oaCbNew = document.getElementById('tm-overdue-alert');
+    if (oaCbNew) oaCbNew.checked = false;
   }
   renderModalAttachments();
 
@@ -2638,6 +2859,7 @@ function saveTask() {
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
     hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
+    overdueAlert: document.getElementById('tm-overdue-alert')?.checked || false,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -2997,6 +3219,32 @@ async function outlookAuthUrl() {
 }
 
 async function connectOutlook() {
+  // Wrapped Electron: route through the desktop's loopback PKCE flow.
+  // window.open + a redirect to file:// would fail the AAD redirect-URI
+  // check the same way the Google flow does.
+  if (window.desktopAPI?.outlookStart) {
+    try {
+      const { code, redirectUri, codeVerifier } = await window.desktopAPI.outlookStart();
+      const data = await window.desktopAPI.outlookExchange({ code, redirectUri, codeVerifier });
+      if (data && data.access_token) {
+        outlookAccessToken  = data.access_token;
+        outlookRefreshToken = data.refresh_token;
+        outlookConnected    = true;
+        settings.outlookRefreshToken = outlookRefreshToken;
+        await api.saveConfig({ settings });
+        showToast('Outlook calendar connected!');
+        updateOutlookSettingsBtn();
+        await loadOutlookEvents();
+        if (calendarViewMode) renderCalendarView();
+      } else {
+        showToast('Failed to connect Outlook — please try again');
+      }
+    } catch (e) {
+      console.warn('[Outlook] connect failed:', e && e.message);
+      showToast('Failed to connect Outlook — please try again');
+    }
+    return;
+  }
   const authUrl = await outlookAuthUrl();
   const popup = window.open(authUrl, 'outlook_auth', 'width=500,height=650,scrollbars=yes');
   if (!popup) {
@@ -3084,17 +3332,26 @@ async function exchangeOutlookCode(code, codeVerifier) {
 
 async function refreshOutlookToken() {
   if (!outlookRefreshToken) return false;
-  const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     OUTLOOK_CLIENT_ID,
-      refresh_token: outlookRefreshToken,
-      grant_type:    'refresh_token',
-      scope:         OUTLOOK_SCOPES
-    })
-  });
-  const data = await res.json();
+  // The wrapped-Electron Outlook token was issued to the desktop's AAD
+  // app (confidential client with secret) — refreshing it requires going
+  // back through the bridge with that secret. The web fallback below is
+  // for the public web client.
+  let data;
+  if (window.desktopAPI?.outlookRefresh) {
+    data = await window.desktopAPI.outlookRefresh({ refreshToken: outlookRefreshToken });
+  } else {
+    const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id:     OUTLOOK_CLIENT_ID,
+        refresh_token: outlookRefreshToken,
+        grant_type:    'refresh_token',
+        scope:         OUTLOOK_SCOPES
+      })
+    });
+    data = await res.json();
+  }
   if (data.access_token) {
     outlookAccessToken  = data.access_token;
     if (data.refresh_token) {
@@ -3527,6 +3784,8 @@ function openTaskModal(id = null) {
     const clearBtnEdit = document.getElementById('tm-due-time-clear');
     if (clearBtnEdit) clearBtnEdit.style.display = task.dueTime ? '' : 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = task.hideUntilDays || '';
+    const oaCb = document.getElementById('tm-overdue-alert');
+    if (oaCb) oaCb.checked = task.overdueAlert === true;
   } else {
     document.getElementById('tm-title').value    = '';
     document.getElementById('tm-desc').value     = '';
@@ -3541,6 +3800,8 @@ function openTaskModal(id = null) {
     const clearBtnNewT = document.getElementById('tm-due-time-clear');
     if (clearBtnNewT) clearBtnNewT.style.display = 'none';
     if (document.getElementById('tm-hide-until')) document.getElementById('tm-hide-until').value = '';
+    const oaCbNew = document.getElementById('tm-overdue-alert');
+    if (oaCbNew) oaCbNew.checked = false;
   }
 
   renderModalAttachments();
@@ -3581,6 +3842,7 @@ function saveTask() {
     recurrence: getRecurrenceFromUI(),
     attachments: [...modalAttachments],
     hideUntilDays: parseInt(document.getElementById('tm-hide-until')?.value) || 0,
+    overdueAlert: document.getElementById('tm-overdue-alert')?.checked || false,
   };
 
   pushUndo(editingId ? 'Edit task' : 'Add task');
@@ -4255,11 +4517,14 @@ function toggleComplete(id) {
     task.status = 'done';
     checkOnboardingItem('completeTask');
     if (!settings.completionDialog) {
-      saveTasks(); renderAll();
-      if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      triggerCelebration(id, () => {
+        saveTasks(); renderAll();
+        if (task.recurrence && task.recurrence.type !== 'none') setTimeout(() => promptRecurringTask(task), 300);
+      });
       return;
     }
-    // Show completion dialog
+    // Show completion dialog — animate while the card is still in the DOM
+    triggerCelebration(id);
     completionTaskId = id;
     selectedImpact   = 'medium';
     document.getElementById('cm-task-name').textContent = task.title.length > 50 ? task.title.slice(0,48)+'…' : task.title;
@@ -4613,14 +4878,16 @@ function toggleTimer(id) {
     saveTasks();
   }
 
-  // Open the separate always-on-top timer window
-  api.timerShow({
-    taskName:   task.title,
-    baseLogged: task.timeLogged || 0,
-  });
-
-  if (settings.focusModeEnabled) showFocusOverlay(task);
-  else                            showInPageTimer(task.title, task.timeLogged || 0);
+  // Three UX modes:
+  //  - focus mode on (any platform): in-page overlay
+  //  - wrapped desktop, focus mode off: floating always-on-top window + minimize main
+  //  - web, focus mode off: in-page timer panel
+  const useFloatingTimer = !!window.desktopAPI && !settings.focusModeEnabled;
+  if (useFloatingTimer) {
+    api.timerShow({ taskName: task.title, baseLogged: task.timeLogged || 0 });
+  }
+  if (settings.focusModeEnabled)   showFocusOverlay(task);
+  else if (!useFloatingTimer)      showInPageTimer(task.title, task.timeLogged || 0);
   setFaviconRunning(true);
 
   // Start local tick for task card badge updates
@@ -4630,8 +4897,7 @@ function toggleTimer(id) {
   scheduleBreak();
   renderTasks();
 
-  // Minimize main window — timer window stays visible
-  api.minimize();
+  if (useFloatingTimer) api.minimize();
 }
 
 function pauseTimer() {
@@ -5001,6 +5267,9 @@ function applySettings() {
   if (deferredSidebar) deferredSidebar.style.display = s.deferEnabled ? '' : 'none';
   const hideUntilGroup = document.getElementById('hide-until-form-group');
   if (hideUntilGroup) hideUntilGroup.style.display = (s.deferEnabled && !!modalDue) ? '' : 'none';
+  // Per-task overdue-alert checkbox only shown in 'per-task' mode
+  const overdueAlertFG = document.getElementById('overdue-alert-form-group');
+  if (overdueAlertFG) overdueAlertFG.style.display = (s.overdueAlertEnabled && s.overdueAlertMode === 'per-task') ? '' : 'none';
   // Defer setting row depends on dueEnabled — hidden when due dates are off
   const deferSettingRow = document.getElementById('defer-setting-row');
   if (deferSettingRow) deferSettingRow.style.display = s.dueEnabled !== false ? '' : 'none';
@@ -5176,6 +5445,10 @@ async function openSettings() {
   if (document.getElementById('set-quickadd'))       document.getElementById('set-quickadd').checked       = s.quickAddEnabled;
   if (document.getElementById('set-whatnow'))        document.getElementById('set-whatnow').checked        = s.whatNowEnabled;
   if (document.getElementById('set-completion'))     document.getElementById('set-completion').checked     = s.completionDialog;
+  if (document.getElementById('set-celebration-enabled')) document.getElementById('set-celebration-enabled').checked = s.celebrationEnabled !== false;
+  if (document.getElementById('set-overdue-alert-enabled')) document.getElementById('set-overdue-alert-enabled').checked = s.overdueAlertEnabled === true;
+  if (document.getElementById('set-overdue-alert-mode'))    document.getElementById('set-overdue-alert-mode').value     = s.overdueAlertMode || 'all';
+  toggleOverdueAlertSub();
   if (document.getElementById('set-sound-enabled'))  document.getElementById('set-sound-enabled').checked  = s.soundEnabled;
   if (document.getElementById('set-mood-enabled'))   document.getElementById('set-mood-enabled').checked   = s.moodEnabled;
   if (document.getElementById('set-changelog-enabled')) document.getElementById('set-changelog-enabled').checked = s.changelogEnabled !== false;
@@ -5538,6 +5811,9 @@ function saveSettingsFromModal() {
   if (_g('set-quickadd'))         settings.quickAddEnabled = _c('set-quickadd', settings.quickAddEnabled);
   settings.whatNowEnabled    = _c('set-whatnow', settings.whatNowEnabled);
   settings.completionDialog  = _c('set-completion', settings.completionDialog);
+  settings.celebrationEnabled = _c('set-celebration-enabled', settings.celebrationEnabled);
+  if (document.getElementById('set-overdue-alert-enabled')) settings.overdueAlertEnabled = document.getElementById('set-overdue-alert-enabled').checked;
+  if (document.getElementById('set-overdue-alert-mode'))    settings.overdueAlertMode    = document.getElementById('set-overdue-alert-mode').value;
   settings.soundEnabled      = _c('set-sound-enabled', settings.soundEnabled);
   settings.moodEnabled       = _c('set-mood-enabled', settings.moodEnabled);
   settings.changelogEnabled  = _c('set-changelog-enabled', settings.changelogEnabled);
@@ -6115,6 +6391,11 @@ function statsFmtTime(secs) {
 }
 
 function statsDateRange(range) {
+  const now = new Date();
+  if (range === 'today') {
+    const s = dateToLocalStr(now);
+    return { start: new Date(s + 'T00:00:00'), end: new Date(s + 'T23:59:59.999'), totalDays: 1 };
+  }
   const days = { '7d': 7, '30d': 30, '90d': 90, 'year': 365 }[range] || 30;
   const end = new Date(); end.setHours(23, 59, 59, 999);
   const start = new Date(end); start.setDate(start.getDate() - days + 1); start.setHours(0, 0, 0, 0);
@@ -6500,13 +6781,14 @@ function statsLineSvg(points, maxVal, color, W, H, PL, PT, PB, dashed) {
     `<path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"${dashed?' stroke-dasharray="4,3"':''}/>`;
 }
 
-// Range picker (web omits desktop's 'today' range — no daily-tick layout)
+// Range picker — 'today' shows a daily-tick layout (KPIs, activity strip,
+// hour chart, today's task lists) with an auto-refreshing date banner.
 function statsRangeLabel(range) {
-  return { '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
+  return { 'today':'Today', '7d':'7d', '30d':'30d', '90d':'90d', 'year':'Year' }[range] || '30d';
 }
 
 function statsRangePicker(active) {
-  return ['7d','30d','90d','year'].map(r =>
+  return ['today','7d','30d','90d','year'].map(r =>
     `<button class="stats-range-btn${r === active ? ' active' : ''}" onclick="statsSetRange('${r}')">${statsRangeLabel(r)}</button>`
   ).join('');
 }
@@ -6682,6 +6964,148 @@ function renderStatsScatterCard(start, end) {
   return `<div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Estimated vs actual</div><div class="stats-card-hint">Each dot is a completed task</div></div>${svg}</div>`;
 }
 
+// ── Today stats range (ported from V4.1.1 desktop) ─────────────────────────
+function statsCalcTodayKPIs() {
+  const today = dateToLocalStr(new Date());
+  const { start, end } = statsDateRange('today');
+  const doneToday = statsCompletedInRange(start, end);
+  const plannedToday = tasks.filter(t => !t.completed && !t.archived && t.due === today).length;
+  const { totalSecs, sessionCount } = statsCalcTimeTracked(start, end);
+  const running = activeTimerId ? tasks.find(t => t.id === activeTimerId) : null;
+  const runningMins = running && timerStart ? Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed) / 60) : 0;
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today && t.id !== activeTimerId).length;
+  return { doneCount: doneToday.length, plannedToday, totalSecs, sessionCount, running, runningMins, openToday };
+}
+
+function renderStatsDailyLayout() {
+  const { start, end } = statsDateRange('today');
+  const kpis = statsCalcTodayKPIs();
+  const timerOn = settings.timerEnabled !== false;
+  const hasActivity = kpis.doneCount > 0 || (timerOn && kpis.sessionCount > 0);
+  const now = new Date();
+  const banner = `<div class="stats-date-banner" id="stats-date-banner">${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}</div>`;
+  let kpiHtml = `
+    <div class="stats-kpi"><div class="stats-kpi-label">Completed today</div><div class="stats-kpi-value">${kpis.doneCount}</div><div class="stats-kpi-delta">of ${kpis.plannedToday} planned</div></div>`;
+  if (timerOn) {
+    kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Time tracked</div><div class="stats-kpi-value">${statsFmtTime(kpis.totalSecs)}</div><div class="stats-kpi-delta">across ${kpis.sessionCount} session${kpis.sessionCount !== 1 ? 's' : ''}</div></div>
+    <div class="stats-kpi"><div class="stats-kpi-label">In progress</div><div class="stats-kpi-value">${kpis.running ? 1 : 0}</div><div class="stats-kpi-delta">${kpis.running ? `running for ${kpis.runningMins}m` : 'no active timer'}</div></div>`;
+  }
+  kpiHtml += `<div class="stats-kpi"><div class="stats-kpi-label">Still open today</div><div class="stats-kpi-value">${kpis.openToday}</div><div class="stats-kpi-delta">due before end of day</div></div>`;
+  const kpiCols = timerOn ? 4 : 2;
+  const kpiRow = `<div class="stats-kpi-row stats-kpi-cols-${kpiCols}">${kpiHtml}</div>`;
+  const activityCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Today's activity</div><div class="stats-card-hint">24-hour view</div></div>${renderStatsActivityStrip()}</div>` : '';
+  if (!hasActivity) {
+    return banner + kpiRow + activityCard + `<div class="stats-card"><div class="stats-empty-msg">Nothing to reflect on yet. Come back once you've got the day going.</div></div>`;
+  }
+  const hourCard = timerOn ? `<div class="stats-card" style="margin-bottom:16px"><div class="stats-card-header"><div class="stats-card-title">Time by hour</div><div class="stats-card-hint">Minutes tracked</div></div>${renderStatsHourChart()}</div>` : '';
+  return banner + kpiRow + activityCard + renderStatsDailyTaskLists(start, end) + hourCard + `<div class="stats-footnote">These numbers are just a mirror — use what's useful, ignore what isn't.</div>`;
+}
+
+function renderStatsDailyTaskLists(start, end) {
+  const today = dateToLocalStr(new Date());
+  const doneToday = statsCompletedInRange(start, end);
+  const openToday = tasks.filter(t => !t.completed && !t.archived && t.due === today);
+
+  const doneItems = doneToday.map(t => {
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const secs = statsTaskTimeInRange(t, start, end);
+    return `<div class="stats-task-item"><div class="stats-task-check">✓</div><div class="stats-task-title done">${esc(t.title)}${tags}</div><div class="stats-task-time">${secs ? statsFmtTime(secs) : ''}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">Nothing checked off today yet. One small thing counts.</div>`;
+
+  const openItems = openToday.map(t => {
+    const isRunning = activeTimerId === t.id;
+    const tags = (t.tags||[]).map(g => `<span class="stats-task-tag">#${esc(g)}</span>`).join('');
+    const timeStr = isRunning ? `running · ${Math.floor((Date.now()/1000 - timerStart + timerPausedElapsed)/60)}m` : (t.dueTime ? `due ${fmtTime(t.dueTime)}` : 'due today');
+    return `<div class="stats-task-item"><div class="stats-task-check ${isRunning ? 'running' : 'open'}"></div><div class="stats-task-title">${esc(t.title)}${tags}</div><div class="stats-task-time">${timeStr}</div></div>`;
+  }).join('') || `<div class="stats-empty-msg">Nothing else due today.</div>`;
+
+  return `<div class="stats-grid stats-grid-wide" style="margin-bottom:16px">
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Completed today</div><div class="stats-card-hint">${doneToday.length} tasks</div></div><div class="stats-task-list">${doneItems}</div></div>
+    <div class="stats-card"><div class="stats-card-header"><div class="stats-card-title">Still on today's plate</div><div class="stats-card-hint">${openToday.length} open</div></div><div class="stats-task-list">${openItems}</div></div>
+  </div>`;
+}
+
+function renderStatsActivityStrip() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowPct = Math.min(100, ((Date.now() - midnight) / dayMs) * 100);
+  const blocks = [], dots = [];
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs) {
+        const startPct = ((sStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((s.elapsed || 0) * 1000 / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%"></div>`);
+      }
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = Math.max(timerStart * 1000, midnight);
+      if (runStart < midnight + dayMs) {
+        const startPct = ((runStart - midnight) / dayMs) * 100;
+        const widthPct = Math.max(((Date.now() - runStart) / dayMs) * 100, 0.3);
+        blocks.push(`<div class="stats-strip-session" style="left:${startPct.toFixed(2)}%;width:${widthPct.toFixed(2)}%;background:var(--amber)"></div>`);
+      }
+    }
+    if (t.completed && t.completedAt) {
+      const cAt = new Date(t.completedAt).getTime();
+      if (cAt >= midnight && cAt < midnight + dayMs) {
+        const pct = ((cAt - midnight) / dayMs) * 100;
+        dots.push(`<div class="stats-strip-dot" style="left:${pct.toFixed(2)}%"></div>`);
+      }
+    }
+  });
+  const hourLabels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  const legend = `<div class="stats-strip-legend">
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch"></div><span>Session</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-swatch" style="background:var(--amber);opacity:1"></div><span>Running now</span></div>
+    <div class="stats-strip-legend-item"><div class="stats-strip-legend-dot"></div><span>Task completed</span></div>
+  </div>`;
+  return `<div class="stats-strip-track">${blocks.join('')}${dots.join('')}<div class="stats-strip-now" style="left:${nowPct.toFixed(2)}%"></div></div>
+    <div class="stats-strip-hours">${hourLabels}</div>${legend}`;
+}
+
+function renderStatsHourChart() {
+  const today = dateToLocalStr(new Date());
+  const midnight = new Date(today + 'T00:00:00').getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const nowHour = new Date().getHours();
+  const hourMins = new Array(24).fill(0);
+  tasks.forEach(t => {
+    (t.timeSessions || []).forEach(s => {
+      const sStart = new Date(s.start).getTime();
+      if (sStart >= midnight && sStart < midnight + dayMs)
+        hourMins[new Date(s.start).getHours()] += Math.round((s.elapsed || 0) / 60);
+    });
+    if (t.id === activeTimerId && timerStart) {
+      const runStart = timerStart * 1000;
+      if (runStart >= midnight && runStart < midnight + dayMs)
+        hourMins[new Date(runStart).getHours()] += Math.floor((Date.now()/1000 - timerStart) / 60);
+    }
+  });
+  const maxMins = Math.max(...hourMins, 1);
+  const bars = hourMins.map((mins, h) => {
+    const pct = (mins / maxMins) * 100;
+    const cls = h === nowHour ? 'stats-hour-bar now' : mins === 0 ? 'stats-hour-bar empty' : 'stats-hour-bar';
+    return `<div class="${cls}" style="height:${mins > 0 ? Math.max(pct, 4).toFixed(1) : '0'}%"></div>`;
+  }).join('');
+  const labels = Array.from({length:24}, (_,h) => `<div>${h===0?'12a':h===6?'6a':h===12?'12p':h===18?'6p':''}</div>`).join('');
+  return `<div class="stats-hour-chart">${bars}</div><div class="stats-hour-labels">${labels}</div>`;
+}
+
+let _statsDailyTick = null;
+function statsStartDailyTick() {
+  clearInterval(_statsDailyTick);
+  _statsDailyTick = setInterval(() => {
+    if (!statsMode || statsCurrentRange !== 'today') { clearInterval(_statsDailyTick); return; }
+    const el = document.getElementById('stats-date-banner');
+    if (!el) { clearInterval(_statsDailyTick); return; }
+    const now = new Date();
+    el.textContent = `${now.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · ${now.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true})}`;
+  }, 30000);
+}
+
 function renderStatsView() {
   const container = document.getElementById('stats-container');
   if (!container) return;
@@ -6692,6 +7116,12 @@ function renderStatsView() {
 
   const range = statsCurrentRange;
   const header = `<div class="stats-header"><div><div class="stats-page-title">Stats</div><div class="stats-page-subtitle">A look at how things have been going.</div></div><div style="display:flex;align-items:center;gap:10px"><div class="stats-range-picker">${statsRangePicker(range)}</div></div></div>`;
+
+  if (range === 'today') {
+    container.innerHTML = `<div class="stats-page">${header}${renderStatsDailyLayout()}</div>`;
+    statsStartDailyTick();
+    return;
+  }
 
   const { start, end, totalDays } = statsDateRange(range);
   const profile = statsDetectProfile(start, end);
@@ -7051,13 +7481,15 @@ async function loadLists() {
   if (offlineMode || !accessToken || !spreadsheetId) {
     const cfg = await api.loadConfig();
     if (cfg && Array.isArray(cfg.lists)) lists = cfg.lists;
-    return;
+  } else {
+    try {
+      await ensureToken();
+      const loaded = await api.listsLoad({ accessToken, spreadsheetId });
+      if (Array.isArray(loaded)) lists = loaded;
+    } catch (e) { console.warn('Lists load failed:', e); }
   }
-  try {
-    await ensureToken();
-    const loaded = await api.listsLoad({ accessToken, spreadsheetId });
-    if (Array.isArray(loaded)) lists = loaded;
-  } catch (e) { console.warn('Lists load failed:', e); }
+  const cntEl = document.getElementById('cnt-lists');
+  if (cntEl) cntEl.textContent = lists.length;
 }
 
 async function saveLists() {
@@ -8013,17 +8445,19 @@ async function prefetchAllWorkspaces() {
   for (const ws of others) {
     try {
       await ensureToken();
-      const [wsTasks, wsHabits, wsIdeas, wsWins] = await Promise.all([
+      const [wsTasks, wsHabits, wsIdeas, wsWins, wsLists] = await Promise.all([
         api.sheetsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.habitsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.ideasLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
         api.winsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
+        api.listsLoad({ accessToken, spreadsheetId: ws.spreadsheetId }).catch(() => []),
       ]);
       _wsCache[ws.id] = {
         tasks: wsTasks || [],
         habits: wsHabits || [],
         ideas: wsIdeas || [],
         wins: wsWins || [],
+        lists: wsLists || [],
       };
     } catch (e) {
       console.warn(`[prefetch] Failed for workspace ${ws.name}:`, e.message);
@@ -8162,6 +8596,7 @@ async function switchWorkspace(id) {
       habits: [...habits],
       ideas: [...ideas],
       wins: [...wins],
+      lists: [...lists],
     };
 
     activeWorkspaceId = id;
@@ -8185,6 +8620,7 @@ async function switchWorkspace(id) {
       habits  = _wsCache[id].habits  || [];
       ideas   = _wsCache[id].ideas   || [];
       wins    = _wsCache[id].wins    || [];
+      lists   = _wsCache[id].lists   || [];
       await api.saveCache(tasks);
       renderAll();
       updateHabitsSidebar();
@@ -8192,6 +8628,8 @@ async function switchWorkspace(id) {
       if (cntIdeas) cntIdeas.textContent = ideas.length;
       const cntWins = document.getElementById('cnt-wins');
       if (cntWins) cntWins.textContent = wins.length;
+      const cntLists = document.getElementById('cnt-lists');
+      if (cntLists) cntLists.textContent = lists.length;
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
       setTimeout(async () => {
@@ -8205,7 +8643,7 @@ async function switchWorkspace(id) {
             renderAll();
           }
           await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-          _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+          _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists] };
           setSyncStatus('ok');
         } catch (syncErr) {
           // Keep showing cached data; just flag the sync error.
@@ -8241,7 +8679,7 @@ async function switchWorkspace(id) {
       renderAll();
       setSyncStatus('ok');
       await Promise.all([loadHabits(), loadIdeas(), loadWins()]);
-      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins] };
+      _wsCache[id] = { tasks: [...tasks], habits: [...habits], ideas: [...ideas], wins: [...wins], lists: [...lists] };
       clearWorkspaceSwitching();
       showToast(`Switched to ${target.name}`);
     }
@@ -8539,6 +8977,17 @@ function renderManageWorkspacesList() {
     const sharedBadge = w.shared ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface2);color:var(--text3);border:1px solid var(--border);margin-right:4px">⇄ Shared</span>` : '';
     const readOnlyBadge = w.readOnly ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface2);color:var(--amber);border:1px solid var(--amber);margin-right:4px">View only</span>` : '';
     const shareNudge = !w.shared ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">To share: open the sheet via <strong>Open Sheet</strong>, then share it via Google Drive.</div>` : '';
+    // External submissions row — only available in the wrapped Electron app
+    // (pure web has no way to load Apps Script templates or verify the
+    // deployment URL without the desktop bridge).
+    let subRow = '';
+    if (window.desktopAPI) {
+      subRow = w.readOnly
+        ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic">External submissions unavailable in view-only workspaces</div>`
+        : (w.submissionUrl
+            ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">External submissions on · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="copySubmissionUrl('${_subEscJs(w.id)}')">Copy link</a> · <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openSubmissionsWizardFor('${_subEscJs(w.id)}')">Manage</a> · <a style="color:var(--red);cursor:pointer;text-decoration:underline" onclick="resetSubmissionsForWorkspace('${_subEscJs(w.id)}')">Reset</a></div>`
+            : `<div style="font-size:11px;color:var(--text3);margin-top:4px"><a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="openSubmissionsWizardFor('${_subEscJs(w.id)}')">Set up external submissions →</a></div>`);
+    }
     return `<div class="ws-manage-item" data-id="${w.id}">
       <span class="ws-manage-dot" style="background:${c.hex}"></span>
       <div style="flex:1;min-width:0">
@@ -8548,6 +8997,7 @@ function renderManageWorkspacesList() {
           ${isActive ? '<span class="ws-manage-badge">Active</span>' : ''}
         </div>
         ${shareNudge}
+        ${subRow}
       </div>
       <div class="ws-manage-actions">
         <button class="btn-secondary" style="font-size:11px;padding:3px 8px" onclick="openRenameWorkspace('${w.id}')">Rename</button>
@@ -8555,6 +9005,234 @@ function renderManageWorkspacesList() {
       </div>
     </div>`;
   }).join('');
+}
+
+// ── External Submissions wizard ────────────────────────────────────────────
+// Ported from src/app.js. Only invocable in the wrapped desktop (the
+// renderManageWorkspacesList row gates it on window.desktopAPI), because
+// the three submissionsLoadTemplate/Verify/Ensure IPCs require main.
+function _subEscJs(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
+}
+
+let _subWizardWorkspaceId = null;
+let _subWizardStep = 1;
+let _subWizardCodeGs = '';
+let _subWizardSubmitHtml = '';
+
+function openSubmissionsWizardFor(workspaceId) {
+  const ws = workspaces.find(w => w.id === workspaceId);
+  if (!ws) return;
+  if (ws.readOnly) { showToast('This workspace is view-only — submissions need write access'); return; }
+  if (!ws.spreadsheetId) { showToast('This workspace has no Google Sheet yet'); return; }
+  _subWizardWorkspaceId = workspaceId;
+  _subWizardStep = ws.submissionUrl ? 5 : 1;
+  _subWizardCodeGs = '';
+  _subWizardSubmitHtml = '';
+  document.getElementById('ws-submissions-modal-overlay').classList.add('open');
+  renderSubmissionsWizardStep();
+  api.submissionsLoadTemplate({ workspaceName: ws.name }).then(res => {
+    if (res && res.ok) {
+      _subWizardCodeGs = res.codeGs;
+      _subWizardSubmitHtml = res.submitHtml;
+    } else {
+      _setSubWizardStatus(res && res.error ? res.error : 'Could not load templates.', 'err');
+    }
+  });
+}
+
+function closeSubmissionsWizard() {
+  closeModal('ws-submissions-modal-overlay');
+  _subWizardWorkspaceId = null;
+  _subWizardStep = 1;
+  _subWizardCodeGs = '';
+  _subWizardSubmitHtml = '';
+}
+
+function _setSubWizardStatus(msg, kind) {
+  const el = document.getElementById('ws-sub-status');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = kind === 'err' ? 'var(--red)' : kind === 'ok' ? 'var(--accent)' : 'var(--text3)';
+}
+
+function _subWizardWs() {
+  return workspaces.find(w => w.id === _subWizardWorkspaceId);
+}
+
+function renderSubmissionsWizardStep() {
+  const ws = _subWizardWs();
+  if (!ws) return;
+  const ind = document.getElementById('ws-sub-step-indicator');
+  const body = document.getElementById('ws-sub-step-body');
+  const footer = document.getElementById('ws-sub-footer');
+  if (!ind || !body || !footer) return;
+
+  ind.textContent = `Step ${_subWizardStep} of 5 · ${esc(ws.name)}`;
+  _setSubWizardStatus('', '');
+
+  const sheetUrl = `https://docs.google.com/spreadsheets/d/${esc(ws.spreadsheetId)}`;
+
+  if (_subWizardStep === 1) {
+    body.innerHTML = `
+      <p>This sets up a public form so anyone with a link can drop a task into <strong>${esc(ws.name)}</strong>'s Inbox. About 3 minutes of copy-and-paste in Google Apps Script.</p>
+      <ol style="padding-left:20px;margin:12px 0">
+        <li>Open this workspace's Google Sheet.</li>
+        <li>In the sheet's menu, click <strong>Extensions → Apps Script</strong>. A new tab opens.</li>
+      </ol>
+      <button class="btn-secondary" onclick="window.open('${_subEscJs(sheetUrl)}', '_blank')">Open the sheet</button>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="closeSubmissionsWizard()">Cancel</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 2) {
+    body.innerHTML = `
+      <p>In Apps Script, you'll see a file called <code>Code.gs</code> with some default code. <strong>Delete all of it</strong>, then paste the TaskSpark version in.</p>
+      <button class="btn-primary" onclick="copySubmissionsCodeGs()">Copy Code.gs to clipboard</button>
+      <p style="margin-top:12px;font-size:13px;color:var(--text3)">In Apps Script: select all (Ctrl+A) inside Code.gs, delete, paste (Ctrl+V), then click the save icon.</p>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 3) {
+    body.innerHTML = `
+      <p>Now add a second file for the submission page.</p>
+      <ol style="padding-left:20px;margin:12px 0">
+        <li>In Apps Script, click the <strong>+</strong> next to "Files" → <strong>HTML</strong>.</li>
+        <li>Name it exactly <code>Submit</code> (Apps Script will add <code>.html</code> automatically).</li>
+        <li>Delete the default content, then paste the TaskSpark version.</li>
+      </ol>
+      <button class="btn-primary" onclick="copySubmissionsSubmitHtml()">Copy Submit.html to clipboard</button>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 4) {
+    body.innerHTML = `
+      <p>Now publish the form so people can use it.</p>
+      <ol style="padding-left:20px;margin:12px 0">
+        <li>In Apps Script, click <strong>Deploy → New deployment</strong>.</li>
+        <li>Click the gear icon next to "Select type" → choose <strong>Web app</strong>.</li>
+        <li>For <em>Execute as</em>: keep <strong>Me</strong>.</li>
+        <li>For <em>Who has access</em>: choose <strong>Anyone</strong>.</li>
+        <li>Click <strong>Deploy</strong>. Apps Script may ask for permissions — click <strong>Authorize access</strong> and approve.</li>
+        <li>Copy the <strong>Web app URL</strong> shown on the success screen (ends with <code>/exec</code>).</li>
+      </ol>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" onclick="_subWizardNext()">Next →</button>
+    `;
+  } else if (_subWizardStep === 5) {
+    const cur = ws.submissionUrl || '';
+    body.innerHTML = `
+      <p>Paste the deployment URL below. TaskSpark will check it and turn on external submissions for <strong>${esc(ws.name)}</strong>.</p>
+      <input type="text" id="ws-sub-url-input" class="form-input" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(cur)}" style="margin-top:6px">
+      <p style="margin-top:10px;font-size:12px;color:var(--text3)">When verified, TaskSpark will add <code>source</code>, <code>submittedBy</code>, and <code>submittedAt</code> columns to this workspace's Tasks sheet (if they're not already there).</p>
+    `;
+    footer.innerHTML = `
+      <button class="btn-secondary" onclick="_subWizardBack()">← Back</button>
+      <button class="btn-primary" id="ws-sub-verify-btn" onclick="_subWizardVerify()">${cur ? 'Re-verify & save' : 'Verify & save'}</button>
+    `;
+    setTimeout(() => {
+      const input = document.getElementById('ws-sub-url-input');
+      if (input) {
+        input.focus();
+        input.addEventListener('input', () => _setSubWizardStatus('', ''));
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); _subWizardVerify(); } });
+      }
+    }, 0);
+  }
+}
+
+function _subWizardNext() { if (_subWizardStep < 5) { _subWizardStep++; renderSubmissionsWizardStep(); } }
+function _subWizardBack() { if (_subWizardStep > 1) { _subWizardStep--; renderSubmissionsWizardStep(); } }
+
+async function copySubmissionsCodeGs() {
+  if (!_subWizardCodeGs) { _setSubWizardStatus('Templates not loaded yet — please wait a moment.', 'err'); return; }
+  try { await navigator.clipboard.writeText(_subWizardCodeGs); _setSubWizardStatus('Code.gs copied to clipboard ✓', 'ok'); }
+  catch { _setSubWizardStatus('Could not copy. Open the file path in src/templates/submissions/Code.gs and copy manually.', 'err'); }
+}
+
+async function copySubmissionsSubmitHtml() {
+  if (!_subWizardSubmitHtml) { _setSubWizardStatus('Templates not loaded yet — please wait a moment.', 'err'); return; }
+  try { await navigator.clipboard.writeText(_subWizardSubmitHtml); _setSubWizardStatus('Submit.html copied to clipboard ✓', 'ok'); }
+  catch { _setSubWizardStatus('Could not copy. Open the file at src/templates/submissions/Submit.html and copy manually.', 'err'); }
+}
+
+async function copySubmissionUrl(workspaceId) {
+  const ws = workspaces.find(w => w.id === workspaceId);
+  if (!ws || !ws.submissionUrl) { showToast('No submission URL set for this workspace'); return; }
+  try { await navigator.clipboard.writeText(ws.submissionUrl); showToast('Submission link copied ✓'); }
+  catch { showToast('Could not copy — try opening Manage to copy by hand'); }
+}
+
+async function _subWizardVerify() {
+  const ws = _subWizardWs();
+  if (!ws) return;
+  const input = document.getElementById('ws-sub-url-input');
+  const btn = document.getElementById('ws-sub-verify-btn');
+  if (!input) return;
+  const raw = input.value.trim();
+  if (!raw) { _setSubWizardStatus('Paste the URL first.', 'err'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+  _setSubWizardStatus('Checking the URL…', '');
+
+  try {
+    const res = await api.submissionsVerifyUrl({ url: raw });
+    if (!res || !res.ok) {
+      _setSubWizardStatus(res && res.error ? res.error : 'Could not verify the URL.', 'err');
+      if (btn) { btn.disabled = false; btn.textContent = ws.submissionUrl ? 'Re-verify & save' : 'Verify & save'; }
+      return;
+    }
+
+    _setSubWizardStatus('Verified — adding submission columns to the sheet…', '');
+    const ws2 = _subWizardWs();
+    if (!ws2 || !ws2.spreadsheetId) {
+      _setSubWizardStatus('Workspace lost its sheet reference. Refresh and try again.', 'err');
+      if (btn) { btn.disabled = false; btn.textContent = 'Verify & save'; }
+      return;
+    }
+    await ensureToken();
+    const mig = await api.submissionsEnsureSchema({ accessToken, spreadsheetId: ws2.spreadsheetId });
+    if (!mig || !mig.ok) {
+      _setSubWizardStatus(mig && mig.error ? mig.error : 'Could not update the Tasks sheet.', 'err');
+      if (btn) { btn.disabled = false; btn.textContent = 'Verify & save'; }
+      return;
+    }
+
+    ws2.submissionUrl = res.url;
+    await saveWorkspaces();
+    renderManageWorkspacesList();
+    renderAll();
+    showToast('External submissions enabled ✓');
+    closeSubmissionsWizard();
+  } catch (e) {
+    _setSubWizardStatus((e && e.message) || 'Unexpected error.', 'err');
+    if (btn) { btn.disabled = false; btn.textContent = ws.submissionUrl ? 'Re-verify & save' : 'Verify & save'; }
+  }
+}
+
+function resetSubmissionsForWorkspace(workspaceId) {
+  const ws = workspaces.find(w => w.id === workspaceId);
+  if (!ws) return;
+  showConfirmModal(
+    'Reset external submissions?',
+    'TaskSpark will forget the link. <strong>Anyone who already has the link can still post until you also delete the deployment in Apps Script</strong> (Deploy → Manage deployments → Archive).',
+    'Reset',
+    async () => {
+      delete ws.submissionUrl;
+      await saveWorkspaces();
+      renderManageWorkspacesList();
+      renderAll();
+      showToast('External submissions reset');
+    },
+    true
+  );
 }
 
 function openRenameWorkspace(id) {
