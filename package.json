@@ -7,7 +7,9 @@
     "setup": "node setup.js",
     "start": "node setup.js && electron .",
     "build": "electron-builder --win --x64",
-    "build:dir": "electron-builder --win --x64 --dir"
+    "build:dir": "electron-builder --win --x64 --dir",
+    "build:mac": "electron-builder --mac",
+    "build:mac:dir": "electron-builder --mac --dir"
   },
   "build": {
     "appId": "com.taskspark.app",
@@ -28,8 +30,23 @@
       "createStartMenuShortcut": true,
       "artifactName": "TaskSpark.Setup.exe"
     },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/taskspark.icns",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
+      "artifactName": "TaskSpark-${version}-${arch}.${ext}"
+    },
     "files": [
       "src/**/*",
+      "web/**/*",
       "assets/**/*",
       "!**/test/**",
       "!**/tests/**",
