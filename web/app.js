@@ -422,6 +422,25 @@ async function findOrCreateConfigSheetWeb(accessToken) {
   return created.spreadsheetId || null;
 }
 
+// Drive API search for TaskSpark-Config spreadsheet(s) this OAuth client has
+// access to. Used to bypass the Google Picker on iOS Safari, where the
+// Picker's iframe gets blocked by Intelligent Tracking Prevention and
+// renders Google's "Can't access your Google Account" error instead.
+async function driveFindConfigSheetWeb({ accessToken }) {
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name%3D'TaskSpark-Config'%20and%20mimeType%3D'application%2Fvnd.google-apps.spreadsheet'%20and%20trashed%3Dfalse&fields=files(id,name)&pageSize=10`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.files || [];
+  } catch (e) {
+    console.warn('driveFindConfigSheetWeb error:', e);
+    return [];
+  }
+}
+
 // Opens Google Picker in a popup for the user to select their TaskSpark-Config file.
 function openConfigPickerWeb(accessToken) {
   // Wrapped Electron: route to the desktop's separate-browser-window picker.
@@ -8731,7 +8750,21 @@ function welcomeGetStarted() {
 async function welcomeRestoreExisting() {
   hideFirstRunWelcomeModal();
   try {
-    const pickedId = await openConfigPickerWeb(accessToken);
+    // Try a direct Drive API search first. The Google Picker is rendered in
+    // an iframe that needs cookies on accounts.google.com — iOS Safari blocks
+    // those, so on mobile the Picker shows "Can't access your Google Account"
+    // instead of the file list. The API call works regardless.
+    let pickedId = null;
+    const matches = await driveFindConfigSheetWeb({ accessToken });
+    if (matches.length === 1) {
+      pickedId = matches[0].id;
+    } else if (window.MOBILE_ESSENTIALS) {
+      showToast(matches.length === 0
+        ? 'No existing TaskSpark workspace found to restore'
+        : 'Multiple workspaces found — please restore from desktop');
+    } else {
+      pickedId = await openConfigPickerWeb(accessToken);
+    }
     if (pickedId) {
       configSheetId = pickedId;
       api.saveConfig({ configSheetId });
