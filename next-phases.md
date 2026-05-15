@@ -5,26 +5,28 @@ plan, the decisions already made, and the things still up for grabs. Keep
 this file in sync as you go — when a phase ships, summarise it in
 `CHANGELOG.md` and trim what's done out of here.
 
-Last updated: 2026-05-10 (Phase 2 slices 1–9 landed behind the
-`TASKSPARK_USE_WEB` flag).
+Last updated: 2026-05-15 (V4.2.0 — wrapped renderer is the default on
+both platforms; legacy `src/` renderer kept as a one-release escape
+hatch via `TASKSPARK_USE_WEB=0`).
 
 ---
 
 ## Where we are
 
-- **V4.1.1 shipped on both desktop and web** with four trust fixes
-  (B50/B51/B52/B53). See the V4.1.1 entry in `CHANGELOG.md`.
-- **Phase 2 is in flag-gated testing.** `TASKSPARK_USE_WEB=1 npm start`
-  loads `web/index.html` inside Electron with the full V4.1.1 feature
-  set bridged through `window.desktopAPI`. Default (flag off) is
-  unchanged. Branch: `claude/review-taskspark-docs-jzR1T`.
-- **Desktop and web are still two ~8,500-line copies.** They share schema
-  (Tasks sheet now goes A → AG, 33 columns) but the renderer is duplicated.
-  `src/app.js` + `src/index.html` get deleted at the end of Phase 2.
-- **Apple Developer Program is paid for** ($99/yr). Windows code-signing is
-  intentionally **not** paid for — desktop installer ships unsigned, with
-  SmartScreen friction on first install. Re-evaluate later.
-- **Mac is a real near-term target** and Jana has a Mac for testing.
+- **V4.2.0 is the migration release.** Windows and Mac both run the
+  wrapped-web renderer by default. The `TASKSPARK_USE_WEB` env var has
+  flipped from opt-in (default off in V4.1.1) to opt-out (`=0` falls
+  back to legacy in V4.2.0). One release of escape hatch, then it goes.
+- **Mac ships for the first time in V4.2.0.** Signed + notarised
+  `.dmg`/`.zip` for both `x64` and `arm64`. Auto-update via the same
+  `taskspark-releases` repo.
+- **`src/app.js` + `src/index.html` are still in the repo.** They're
+  reachable only via `TASKSPARK_USE_WEB=0`. Deletion is the next
+  release once V4.2.0 has been stable for ≥ 2 weeks with no
+  regressions reported.
+- **Apple Developer Program is paid for** ($99/yr). Windows code-signing
+  is intentionally **not** paid for — desktop installer ships unsigned,
+  with SmartScreen friction on first install. Re-evaluate later.
 
 ## The architectural decision
 
@@ -111,40 +113,44 @@ Order matters here — each step keeps the desktop app shippable.
       reconfigure when we flip the flag, and offline-mode users keep
       their local-only tasks.
 
-3. **Delete `src/app.js` and `src/index.html`.** Pending. Only after a
-   stable beta release on the new architecture (suggest ≥ 2 weeks of
-   running with the flag on by default).
+3. **Flip the flag default to on.** ✅ **Done in V4.2.0.** The env var
+   inverted from opt-in (`=1` to enable in V4.1.1) to opt-out (`=0` to
+   fall back to legacy in V4.2.0). Kept as an escape hatch for one
+   release in case anything misbehaves in the wild.
 
-4. **Flip the flag default to on, then remove the flag entirely.** The
-   `TASKSPARK_USE_WEB` env-var gate gets retired alongside step 3.
+4. **Delete `src/app.js` and `src/index.html`.** Pending. After V4.2.0
+   has been stable for ≥ 2 weeks with no regressions reported. That
+   release also removes the `TASKSPARK_USE_WEB` env-var gate entirely.
 
 5. **Remove `if (window.desktopAPI)` boilerplate where it accumulates.**
-   Some features can collapse to a single call once the flag is gone and
-   web/wrapped are the only two targets. Cosmetic.
+   Some features can collapse to a single call once the legacy renderer
+   is gone and web/wrapped are the only two targets. Cosmetic.
 
 ### Risk areas
 
-- **Beta channel.** Worth setting up a separate `beta` release channel in
-  `electron-updater` so you can ship the new architecture to volunteers
-  before promoting it to stable.
-(The Calendar OAuth and offline-mode risk areas the original plan flagged
-are resolved by slices 8 and 9 respectively. The update-banner copy
-issue is resolved by the banner-copy fix in `showUpdateBanner`.)
+- **Beta channel.** Worth setting up a separate `beta` release channel
+  in `electron-updater` so you can ship the new architecture to
+  volunteers before promoting it to stable. (Skipped for V4.2.0;
+  consider for the deletion release.)
+
+(The Calendar OAuth and offline-mode risk areas the original plan
+flagged are resolved by slices 8 and 9 respectively. The update-banner
+copy issue is resolved by the banner-copy fix in `showUpdateBanner`.)
 
 ### Done when
 
-- ✅ Windows desktop app launches `web/index.html` and all V4.1.1 features
-  work, including: floating timer, break prompt, Quick Add, auto-updater,
-  calendar sync, CSV export, custom break sound, offline mode, multi-monitor.
-  (Functionality wired; needs manual smoke-test before flipping default.)
-- ☐ Flag flipped to on-by-default for ≥ 2 weeks without regressions.
-- ☐ `src/app.js` and `src/index.html` are deleted from the repo.
-- ☐ `CHANGELOG.md` describes the migration in user-facing terms (mostly:
-  "general stability and architecture work — no user-visible changes").
+- ✅ Windows desktop app launches `web/index.html` and all V4.1.1
+  features work, including: floating timer, break prompt, Quick Add,
+  auto-updater, calendar sync, CSV export, custom break sound, offline
+  mode, multi-monitor.
+- ✅ Flag flipped to on-by-default in V4.2.0.
+- ✅ V4.2.0 CHANGELOG entry describes the migration in user-facing terms.
+- ☐ V4.2.0 stable for ≥ 2 weeks with no regressions reported.
+- ☐ `src/app.js` and `src/index.html` deleted from the repo.
 
 ---
 
-## Phase 3 — Add Mac as a build target
+## Phase 3 — Add Mac as a build target — ✅ done in V4.2.0
 
 **Goal:** ship a notarised Mac `.dmg` of TaskSpark with auto-update working.
 
@@ -315,11 +321,8 @@ home screen, and only since iOS 16.4. UI should explain this honestly:
 
 ## Decisions still open
 
-- **When to delete `src/app.js` / `src/index.html`** — after Phase 2 has
+- **When to delete `src/app.js` / `src/index.html`** — after V4.2.0 has
   been stable in production for ~2 weeks. Don't rush it.
-- **When to flip `TASKSPARK_USE_WEB` to on-by-default** — after manual
-  smoke-testing of the whole feature set on a fresh `userData` and on an
-  existing V4.1.1 install.
 - **Beta channel for Phase 2** — recommended but optional. Decide before
   flipping the flag default.
 - **Mac code-signing CI runner** — GitHub Actions has macOS runners; that

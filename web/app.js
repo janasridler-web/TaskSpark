@@ -409,31 +409,6 @@ async function driveFindSheetByIdWeb({ accessToken, spreadsheetId }) {
   return result.trashed ? null : result;
 }
 
-// Auto-find the user's TaskSpark-Config spreadsheet by name. Used on
-// sign-in to skip the "Get Started / Restore from existing" welcome
-// modal entirely when there's exactly one config sheet in Drive — the
-// most common case for returning users on a new device. Returns the
-// file id when unambiguous, null otherwise (zero found → new user,
-// multiple found → ambiguous, defer to picker).
-async function driveFindConfigByNameWeb(accessToken) {
-  try {
-    const q = encodeURIComponent(
-      "name='TaskSpark-Config' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
-    );
-    const res = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const files = data.files || [];
-    return files.length === 1 ? files[0].id : null;
-  } catch (e) {
-    console.warn('[driveFindConfigByName]', e && e.message);
-    return null;
-  }
-}
-
 const CONFIG_SHEET_NAME = 'TaskSpark-Config';
 
 async function findOrCreateConfigSheetWeb(accessToken) {
@@ -1037,7 +1012,10 @@ async function handleOAuthCallback() {
           // restore from it. Zero or multiple hits → fall back to the modal.
           configSheetId = null;
           let autoFound = null;
-          try { autoFound = await driveFindConfigByNameWeb(accessToken); } catch {}
+          try {
+            const matches = await driveFindConfigSheetWeb({ accessToken });
+            if (matches && matches.length === 1) autoFound = matches[0].id;
+          } catch {}
           if (autoFound) {
             const restored = await api.driveWorkspacesLoad({ accessToken, configSheetId: autoFound });
             if (restored && restored.data && restored.data.workspaces && restored.data.workspaces.length) {
