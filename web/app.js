@@ -409,6 +409,31 @@ async function driveFindSheetByIdWeb({ accessToken, spreadsheetId }) {
   return result.trashed ? null : result;
 }
 
+// Auto-find the user's TaskSpark-Config spreadsheet by name. Used on
+// sign-in to skip the "Get Started / Restore from existing" welcome
+// modal entirely when there's exactly one config sheet in Drive — the
+// most common case for returning users on a new device. Returns the
+// file id when unambiguous, null otherwise (zero found → new user,
+// multiple found → ambiguous, defer to picker).
+async function driveFindConfigByNameWeb(accessToken) {
+  try {
+    const q = encodeURIComponent(
+      "name='TaskSpark-Config' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+    );
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const files = data.files || [];
+    return files.length === 1 ? files[0].id : null;
+  } catch (e) {
+    console.warn('[driveFindConfigByName]', e && e.message);
+    return null;
+  }
+}
+
 const CONFIG_SHEET_NAME = 'TaskSpark-Config';
 
 async function findOrCreateConfigSheetWeb(accessToken) {
@@ -1006,12 +1031,35 @@ async function handleOAuthCallback() {
           renderWorkspaceDropdown();
           updateWorkspaceTitle();
         } else {
-          // V3.5.1: No workspaces found locally.
-          // - Brand-new user (no existing TaskSpark sheet): show welcome modal
-          // - Returning user on new device (found existing TaskSpark sheet but no
-          //   workspace config): show welcome modal with the restore path emphasised
+          // No known configSheetId yet. Before bothering the user with the
+          // welcome modal, search Drive by name — most returning users on a
+          // new device have exactly one TaskSpark-Config and we can quietly
+          // restore from it. Zero or multiple hits → fall back to the modal.
           configSheetId = null;
-          await showFirstRunWelcomeModal({ isBrandNewUser });
+          let autoFound = null;
+          try { autoFound = await driveFindConfigByNameWeb(accessToken); } catch {}
+          if (autoFound) {
+            const restored = await api.driveWorkspacesLoad({ accessToken, configSheetId: autoFound });
+            if (restored && restored.data && restored.data.workspaces && restored.data.workspaces.length) {
+              configSheetId = autoFound;
+              workspaces = restored.data.workspaces;
+              activeWorkspaceId = restored.data.activeWorkspaceId || workspaces[0].id;
+              await api.workspacesSave({ workspaces, activeWorkspaceId });
+              api.saveConfig({ configSheetId });
+              const active = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+              if (active) {
+                spreadsheetId = active.spreadsheetId;
+                activeWorkspaceId = active.id;
+                if (active.settings) { settings = { ...DEFAULT_SETTINGS, ...active.settings }; applySettings(); }
+              }
+              renderWorkspaceDropdown();
+              updateWorkspaceTitle();
+            } else {
+              await showFirstRunWelcomeModal({ isBrandNewUser });
+            }
+          } else {
+            await showFirstRunWelcomeModal({ isBrandNewUser });
+          }
         }
       } catch (e) { console.warn('[OAuth] workspace load failed:', e.message); }
 
