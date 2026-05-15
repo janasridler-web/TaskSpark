@@ -1324,10 +1324,31 @@ function dueStatus(due) {
   return diff <= 3 ? 'soon' : 'future';
 }
 
+// Tag colours live on the active workspace so they sync between
+// computers via the TaskSpark-Config Drive sheet. On first read after
+// upgrade, any legacy settings.tagColors are migrated up to the
+// workspace and saved. Mirrors src/app.js's approach exactly (B49).
+function getTagColors() {
+  const ws = getActiveWorkspace();
+  if (!ws) return { enabled: !!settings.tagCustomColorsEnabled, map: settings.tagColors || {} };
+  if (ws.tagColors && Object.keys(ws.tagColors).length) {
+    return { enabled: !!ws.tagColorsEnabled, map: ws.tagColors };
+  }
+  if (settings.tagColors && Object.keys(settings.tagColors).length) {
+    ws.tagColors = { ...settings.tagColors };
+    ws.tagColorsEnabled = !!settings.tagCustomColorsEnabled;
+    saveWorkspaces();
+    return { enabled: !!ws.tagColorsEnabled, map: ws.tagColors };
+  }
+  const enabled = ws.tagColorsEnabled !== undefined ? !!ws.tagColorsEnabled : !!settings.tagCustomColorsEnabled;
+  return { enabled, map: {} };
+}
+
 function getTagColor(tag) {
-  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) {
-    const v = settings.tagColors[tag];
-    return v.startsWith('#') ? v : '#' + v;
+  const { enabled, map } = getTagColors();
+  if (enabled && map && map[tag]) {
+    const v = map[tag];
+    if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
   }
   if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
   return tagColorMap[tag];
@@ -5287,8 +5308,15 @@ function renderTagColorSettings() {
 function setTagColor(index, color) {
   const tag = _tagColorSettingsTags[index];
   if (!tag) return;
-  if (!settings.tagColors) settings.tagColors = {};
-  settings.tagColors[tag] = color;
+  const ws = getActiveWorkspace();
+  if (ws) {
+    if (!ws.tagColors) ws.tagColors = {};
+    ws.tagColors[tag] = color;
+    saveWorkspaces();
+  } else {
+    if (!settings.tagColors) settings.tagColors = {};
+    settings.tagColors[tag] = color;
+  }
   const dot = document.getElementById(`tag-color-dot-${index}`);
   if (dot) dot.style.background = color;
   renderAll();
@@ -5298,6 +5326,14 @@ function toggleTagColorSection() {
   const enabled = document.getElementById('set-tag-custom-colors')?.checked;
   const section = document.getElementById('tag-colors-section');
   if (section) section.style.display = enabled ? '' : 'none';
+  const ws = getActiveWorkspace();
+  if (ws) {
+    ws.tagColorsEnabled = !!enabled;
+    if (!ws.tagColors) ws.tagColors = {};
+    saveWorkspaces();
+  } else {
+    settings.tagCustomColorsEnabled = !!enabled;
+  }
   if (enabled) renderTagColorSettings();
   renderAll();
 }
@@ -5551,7 +5587,12 @@ async function openSettings() {
   if (document.getElementById('set-defer-enabled')) document.getElementById('set-defer-enabled').checked = s.deferEnabled === true;
   if (document.getElementById('set-focus-mode-enabled')) document.getElementById('set-focus-mode-enabled').checked = s.focusModeEnabled === true;
   if (document.getElementById('set-browser-notifications')) document.getElementById('set-browser-notifications').checked = s.browserNotificationsEnabled === true;
-  if (document.getElementById('set-tag-custom-colors')) document.getElementById('set-tag-custom-colors').checked = s.tagCustomColorsEnabled === true;
+  // Tag-colors enabled state lives on the active workspace (synced via
+  // TaskSpark-Config) — read via getTagColors() so the toggle reflects
+  // what's actually applied, not the legacy settings field.
+  const _tcEnabled = getTagColors().enabled;
+  if (document.getElementById('set-tag-custom-colors')) document.getElementById('set-tag-custom-colors').checked = _tcEnabled === true;
+  if (document.getElementById('tag-colors-section')) document.getElementById('tag-colors-section').style.display = _tcEnabled ? '' : 'none';
   if (typeof toggleTagColorSection === 'function') toggleTagColorSection();
   if (document.getElementById('set-sod-enabled'))         document.getElementById('set-sod-enabled').checked         = s.sodEnabled !== false;
   if (document.getElementById('set-sod-due-today'))       document.getElementById('set-sod-due-today').checked       = s.sodShowDueToday !== false;
