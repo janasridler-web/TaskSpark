@@ -2574,39 +2574,39 @@ function setView(view, el) {
     switchViewMode('kanban');
   } else if (view === 'ideas') {
     ideasMode = true; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    _hideAllViewContainers();
     switchViewMode('list');
+    _hideAllViewContainers();
     document.getElementById('ideas-container').classList.add('active');
     renderIdeas();
   } else if (view === 'wins') {
     winsMode = true; ideasMode = false; habitsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    _hideAllViewContainers();
     switchViewMode('list');
+    _hideAllViewContainers();
     document.getElementById('wins-container').classList.add('active');
     renderWins();
   } else if (view === 'lists') {
     listsMode = true; ideasMode = false; habitsMode = false; winsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    _hideAllViewContainers();
     switchViewMode('list');
+    _hideAllViewContainers();
     document.getElementById('lists-container')?.classList.add('active');
     currentOpenListId = null;
     renderLists();
   } else if (view === 'stats') {
     statsMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
-    _hideAllViewContainers();
     switchViewMode('list');
+    _hideAllViewContainers();
     document.getElementById('stats-container')?.classList.add('active');
     renderStatsView();
   } else if (view === 'budget-view') {
     budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; calendarViewMode = false;
-    _hideAllViewContainers();
     switchViewMode('list');
+    _hideAllViewContainers();
     const bvc = document.getElementById('budget-view-container'); if (bvc) bvc.classList.add('active');
     renderBudgetView();
   } else if (view === 'calendar-view') {
     calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false;
-    _hideAllViewContainers();
     switchViewMode('list');
+    _hideAllViewContainers();
     const cvcC = document.getElementById('calendar-view-container'); if (cvcC) cvcC.classList.add('active');
     loadCalEvents().then(() => renderCalendarView());
   } else {
