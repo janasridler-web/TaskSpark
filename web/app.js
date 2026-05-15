@@ -1006,12 +1006,38 @@ async function handleOAuthCallback() {
           renderWorkspaceDropdown();
           updateWorkspaceTitle();
         } else {
-          // V3.5.1: No workspaces found locally.
-          // - Brand-new user (no existing TaskSpark sheet): show welcome modal
-          // - Returning user on new device (found existing TaskSpark sheet but no
-          //   workspace config): show welcome modal with the restore path emphasised
+          // No known configSheetId yet. Before bothering the user with the
+          // welcome modal, search Drive by name — most returning users on a
+          // new device have exactly one TaskSpark-Config and we can quietly
+          // restore from it. Zero or multiple hits → fall back to the modal.
           configSheetId = null;
-          await showFirstRunWelcomeModal({ isBrandNewUser });
+          let autoFound = null;
+          try {
+            const matches = await driveFindConfigSheetWeb({ accessToken });
+            if (matches && matches.length === 1) autoFound = matches[0].id;
+          } catch {}
+          if (autoFound) {
+            const restored = await api.driveWorkspacesLoad({ accessToken, configSheetId: autoFound });
+            if (restored && restored.data && restored.data.workspaces && restored.data.workspaces.length) {
+              configSheetId = autoFound;
+              workspaces = restored.data.workspaces;
+              activeWorkspaceId = restored.data.activeWorkspaceId || workspaces[0].id;
+              await api.workspacesSave({ workspaces, activeWorkspaceId });
+              api.saveConfig({ configSheetId });
+              const active = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+              if (active) {
+                spreadsheetId = active.spreadsheetId;
+                activeWorkspaceId = active.id;
+                if (active.settings) { settings = { ...DEFAULT_SETTINGS, ...active.settings }; applySettings(); }
+              }
+              renderWorkspaceDropdown();
+              updateWorkspaceTitle();
+            } else {
+              await showFirstRunWelcomeModal({ isBrandNewUser });
+            }
+          } else {
+            await showFirstRunWelcomeModal({ isBrandNewUser });
+          }
         }
       } catch (e) { console.warn('[OAuth] workspace load failed:', e.message); }
 
@@ -1276,10 +1302,31 @@ function dueStatus(due) {
   return diff <= 3 ? 'soon' : 'future';
 }
 
+// Tag colours live on the active workspace so they sync between
+// computers via the TaskSpark-Config Drive sheet. On first read after
+// upgrade, any legacy settings.tagColors are migrated up to the
+// workspace and saved. Mirrors src/app.js's approach exactly (B49).
+function getTagColors() {
+  const ws = getActiveWorkspace();
+  if (!ws) return { enabled: !!settings.tagCustomColorsEnabled, map: settings.tagColors || {} };
+  if (ws.tagColors && Object.keys(ws.tagColors).length) {
+    return { enabled: !!ws.tagColorsEnabled, map: ws.tagColors };
+  }
+  if (settings.tagColors && Object.keys(settings.tagColors).length) {
+    ws.tagColors = { ...settings.tagColors };
+    ws.tagColorsEnabled = !!settings.tagCustomColorsEnabled;
+    saveWorkspaces();
+    return { enabled: !!ws.tagColorsEnabled, map: ws.tagColors };
+  }
+  const enabled = ws.tagColorsEnabled !== undefined ? !!ws.tagColorsEnabled : !!settings.tagCustomColorsEnabled;
+  return { enabled, map: {} };
+}
+
 function getTagColor(tag) {
-  if (settings.tagCustomColorsEnabled && settings.tagColors && settings.tagColors[tag]) {
-    const v = settings.tagColors[tag];
-    return v.startsWith('#') ? v : '#' + v;
+  const { enabled, map } = getTagColors();
+  if (enabled && map && map[tag]) {
+    const v = map[tag];
+    if (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) return v;
   }
   if (!tagColorMap[tag]) tagColorMap[tag] = TAG_PALETTE[Object.keys(tagColorMap).length % TAG_PALETTE.length];
   return tagColorMap[tag];
@@ -2466,6 +2513,22 @@ function calcLongestStreak() {
 }
 
 // ── View ───────────────────────────────────────────────────────────────────
+// Centralised hide-all-view-containers helper. Every show-X-view path
+// historically hand-rolled its own list of containers to deactivate, and
+// they'd drift each time a new container type was added (Lists, Stats,
+// Budget, Calendar) — easy to forget one, ending up with two views
+// stacked vertically (50/50 split because they're flex:1 siblings in
+// #main). Single source of truth now.
+function _hideAllViewContainers() {
+  const tl = document.getElementById('task-list-container'); if (tl) tl.style.display = 'none';
+  const kc = document.getElementById('kanban-container');    if (kc) kc.style.display = 'none';
+  ['ideas-container','habits-container','wins-container','lists-container',
+   'stats-container','budget-view-container','calendar-view-container'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
+}
+
 function setView(view, el) {
   currentView = view;
   // Mobile-essentials Tasks-tab toggle: show the Today/Upcoming/All pill
@@ -2500,101 +2563,55 @@ function setView(view, el) {
     const match = document.querySelector(`[data-view="${view}"]`);
     if (match) match.classList.add('active');
   }
+  // Each branch: reset modes → hide everything else → activate the target.
+  // _hideAllViewContainers() is the single source of truth; switchViewMode
+  // handles task-list vs kanban toggling separately.
   if (view === 'kanban') {
     ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    document.getElementById('ideas-container').classList.remove('active');
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('wins-container').classList.remove('active');
-    document.getElementById('lists-container')?.classList.remove('active');
-    document.getElementById('stats-container')?.classList.remove('active');
-    const bvcK = document.getElementById('budget-view-container'); if (bvcK) { bvcK.classList.remove('active'); }
-    const cvcK = document.getElementById('calendar-view-container'); if (cvcK) { cvcK.classList.remove('active'); }
+    _hideAllViewContainers();
     const mainElK = document.getElementById('main');
     if (mainElK) { mainElK.style.display = ''; mainElK.style.flexDirection = ''; }
     switchViewMode('kanban');
   } else if (view === 'ideas') {
     ideasMode = true; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    const cvcI = document.getElementById('calendar-view-container'); if (cvcI) { cvcI.classList.remove('active'); }
-    const bvcI = document.getElementById('budget-view-container'); if (bvcI) bvcI.classList.remove('active');
+    _hideAllViewContainers();
     switchViewMode('list');
-    document.getElementById('task-list-container').style.display = 'none';
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('wins-container').classList.remove('active');
-    document.getElementById('lists-container')?.classList.remove('active');
-    document.getElementById('stats-container')?.classList.remove('active');
     document.getElementById('ideas-container').classList.add('active');
     renderIdeas();
   } else if (view === 'wins') {
     winsMode = true; ideasMode = false; habitsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    const cvW = document.getElementById('calendar-view-container'); if (cvW) { cvW.classList.remove('active'); }
-    const bvcW = document.getElementById('budget-view-container'); if (bvcW) bvcW.classList.remove('active');
+    _hideAllViewContainers();
     switchViewMode('list');
-    document.getElementById('task-list-container').style.display = 'none';
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('ideas-container').classList.remove('active');
-    document.getElementById('lists-container')?.classList.remove('active');
-    document.getElementById('stats-container')?.classList.remove('active');
     document.getElementById('wins-container').classList.add('active');
     renderWins();
   } else if (view === 'lists') {
     listsMode = true; ideasMode = false; habitsMode = false; winsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    const cvL = document.getElementById('calendar-view-container'); if (cvL) cvL.classList.remove('active');
-    const bvcL = document.getElementById('budget-view-container'); if (bvcL) bvcL.classList.remove('active');
+    _hideAllViewContainers();
     switchViewMode('list');
-    document.getElementById('task-list-container').style.display = 'none';
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('ideas-container').classList.remove('active');
-    document.getElementById('wins-container').classList.remove('active');
-    document.getElementById('stats-container')?.classList.remove('active');
     document.getElementById('lists-container')?.classList.add('active');
     currentOpenListId = null;
     renderLists();
   } else if (view === 'stats') {
     statsMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; budgetViewMode = false; calendarViewMode = false;
-    const cvS = document.getElementById('calendar-view-container'); if (cvS) cvS.classList.remove('active');
-    const bvcS = document.getElementById('budget-view-container'); if (bvcS) bvcS.classList.remove('active');
+    _hideAllViewContainers();
     switchViewMode('list');
-    document.getElementById('task-list-container').style.display = 'none';
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('ideas-container').classList.remove('active');
-    document.getElementById('wins-container').classList.remove('active');
-    document.getElementById('lists-container')?.classList.remove('active');
     document.getElementById('stats-container')?.classList.add('active');
     renderStatsView();
   } else if (view === 'budget-view') {
     budgetViewMode = true; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; calendarViewMode = false;
-    const cvc = document.getElementById('calendar-view-container'); if (cvc) { cvc.classList.remove('active'); }
+    _hideAllViewContainers();
     switchViewMode('list');
-    document.getElementById('task-list-container').style.display = 'none';
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('ideas-container').classList.remove('active');
-    document.getElementById('wins-container').classList.remove('active');
-    document.getElementById('lists-container')?.classList.remove('active');
-    document.getElementById('stats-container')?.classList.remove('active');
     const bvc = document.getElementById('budget-view-container'); if (bvc) bvc.classList.add('active');
     renderBudgetView();
   } else if (view === 'calendar-view') {
     calendarViewMode = true; budgetViewMode = false; ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false;
+    _hideAllViewContainers();
     switchViewMode('list');
-    document.getElementById('task-list-container').style.display = 'none';
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('ideas-container').classList.remove('active');
-    document.getElementById('wins-container').classList.remove('active');
-    document.getElementById('lists-container')?.classList.remove('active');
-    document.getElementById('stats-container')?.classList.remove('active');
-    const bvcC = document.getElementById('budget-view-container'); if (bvcC) bvcC.classList.remove('active');
     const cvcC = document.getElementById('calendar-view-container'); if (cvcC) cvcC.classList.add('active');
     loadCalEvents().then(() => renderCalendarView());
   } else {
     ideasMode = false; habitsMode = false; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
-    document.getElementById('ideas-container').classList.remove('active');
-    document.getElementById('habits-container').classList.remove('active');
-    document.getElementById('wins-container').classList.remove('active');
-    document.getElementById('lists-container')?.classList.remove('active');
-    document.getElementById('stats-container')?.classList.remove('active');
-    const bvcE = document.getElementById('budget-view-container'); if (bvcE) bvcE.classList.remove('active');
-    const cvcE = document.getElementById('calendar-view-container');
-    if (cvcE) { cvcE.classList.remove('active'); }
+    _hideAllViewContainers();
     const mainEl = document.getElementById('main');
     if (mainEl) { mainEl.style.display = ''; mainEl.style.flexDirection = ''; mainEl.style.overflow = 'hidden'; }
     switchViewMode('list');
@@ -5239,8 +5256,15 @@ function renderTagColorSettings() {
 function setTagColor(index, color) {
   const tag = _tagColorSettingsTags[index];
   if (!tag) return;
-  if (!settings.tagColors) settings.tagColors = {};
-  settings.tagColors[tag] = color;
+  const ws = getActiveWorkspace();
+  if (ws) {
+    if (!ws.tagColors) ws.tagColors = {};
+    ws.tagColors[tag] = color;
+    saveWorkspaces();
+  } else {
+    if (!settings.tagColors) settings.tagColors = {};
+    settings.tagColors[tag] = color;
+  }
   const dot = document.getElementById(`tag-color-dot-${index}`);
   if (dot) dot.style.background = color;
   renderAll();
@@ -5250,6 +5274,14 @@ function toggleTagColorSection() {
   const enabled = document.getElementById('set-tag-custom-colors')?.checked;
   const section = document.getElementById('tag-colors-section');
   if (section) section.style.display = enabled ? '' : 'none';
+  const ws = getActiveWorkspace();
+  if (ws) {
+    ws.tagColorsEnabled = !!enabled;
+    if (!ws.tagColors) ws.tagColors = {};
+    saveWorkspaces();
+  } else {
+    settings.tagCustomColorsEnabled = !!enabled;
+  }
   if (enabled) renderTagColorSettings();
   renderAll();
 }
@@ -5503,7 +5535,12 @@ async function openSettings() {
   if (document.getElementById('set-defer-enabled')) document.getElementById('set-defer-enabled').checked = s.deferEnabled === true;
   if (document.getElementById('set-focus-mode-enabled')) document.getElementById('set-focus-mode-enabled').checked = s.focusModeEnabled === true;
   if (document.getElementById('set-browser-notifications')) document.getElementById('set-browser-notifications').checked = s.browserNotificationsEnabled === true;
-  if (document.getElementById('set-tag-custom-colors')) document.getElementById('set-tag-custom-colors').checked = s.tagCustomColorsEnabled === true;
+  // Tag-colors enabled state lives on the active workspace (synced via
+  // TaskSpark-Config) — read via getTagColors() so the toggle reflects
+  // what's actually applied, not the legacy settings field.
+  const _tcEnabled = getTagColors().enabled;
+  if (document.getElementById('set-tag-custom-colors')) document.getElementById('set-tag-custom-colors').checked = _tcEnabled === true;
+  if (document.getElementById('tag-colors-section')) document.getElementById('tag-colors-section').style.display = _tcEnabled ? '' : 'none';
   if (typeof toggleTagColorSection === 'function') toggleTagColorSection();
   if (document.getElementById('set-sod-enabled'))         document.getElementById('set-sod-enabled').checked         = s.sodEnabled !== false;
   if (document.getElementById('set-sod-due-today'))       document.getElementById('set-sod-due-today').checked       = s.sodShowDueToday !== false;
@@ -5897,15 +5934,7 @@ function saveSettingsFromModal() {
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function showHabitsView() {
-  // Hide other containers, show habits
-  document.getElementById('task-list-container').style.display = 'none';
-  document.getElementById('kanban-container').style.display = 'none';
-  document.getElementById('ideas-container').classList.remove('active');
-  document.getElementById('wins-container').classList.remove('active');
-  document.getElementById('lists-container')?.classList.remove('active');
-  document.getElementById('stats-container')?.classList.remove('active');
-  const bvcH = document.getElementById('budget-view-container'); if (bvcH) bvcH.classList.remove('active');
-  const cvcH = document.getElementById('calendar-view-container'); if (cvcH) { cvcH.classList.remove('active'); }
+  _hideAllViewContainers();
   document.getElementById('habits-container').classList.add('active');
   kanbanMode = false; ideasMode = false; habitsMode = true; winsMode = false; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
   // Update sidebar active state
@@ -6388,14 +6417,9 @@ const WIN_MOODS = [
 const WIN_CATEGORIES = ['Work', 'Personal', 'Client', 'Milestone', 'Health', 'Learning', 'Other'];
 
 function showWinsView() {
-  document.getElementById('task-list-container').style.display = 'none';
-  document.getElementById('kanban-container').style.display = 'none';
-  document.getElementById('ideas-container').classList.remove('active');
-  document.getElementById('habits-container').classList.remove('active');
-  const bvcWV = document.getElementById('budget-view-container'); if (bvcWV) bvcWV.classList.remove('active');
-  const cvcWV = document.getElementById('calendar-view-container'); if (cvcWV) { cvcWV.classList.remove('active'); }
+  _hideAllViewContainers();
   document.getElementById('wins-container').classList.add('active');
-  kanbanMode = false; ideasMode = false; habitsMode = false; winsMode = true; budgetViewMode = false; calendarViewMode = false;
+  kanbanMode = false; ideasMode = false; habitsMode = false; winsMode = true; listsMode = false; statsMode = false; budgetViewMode = false; calendarViewMode = false;
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   const winsBtn = document.querySelector('[data-view="wins"]');
   if (winsBtn) winsBtn.classList.add('active');

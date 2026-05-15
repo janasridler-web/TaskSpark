@@ -96,12 +96,12 @@ function saveWindowState() {
 function createWindow() {
   const savedState = getWindowState();
   const bounds = savedState?.bounds || { width: 1080, height: 720 };
-  // Phase 2: wrapped web path. macOS is always on the wrapped path
-  // (Mac is brand-new and has no V4.1.1 legacy to preserve). Windows
-  // still gates behind TASKSPARK_USE_WEB so existing V4.1.1 desktop
-  // users keep the old src/ renderer until we flip the default.
+  // V4.2.0: wrapped-web is now the default for both Windows and macOS.
+  // The env var is kept as an escape hatch — TASKSPARK_USE_WEB=0 falls
+  // back to the legacy src/ renderer. That escape hatch goes away once
+  // src/app.js + src/index.html get deleted after the stable period.
   const isMac = process.platform === 'darwin';
-  const useWeb = isMac || process.env.TASKSPARK_USE_WEB === '1';
+  const useWeb = process.env.TASKSPARK_USE_WEB !== '0';
   const indexPath = useWeb
     ? path.join(__dirname, '..', 'web', 'index.html')
     : path.join(__dirname, 'index.html');

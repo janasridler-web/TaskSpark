@@ -102,18 +102,21 @@ Current release: V4.1.1.
   which reads real credentials from `.env`. Runs automatically before
   `npm start` (prestart hook). Any changes to `main.template.js` require a
   fresh `node setup.js` run (or `npm start`) before testing locally.
-- `src/app.js` — renderer (UI logic, ~7900 lines). **Planned for deletion**
-  once Phase 2 wrapped-web flow has been stable for ≥ 2 weeks (see
-  `next-phases.md`). Don't burn cycles improving it.
-- `src/preload.js` — IPC bridge. Exposes the legacy `window.api` (used by
-  `src/app.js`) and the new Phase 2 `window.desktopAPI` (used by the
-  wrapped web app). The legacy surface is suppressed entirely when
-  `TASKSPARK_USE_WEB=1` is set, because `web/app.js` declares its own
+- `src/app.js` — legacy renderer (UI logic, ~7900 lines). No longer
+  reached by default as of V4.2.0; only loads when `TASKSPARK_USE_WEB=0`
+  is set as an escape hatch. **Planned for deletion** once V4.2.0 has
+  been stable for ≥ 2 weeks (see `next-phases.md`). Don't burn cycles
+  improving it.
+- `src/preload.js` — IPC bridge. Exposes the legacy `window.api` (used
+  by `src/app.js`) and the `window.desktopAPI` (used by `web/app.js`
+  when wrapped). The legacy surface is suppressed unless
+  `TASKSPARK_USE_WEB=0` is set, because `web/app.js` declares its own
   top-level `const api` that would otherwise collide.
-- `src/index.html` — main window shell; all views are shown/hidden in here.
-  Also planned for deletion alongside `src/app.js`.
-- `web/index.html` + `web/app.js` — canonical renderer post-Phase-2.
-  Already loaded by the wrapped desktop when `TASKSPARK_USE_WEB=1`.
+- `src/index.html` — legacy main window shell. Same lifecycle as
+  `src/app.js` — only loaded under `TASKSPARK_USE_WEB=0`, planned for
+  deletion alongside it.
+- `web/index.html` + `web/app.js` — canonical renderer. Loaded by
+  default on both Windows and Mac as of V4.2.0.
 - Cloud storage = Google Sheets (per workspace, multiple workspaces supported).
 - Releases publish to a separate public repo `janasridler-web/taskspark-releases`
   via `electron-updater`.

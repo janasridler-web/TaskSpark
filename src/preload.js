@@ -1,12 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Phase 2 slice 1: when wrapping the web companion, the web's app.js
-// declares its own top-level `const api = {...}`, which collides with the
-// non-configurable `window.api` that contextBridge would otherwise expose
-// here. Skip the legacy `api` surface in that mode — the web app talks to
-// Google directly + uses `window.desktopAPI` for the bits that need a
-// privileged main-process call.
-const WRAP_WEB = process.env.TASKSPARK_USE_WEB === '1';
+// V4.2.0: wrapped-web is the default on both Windows and macOS, so the
+// legacy `window.api` is suppressed by default. TASKSPARK_USE_WEB=0 falls
+// back to the legacy src/ renderer (and re-exposes window.api). Must
+// mirror main.template.js's useWeb logic exactly — both processes have to
+// agree on whether we're wrapping. The escape hatch goes away once
+// src/app.js + src/index.html get deleted after the stable period.
+const WRAP_WEB = process.env.TASKSPARK_USE_WEB !== '0';
 
 if (!WRAP_WEB) {
 contextBridge.exposeInMainWorld('api', {
