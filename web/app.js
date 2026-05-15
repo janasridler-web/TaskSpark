@@ -1557,7 +1557,25 @@ async function runPostInitWireup() {
   });
   const ver = await api.getVersion();
   const verEl = document.getElementById('app-version');
-  if (verEl) verEl.textContent = `v${ver}`;
+  if (verEl) {
+    let text = `v${ver}`;
+    // Wrapped desktop only — pure web has no auto-updater. Computed
+    // once at init; reopening the app refreshes the label.
+    if (window.desktopAPI) {
+      try {
+        const cfg = await api.loadConfig();
+        const last = cfg && cfg.lastUpdateCheck;
+        if (last) {
+          const m = Math.round((Date.now() - last) / 60000);
+          const label = m < 1 ? 'just now' : m < 60 ? `${m}m ago` : `${Math.round(m/60)}h ago`;
+          text += ` · update check ${label}`;
+        } else {
+          text += ' · no update check yet';
+        }
+      } catch {}
+    }
+    verEl.textContent = text;
+  }
   await checkWhatsNew(ver);
   await syncTodayMoodFromCloud();
   updateMoodSidebarBtn();
