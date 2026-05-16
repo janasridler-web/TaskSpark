@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, protocol, globalShortcut, Menu, MenuItem } = require('electron');
 const { autoUpdater } = require('electron-updater');
+const log = require('electron-log');
 const path = require('path');
 const fs   = require('fs');
 const https = require('https');
@@ -214,13 +215,18 @@ app.whenReady().then(() => {
   setTimeout(() => {
     const cfg = loadConfig() || {};
     const last = cfg.lastUpdateCheck || 0;
-    if (Date.now() - last > 6 * 60 * 60 * 1000) {
+    const ageMs = Date.now() - last;
+    if (ageMs > 6 * 60 * 60 * 1000) {
+      log.info('[updater] Startup check firing (last check was', last ? `${Math.round(ageMs/3600000)}h ago` : 'never', ').');
       saveConfig({ lastUpdateCheck: Date.now() });
       autoUpdater.checkForUpdatesAndNotify();
+    } else {
+      log.info(`[updater] Startup check skipped — last check was ${Math.round(ageMs/60000)}m ago (throttle: 6h).`);
     }
   }, 3000);
   // Re-check periodically while app is running
   setInterval(() => {
+    log.info('[updater] 6-hour interval check firing.');
     saveConfig({ lastUpdateCheck: Date.now() });
     autoUpdater.checkForUpdatesAndNotify();
   }, 6 * 60 * 60 * 1000);
@@ -234,23 +240,40 @@ app.on('will-quit', () => {
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
+// electron-log captures the full updater lifecycle (check started, version
+// found, download progress %, install scheduled, errors) to
+// %APPDATA%\TaskSpark\logs\main.log on Windows and
+// ~/Library/Logs/TaskSpark/main.log on macOS. Without this we had no way
+// to tell whether the updater ran at all on a user's machine.
+log.transports.file.level = 'info';
+autoUpdater.logger = log;
+
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
+autoUpdater.on('checking-for-update', () => {
+  log.info('[updater] Checking for update…');
+});
+autoUpdater.on('update-not-available', (info) => {
+  log.info('[updater] No update available. Current is latest:', info && info.version);
+});
 autoUpdater.on('update-available', (info) => {
+  log.info('[updater] Update available:', info && info.version);
   if (mainWindow) mainWindow.webContents.send('update-available', info);
 });
-
+autoUpdater.on('download-progress', (p) => {
+  log.info(`[updater] Download progress: ${Math.round(p.percent)}% (${Math.round(p.bytesPerSecond/1024)} KB/s)`);
+});
 autoUpdater.on('update-downloaded', (info) => {
+  log.info('[updater] Update downloaded:', info && info.version, '— will install on quit unless user clicks Install now');
   if (mainWindow) mainWindow.webContents.send('update-downloaded', info);
 });
-
 autoUpdater.on('error', (err) => {
-  // Silently ignore update errors — don't interrupt the user
-  console.error('Update error:', err.message);
+  log.error('[updater] Error:', err && err.stack || err && err.message || err);
 });
 
 ipcMain.on('install-update', () => {
+  log.info('[updater] User clicked Install now — quitting and installing.');
   autoUpdater.quitAndInstall();
 });
 
