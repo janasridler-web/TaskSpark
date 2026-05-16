@@ -57,6 +57,11 @@ now reaching the desktop.
   its own list of "remove .active from these N siblings" and the lists
   had drifted, so certain sequences (Stats → Wins in particular) left
   two views stacked on top of each other. One source of truth now.
+- **Version number visible at the bottom of the sidebar** — the wrapped
+  title bar reserved space at the top of the window but the sidebar
+  was still sized to the raw viewport, so its bottom got clipped
+  off-screen. Sized the sidebar against the same content area as the
+  rest of the app.
 
 ### Under the hood
 
@@ -71,6 +76,12 @@ now reaching the desktop.
 - **userData is shared between V4.1.1 and V4.2.0** — installing the
   update on Windows keeps your existing tokens, settings, workspaces,
   offline tasks, and tag-colour customisation. No re-sign-in needed.
+- **Auto-updater activity is now traceable.** Full updater lifecycle
+  (check, version found, download progress, install scheduled, errors)
+  is logged to `%APPDATA%\TaskSpark\logs\main.log` on Windows and
+  `~/Library/Logs/TaskSpark/main.log` on Mac. A small "update check Xh
+  ago" indicator next to the version in the sidebar confirms the
+  periodic check is firing.
 
 ### Notes for existing Windows users
 
