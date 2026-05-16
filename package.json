@@ -42,7 +42,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": true,
-      "artifactName": "TaskSpark-${version}-${arch}.${ext}"
+      "artifactName": "TaskSpark-${arch}.${ext}"
     },
     "files": [
       "src/**/*",
